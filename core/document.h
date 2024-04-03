@@ -926,6 +926,8 @@ public:
 
     bool isHistoryClean() const;
 
+    void clearHistory();
+
     /**
      * Saving capabilities. Their availability varies according to the
      * underlying generator and/or the document type.
