@@ -2398,13 +2398,11 @@ void PartTest::testEmbeddedFileWarning()
 
     // save the modified file
     QVERIFY(part.saveFile());
-    QTest::qWait(100);
     // bug 491221
     QVERIFY(!part.m_topMessage->isVisible());
     QVERIFY(part.closeUrl());
 
     // open the modified file again
-    QTest::qWait(100);
     QVERIFY(openDocument(&part, tempFileName));
     QVERIFY(part.m_topMessage->isVisible());
 
@@ -2417,7 +2415,6 @@ void PartTest::testEmbeddedFileWarning()
     part.m_document->addPageAnnotation(0, annot);
     // save the modified file
     QVERIFY(part.saveFile());
-    QTest::qWait(100);
     QVERIFY(part.m_topMessage->isVisible());
     QFile tempFile(tempFileName);
     QVERIFY(tempFile.remove());
