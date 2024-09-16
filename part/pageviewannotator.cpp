@@ -366,6 +366,10 @@ public:
         ann->setText(signatureText);
         ann->setImagePath(m_signingInformation->backgroundImagePath);
 
+        // 0 means "Chose an appropriate size"
+        ann->setLeftFontSize(0);
+        ann->setFontSize(0);
+
         m_creationCompleted = false;
         clicked = false;
 
