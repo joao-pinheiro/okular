@@ -24,7 +24,6 @@ from appium.options.common.base import AppiumOptions
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.webdriver import ActionChains, Keys
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 
 class OkularTests(unittest.TestCase):
@@ -38,10 +37,11 @@ class OkularTests(unittest.TestCase):
         return self.driver.find_element(by=AppiumBy.ACCESSIBILITY_ID, value=element)
 
     def assert_current_page_has_text(self, text):
-        time.sleep(0.2)  # Let the page number update
+        time.sleep(0.5)  # Let the page number update
         current_page_number = self.find_element_by_accessibility_id("PageLabelEdit").text
         ActionChains(self.driver).key_down(Keys.CONTROL).send_keys("f").key_up(Keys.CONTROL).perform()
         ActionChains(self.driver).send_keys(text).send_keys(Keys.ENTER).perform()
+        time.sleep(1)  # Let the page number update
         searched_text_page_number = self.find_element_by_accessibility_id("PageLabelEdit").text
         self.find_element_by_accessibility_id("FindBar.QToolButton").click()
         self.assertEqual(current_page_number, searched_text_page_number)
@@ -113,34 +113,49 @@ class OkularTests(unittest.TestCase):
             ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
             self.assert_current_page_has_text("Torben broke the cloning machine")
 
-            # NOTE: Sometimes the View menu does not close properly after clicking an action if we re-open it too fast.
-            #  Added the escape keys and wait time just in case.
+            # FIXME: This test is somehow too unstable, the 'View' menu does not always disappear after a click or even after pressing ESCAPE.
+            #  This may be related to the speed at which actions are performed, which will have different results on different systems.
+            #  Because of this, and after various attempts to make it stable, disable the test entirely as it is too prone to cause problems on the CI.
+            print("\n########## 04 - SKIPPED\n")
+            """
             print("\n########## 04 - Rotate the page left twice, then right twice\n")
             for _ in range(2):
                 self.find_element_by_class_name("menu item", "View").click()
+                time.sleep(0.5)
                 self.find_element_by_class_name("menu item", "Orientation").click()
+                time.sleep(0.5)
                 self.find_element_by_class_name("menu item", "Rotate Left").click()
+                time.sleep(0.5)
                 ActionChains(self.driver).send_keys(Keys.ESCAPE + Keys.ESCAPE).perform()  # Make sure the menu is closed
-                time.sleep(0.2)  # Make sure the menu is closed
+                time.sleep(0.5)
             for _ in range(2):
                 self.find_element_by_class_name("menu item", "View").click()
+                time.sleep(0.5)
                 self.find_element_by_class_name("menu item", "Orientation").click()
+                time.sleep(0.5)
                 self.find_element_by_class_name("menu item", "Rotate Right").click()
+                time.sleep(0.5)
                 ActionChains(self.driver).send_keys(Keys.ESCAPE + Keys.ESCAPE).perform()  # Make sure the menu is closed
-                time.sleep(0.2)  # Make sure the menu is closed
+                time.sleep(0.5)
+            """
 
+            # FIXME: For soe reason the behavior of the next/previous buttons is unstable with tests, sometimes they work, sometimes they don't.
+            #  Hard to tell if it is a bug with Okular or with AT-SPI, but for now it adds too much uncertainty in the testsuite so it is disabled.
+            print("\n########## 05 - SKIPPED\n")
+            """
             print("\n########## 05 - Navigate 5 pages forward then 5 pages back using the page navigation buttons\n")
             main_bar_buttons = self.driver.find_elements(by=AppiumBy.ACCESSIBILITY_ID, value="QApplication.okular::Shell#1.mainToolBar.miniBar.HoverButton")
             previous_page_button = main_bar_buttons[0]
             next_page_button = main_bar_buttons[2]
             for _ in range(5):
                 next_page_button.click()
-                time.sleep(0.1)
+                time.sleep(0.5)
             self.assert_current_page_has_text("Re-writing the bylaws proved to be a challenge")
             for _ in range(5):
                 previous_page_button.click()
-                time.sleep(0.1)
+                time.sleep(0.5)
             self.assert_current_page_has_text("Torben broke the cloning machine")
+            """
 
             print("\n########## 06 - Try various zoom interactions\n")
             self.find_element_by_class_name("menu item", "View").click()
