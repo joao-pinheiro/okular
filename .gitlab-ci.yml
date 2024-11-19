@@ -52,7 +52,8 @@ build_clazy_clang_tidy:
     KDECI_PACKAGE_PROJECT: teams/ci-artifacts/suse-qt6.8
     CLAZY_CHECKS: level0,level1,level2,no-ctor-missing-parent-argument,isempty-vs-count,qhash-with-char-pointer-key,raw-environment-function,qproperty-type-mismatch
     CXXFLAGS: -Werror -Wno-deprecated-declarations
-    CC: clang
+    CC: clang-18
+    CLANGXX: clang-18 
     CXX: clazy
   script:
     - git config --global --add safe.directory $CI_PROJECT_DIR
