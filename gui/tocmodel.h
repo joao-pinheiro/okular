@@ -9,6 +9,8 @@
 
 #include <QAbstractItemModel>
 #include <QList>
+#include <QTreeView>
+#include <QVector>
 
 namespace Okular
 {

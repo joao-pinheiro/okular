@@ -33,6 +33,7 @@
 #include "core/document.h"
 #include "core/page.h"
 #include "ktreeviewsearchline.h"
+#include "pageitemdelegate.h"
 #include "settings.h"
 
 class TreeView : public QTreeView
@@ -103,6 +104,13 @@ Reviews::Reviews(QWidget *parent, Okular::Document *document)
     m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_view->header()->hide();
 
+    if (Okular::Settings::self()->tOCWordWrap()) {
+        m_view->setWordWrap(true);
+        m_view->setTextElideMode(Qt::ElideNone);
+    } else {
+        m_view->setTextElideMode(Qt::ElideRight);
+    }
+
     QToolBar *toolBar = new QToolBar(this);
     toolBar->setObjectName(QStringLiteral("reviewOptsBar"));
     QSizePolicy sp = toolBar->sizePolicy();
@@ -120,6 +128,8 @@ Reviews::Reviews(QWidget *parent, Okular::Document *document)
     m_authorProxy->setSourceModel(m_groupProxy);
 
     m_view->setModel(m_authorProxy);
+
+    m_view->setItemDelegate(new PageItemDelegate(m_view, m_model));
 
     connect(m_authorProxy, &QAbstractItemModel::modelAboutToBeReset, this, &Reviews::saveTreeState);
     // Must be after setModel() so that we restore after QTreeView::reset cleared expanded items, not the other way around
