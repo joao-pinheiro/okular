@@ -4,5 +4,6 @@ WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/okular/.*'
 FormatStyle:     none
 User:            user
+bugprone-unused-return-value.AllowCastToVoid: true
 ...
 
