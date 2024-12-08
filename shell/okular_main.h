@@ -11,13 +11,13 @@
 #ifndef _OKULAR_MAIN_H_
 #define _OKULAR_MAIN_H_
 #include <QStringList>
+#include <kdsingleapplication-qt6/kdsingleapplication.h>
 
 namespace Okular
 {
 enum Status { Error, AttachedOtherProcess, Success };
 
-Status main(const QStringList &paths, const QString &serializedOptions);
-
+Status main(const QStringList &paths, const QString &serializedOptions, KDSingleApplication &kdsa);
 }
 
 #endif

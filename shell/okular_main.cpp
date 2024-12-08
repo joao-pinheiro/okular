@@ -19,6 +19,7 @@
 #include <QMimeData>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <kdsingleapplication-qt6/kdsingleapplication.h>
 
 #include "config-okular.h"
 #if HAVE_X11
@@ -47,7 +48,7 @@ static QString startupId()
     return result;
 }
 
-static bool attachUniqueInstance(const QStringList &paths, const QString &serializedOptions)
+static bool attachUniqueInstance(KDSingleApplication &kdsa, const QStringList &paths, const QString &serializedOptions)
 {
 #if HAVE_DBUS
     if (!ShellUtils::unique(serializedOptions) || paths.count() != 1) {
@@ -67,9 +68,23 @@ static bool attachUniqueInstance(const QStringList &paths, const QString &serial
     }
 
     const QString page = ShellUtils::page(serializedOptions);
-    iface.call(QStringLiteral("openDocument"), ShellUtils::urlFromArg(paths[0], ShellUtils::qfileExistFunc(), page).url(), serializedOptions);
+
+    QByteArray blob;
+    QDataStream ss(&blob, QIODevice::WriteOnly);
+
+    ss << QStringLiteral("openDocument") << ShellUtils::urlFromArg(paths[0], ShellUtils::qfileExistFunc(), page).url() << serializedOptions;
+
+    kdsa.sendMessage(blob);
+
+    // iface.call(QStringLiteral("openDocument"), ShellUtils::urlFromArg(paths[0], ShellUtils::qfileExistFunc(), page).url(), serializedOptions);
+
     if (!ShellUtils::noRaise(serializedOptions)) {
-        iface.call(QStringLiteral("tryRaise"), startupId());
+        blob.clear();
+
+        blob = QByteArray();
+        ss << QStringLiteral("tryRaise") << startupId();
+        kdsa.sendMessage(blob);
+        // iface.call(QStringLiteral("tryRaise"), startupId());
     }
 
     return true;
@@ -79,7 +94,7 @@ static bool attachUniqueInstance(const QStringList &paths, const QString &serial
 }
 
 // Ask an existing non-unique instance to open new tabs
-static bool attachExistingInstance(const QStringList &paths, const QString &serializedOptions)
+static bool attachExistingInstance(KDSingleApplication &kdsa, const QStringList &paths, const QString &serializedOptions)
 {
 #if HAVE_DBUS
     if (paths.count() < 1) {
@@ -93,39 +108,46 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
     }
 
     // If DBus isn't running, we can't attach to an existing instance.
-    auto *sessionInterface = QDBusConnection::sessionBus().interface();
-    if (!sessionInterface) {
-        return false;
-    }
-
-    const QStringList services = sessionInterface->registeredServiceNames().value();
-
-    QScopedPointer<QDBusInterface> bestService;
+    // auto *sessionInterface = QDBusConnection::sessionBus().interface();
+    // if (!sessionInterface) {
+    //     return false;
+    // }
+    //
+    // const QStringList services = sessionInterface->registeredServiceNames().value();
+    //
+    // QScopedPointer<QDBusInterface> bestService;
 #if HAVE_X11
     const int desktop = KX11Extras::currentDesktop();
 #else
     const int desktop = 0;
 #endif
 
+    QByteArray blob;
+    {
+        QDataStream ss(&blob, QIODevice::WriteOnly);
+        ss << QStringLiteral("canOpenDocs") << (int)paths.count() << desktop;
+    }
+    kdsa.sendMessage(blob);
+
     // Select the first instance that isn't us (metric may change in future)
-    const QString ownDbus = ShellUtils::currentProcessDbusName();
-    for (const QString &service : services) {
-        if (service.startsWith(ShellUtils::kPerProcessDbusPrefix) && service != ownDbus) {
-            bestService.reset(new QDBusInterface(service, QStringLiteral("/okularshell"), QStringLiteral("org.kde.okular")));
-
-            // Find a window that can handle our documents
-            const QDBusReply<bool> reply = bestService->call(QStringLiteral("canOpenDocs"), (int)paths.count(), desktop);
-            if (reply.isValid() && reply.value()) {
-                break;
-            }
-
-            bestService.reset();
-        }
-    }
-
-    if (!bestService) {
-        return false;
-    }
+    // const QString ownDbus = ShellUtils::currentProcessDbusName();
+    // for (const QString &service : services) {
+    //     if (service.startsWith(ShellUtils::kPerProcessDbusPrefix) && service != ownDbus) {
+    //         bestService.reset(new QDBusInterface(service, QStringLiteral("/okularshell"), QStringLiteral("org.kde.okular")));
+    //
+    //         // Find a window that can handle our documents
+    //         const QDBusReply<bool> reply = bestService->call(QStringLiteral("canOpenDocs"), (int)paths.count(), desktop);
+    //         if (reply.isValid() && reply.value()) {
+    //             break;
+    //         }
+    //
+    //         bestService.reset();
+    //     }
+    // }
+    //
+    // if (!bestService) {
+    //     return false;
+    // }
 
     for (const QString &arg : paths) {
         // Copy stdin to temporary file which can be opened by the existing
@@ -156,10 +178,19 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
         }
 
         // Returns false if it can't fit another document
-        const QDBusReply<bool> reply = bestService->call(QStringLiteral("openDocument"), path, serializedOptions);
-        if (!reply.isValid() || !reply.value()) {
-            return false;
+        blob.clear();
+
+        blob = QByteArray();
+        {
+            QDataStream ss(&blob, QIODevice::WriteOnly);
+            ss << QStringLiteral("openDocument") << path << serializedOptions;
         }
+        kdsa.sendMessage(blob);
+
+        // const QDBusReply<bool> reply = bestService->call(QStringLiteral("openDocument"), path, serializedOptions);
+        // if (!reply.isValid() || !reply.value()) {
+        //     return false;
+        // }
     }
 
     if (!ShellUtils::editorCmd(serializedOptions).isEmpty()) {
@@ -169,7 +200,15 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
         exit(1);
     }
 
-    bestService->call(QStringLiteral("tryRaise"), startupId());
+    blob.clear();
+
+    blob = QByteArray();
+    {
+        QDataStream ss(&blob, QIODevice::WriteOnly);
+        ss << QStringLiteral("tryRaise") << startupId();
+    }
+    kdsa.sendMessage(blob);
+    // bestService->call(QStringLiteral("tryRaise"), startupId());
 
     return true;
 #else  // HAVE_DBUS
@@ -179,8 +218,14 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
 
 namespace Okular
 {
-Status main(const QStringList &paths, const QString &serializedOptions)
+Status main(const QStringList &paths, const QString &serializedOptions, KDSingleApplication &kdsa)
 {
+    if (kdsa.isPrimaryInstance()) {
+        qWarning() << "This is the primary Instance";
+    } else {
+        qWarning() << "This is the secondary Instance";
+    }
+
     if (ShellUtils::unique(serializedOptions) && paths.count() > 1) {
         QTextStream stream(stderr);
         stream << i18n("Error: Can't open more than one document with the --unique switch") << '\n';
@@ -212,14 +257,18 @@ Status main(const QStringList &paths, const QString &serializedOptions)
     }
 
     // try to attach to existing session, unique or not
-    if (attachUniqueInstance(paths, serializedOptions) || attachExistingInstance(paths, serializedOptions)) {
-        return AttachedOtherProcess;
+    if (!kdsa.isPrimaryInstance()) {
+        if (attachUniqueInstance(kdsa, paths, serializedOptions) || attachExistingInstance(kdsa, paths, serializedOptions)) {
+            return AttachedOtherProcess;
+        }
     }
 
     Shell *shell = new Shell(serializedOptions);
     if (!shell->isValid()) {
         return Error;
     }
+
+    QObject::connect(&kdsa, &KDSingleApplication::messageReceived, shell, &Shell::instanceController);
 
     shell->show();
     for (int i = 0; i < paths.count();) {
