@@ -7,6 +7,8 @@ include_directories(
 add_executable(okularkirigami main.cpp)
 target_link_libraries(okularkirigami PRIVATE Qt6::Widgets Qt6::Qml KF6::I18n KF6::CoreAddons)
 
+set_target_properties(okularkirigami PROPERTIES CXX_CLANG_TIDY "")
+
 ecm_add_qml_module(okularkirigami
     URI "org.kde.okular.app"
     GENERATE_PLUGIN_SOURCE

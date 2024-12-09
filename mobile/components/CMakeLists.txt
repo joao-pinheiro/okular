@@ -9,6 +9,8 @@ ecm_add_qml_module(okularplugin
         org.kde.kirigami
 )
 
+set_target_properties(okularplugin PROPERTIES CXX_CLANG_TIDY "")
+
 target_sources(okularplugin PRIVATE
     ${CMAKE_SOURCE_DIR}/gui/guiutils.cpp
     ${CMAKE_SOURCE_DIR}/gui/tocmodel.cpp
