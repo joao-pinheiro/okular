@@ -39,7 +39,14 @@ SignaturePropertiesDialog::SignaturePropertiesDialog(Okular::Document *doc, cons
     setModal(true);
     setWindowTitle(i18n("Signature Properties"));
 
+#ifdef Q_OS_WIN
+    m_kleopatraPath = QStandardPaths::findExecutable(QStringLiteral("kleopatra.exe"), {QCoreApplication::applicationDirPath()});
+    if (m_kleopatraPath.isEmpty()) {
+        m_kleopatraPath = QStandardPaths::findExecutable(QStringLiteral("kleopatra.exe"));
+    }
+#else
     m_kleopatraPath = QStandardPaths::findExecutable(QStringLiteral("kleopatra"));
+#endif
 
     const Okular::SignatureInfo &signatureInfo = form->signatureInfo();
     const Okular::SignatureInfo::SignatureStatus signatureStatus = signatureInfo.signatureStatus();
