@@ -47,7 +47,4 @@ target_link_libraries(okularplugin PRIVATE
 
 ecm_finalize_qml_module(okularplugin DESTINATION ${KDE_INSTALL_QMLDIR} EXPORT OkularTargets)
 
-install(TARGETS okularplugin DESTINATION ${KDE_INSTALL_QMLDIR}/org/kde/okular)
-install(FILES qmldir DESTINATION ${KDE_INSTALL_QMLDIR}/org/kde/okular)
-
 #add_subdirectory(test)
