@@ -4,8 +4,29 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../..
   ${CMAKE_CURRENT_BINARY_DIR}/../../
 )
-add_executable(okularkirigami main.cpp app.qrc)
-target_link_libraries(okularkirigami Qt6::Widgets Qt6::Qml KF6::I18n KF6::CoreAddons)
+add_executable(okularkirigami main.cpp)
+target_link_libraries(okularkirigami PRIVATE Qt6::Widgets Qt6::Qml KF6::I18n KF6::CoreAddons)
+
+ecm_add_qml_module(okularkirigami
+    URI "org.kde.okular.app"
+    GENERATE_PLUGIN_SOURCE
+)
+
+ecm_target_qml_sources(okularkirigami SOURCES
+    ui/CertificateViewerDialog.qml
+    ui/Bookmarks.qml
+    ui/Main.qml
+    ui/MainView.qml
+    ui/OkularDrawer.qml
+    ui/TableOfContents.qml
+    ui/Thumbnails.qml
+    ui/ThumbnailsBase.qml
+    ui/TreeItem.qml
+    ui/TreeViewDecoration.qml
+    ui/Signatures.qml
+    ui/SignaturePropertiesDialog.qml
+)
+
 if (ANDROID)
     target_sources(okularkirigami PRIVATE android.cpp)
 
