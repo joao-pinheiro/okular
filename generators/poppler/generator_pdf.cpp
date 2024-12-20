@@ -470,9 +470,9 @@ Okular::Action *createLinkFromPopplerLink(std::variant<const Poppler::Link *, st
 
     case Poppler::Link::Action: {
         auto popplerLinkAction = static_cast<const Poppler::LinkAction *>(rawPopplerLink);
-        auto okularLinkAction = popplerToOkular(popplerLinkAction->actionType());
-        if (okularLinkAction) {
-            link = new Okular::DocumentAction(okularLinkAction.value());
+        const auto okularLinkActionType = popplerToOkular(popplerLinkAction->actionType());
+        if (okularLinkActionType) {
+            link = new Okular::DocumentAction(okularLinkActionType.value());
         }
         break;
     }
