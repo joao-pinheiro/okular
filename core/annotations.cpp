@@ -2468,7 +2468,8 @@ void SignatureAnnotation::setLeftFontSize(double fontSize)
     d->m_leftFontSize = fontSize;
 }
 
-void SignatureAnnotation::setSignFunction(std::function<SigningResult(const Okular::NewSignatureData &, const QString &)> func)
+// TODO Change signature when we do an ABI break
+void SignatureAnnotation::setSignFunction(std::function<SigningResult(const Okular::NewSignatureData &, const QString &)> func) // clazy:exclude=function-args-by-ref
 {
     Q_D(SignatureAnnotation);
     d->m_signFunction = func;
@@ -2492,7 +2493,7 @@ void SignatureAnnotation::setPage(int page)
     d->m_page = page;
 }
 
-void SignatureAnnotation::store(QDomNode &node, QDomDocument &document) const
+void SignatureAnnotation::store(QDomNode & /*node*/, QDomDocument & /*document*/) const
 {
     // TODO is this relevant?
 }
