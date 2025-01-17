@@ -2081,7 +2081,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
             int next_page = d->document->currentPage() - viewColumns();
             d->document->setViewportPage(next_page);
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
         break;
     case Qt::Key_Right:
@@ -2091,7 +2091,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
             int next_page = d->document->currentPage() + viewColumns();
             d->document->setViewportPage(next_page);
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
         break;
     case Qt::Key_Escape:
@@ -3315,7 +3315,7 @@ void PageView::wheelEvent(QWheelEvent *e)
                 slotScrollUp(count);
             }
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() - e->angleDelta() * multiplier, 0);
+            d->scroller->scrollTo(contentAreaPosition() - e->angleDelta() * multiplier, 0);
         }
     }
 }
@@ -4958,7 +4958,7 @@ void PageView::slotAutoScroll()
     const int scrollOffset[10] = {1, 1, 1, 1, 1, 2, 2, 2, 4, 4};
     d->autoScrollTimer->start(scrollDelay[index]);
     int delta = d->scrollIncrement > 0 ? scrollOffset[index] : -scrollOffset[index];
-    d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, delta), scrollDelay[index]);
+    d->scroller->scrollTo(contentAreaPosition() + QPoint(0, delta), scrollDelay[index]);
 }
 
 void PageView::slotDragScroll()
@@ -5244,11 +5244,9 @@ void PageView::slotScrollUp(int nSteps)
 {
     if (verticalScrollBar()->value() > verticalScrollBar()->minimum()) {
         if (nSteps) {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, -100 * nSteps), d->currentShortScrollDuration);
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(0, -100 * nSteps), d->currentShortScrollDuration);
         } else {
-            if (d->scroller->finalPosition().y() > verticalScrollBar()->minimum()) {
-                d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, -(1 - Okular::Settings::scrollOverlap() / 100.0) * viewport()->height()), d->currentLongScrollDuration);
-            }
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(0, -(1 - Okular::Settings::scrollOverlap() / 100.0) * viewport()->height()), d->currentLongScrollDuration);
         }
     } else if (!getContinuousMode() && d->document->currentPage() > 0) {
         // Since we are in single page mode and at the top of the page, go to previous page.
@@ -5268,11 +5266,9 @@ void PageView::slotScrollDown(int nSteps)
 {
     if (verticalScrollBar()->value() < verticalScrollBar()->maximum()) {
         if (nSteps) {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, 100 * nSteps), d->currentShortScrollDuration);
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(0, 100 * nSteps), d->currentShortScrollDuration);
         } else {
-            if (d->scroller->finalPosition().y() < verticalScrollBar()->maximum()) {
-                d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(0, (1 - Okular::Settings::scrollOverlap() / 100.0) * viewport()->height()), d->currentLongScrollDuration);
-            }
+            d->scroller->scrollTo(contentAreaPosition() + QPoint(0, (1 - Okular::Settings::scrollOverlap() / 100.0) * viewport()->height()), d->currentLongScrollDuration);
         }
     } else if (!getContinuousMode() && (int)d->document->currentPage() < d->items.count() - 1) {
         // Since we are in single page mode and at the bottom of the page, go to next page.
