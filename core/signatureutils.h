@@ -553,12 +553,12 @@ private:
  * \since 24.12
  */
 enum SigningResult {
-    SigningSuccess,       ///< eveyrthing ok
+    SigningSuccess,       ///< everything ok
     FieldAlreadySigned,   ///< couldn't sign because already signed
     GenericSigningError,  ///< generic (catch-all) error
     InternalSigningError, ///< Internal signing error. This is likely a application or poppler bug \since 25.04
     KeyMissing,           ///< requested key not found \since 25.04
-    SignatureWriteFailed, ///< writing error \since 25p04
+    SignatureWriteFailed, ///< writing error \since 25.04
     UserCancelled,        ///< user aborted \since 25.04
 };
 }
