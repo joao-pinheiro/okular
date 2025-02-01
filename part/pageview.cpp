@@ -5514,7 +5514,7 @@ PageView::FinishSigningResult PageView::finishSigning()
         return Success;
     }
     case Okular::FieldAlreadySigned: // We should not end up here
-    case Okular::KeyMissing:         // unless the user modified the key store after opening teh dialog, this should not happen
+    case Okular::KeyMissing:         // unless the user modified the key store after opening the dialog, this should not happen
     case Okular::InternalSigningError:
         KMessageBox::error(this, i18nc("%1 is a error code", "Internal signing error. Please report a bug with the steps to reproduce it. Error code %1", static_cast<int>(result)));
         return Failed;
