@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <KMessageBox>
 
 #if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(23, 06, 0)
 QString PDFSettingsWidget::popplerEnumToSettingString(Poppler::CryptoSignBackend backend)
@@ -64,6 +65,9 @@ PDFSettingsWidget::PDFSettingsWidget(QWidget *parent)
 #if POPPLER_VERSION_MACRO < QT_VERSION_CHECK(23, 07, 0)
     m_pdfsw.kcfg_OverprintPreviewEnabled->hide();
 #endif
+#if POPPLER_VERSION_MACRO < QT_VERSION_CHECK(25, 02, 1)
+    m_pdfsw.kcfg_EnablePgp->hide();
+#endif
 
 #if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(23, 06, 0)
     auto backends = Poppler::availableCryptoSignBackends();
@@ -101,13 +105,28 @@ PDFSettingsWidget::PDFSettingsWidget(QWidget *parent)
             }
             Poppler::setActiveCryptoSignBackend(backendEnum.value());
             m_pdfsw.certDBGroupBox->setVisible(backendEnum == Poppler::CryptoSignBackend::NSS);
+#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(25, 02, 0)
+            m_pdfsw.kcfg_EnablePgp->setVisible(backendEnum == Poppler::CryptoSignBackend::GPG);
+#endif
             m_certificatesAsked = false;
             if (m_tree) {
                 m_tree->clear();
             }
             update();
         });
+#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(25, 02, 0)
+        connect(m_pdfsw.kcfg_EnablePgp, &QAbstractButton::toggled, this, [this](bool checked) {
+            bool wasAllowed = Poppler::isPgpSignaturesAllowed();
+            if (!wasAllowed && checked) {
+                KMessageBox::information(this, i18nc("Kind of a notice/warning", "These signatures only work between modern versions of Okular"), i18n("Enable PGP signatures"), QStringLiteral("enablePgpWarningShown"));
+            }
+            Poppler::setPgpSignaturesAllowed(checked);
+        });
+#endif
 
+#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(25, 02, 0)
+        m_pdfsw.kcfg_EnablePgp->setVisible(currentBackend == Poppler::CryptoSignBackend::GPG);
+#endif
         m_pdfsw.certDBGroupBox->setVisible(currentBackend == Poppler::CryptoSignBackend::NSS);
 #else
     if (Poppler::hasNSSSupport()) {
