@@ -17,22 +17,22 @@ include:
 
 # Ideally should be LTS but there's no Ubuntu LTS that can build Okular yet
 build_ubuntu_24_10:
- stage: build
- image: ubuntu:24.10
- tags:
-   - Linux
- only:
-   - merge_requests
- before_script:
-   - sed -i 's/ deb/ deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-   - apt-get update
-   - apt-get install --yes eatmydata
-   - eatmydata apt-get build-dep --yes --no-install-recommends okular
-   - eatmydata apt-get install --yes --no-install-recommends ninja-build
- script:
-   - mkdir -p build && cd build
-   - cmake -DOKULAR_UI=both -G Ninja ..
-   - ninja
+stage: build
+image: ubuntu:24.10
+tags:
+  - Linux
+only:
+  - merge_requests
+before_script:
+  - sed -i 's/ deb/ deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+  - apt-get update
+  - apt-get install --yes eatmydata
+  - eatmydata apt-get build-dep --yes --no-install-recommends okular
+  - eatmydata apt-get install --yes --no-install-recommends ninja-build
+script:
+  - mkdir -p build && cd build
+  - cmake -DOKULAR_UI=both -G Ninja ..
+  - ninja
 
 build_clazy_clang_tidy:
   stage: build
@@ -80,3 +80,5 @@ clang_format:
   script:
     - find . \( -name "*.cpp" -or -name "*.h"  -or -name "*.c"  -or -name "*.cc" \) -exec clang-format-16 -i {} \;
     - git diff --exit-code
+      - /gitlab-templates/xml-lint.yml
+      - /gitlab-templates/yaml-lint.yml
