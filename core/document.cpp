@@ -2660,7 +2660,7 @@ void Document::closeDocument()
 
     if (d->m_fontThread) {
         disconnect(d->m_fontThread, nullptr, this, nullptr);
-        d->m_fontThread->stopExtraction();
+        d->m_fontThread->requestInterruption();
         d->m_fontThread->wait();
         d->m_fontThread = nullptr;
     }
@@ -3004,7 +3004,7 @@ void Document::stopFontReading()
     }
 
     disconnect(d->m_fontThread, nullptr, this, nullptr);
-    d->m_fontThread->stopExtraction();
+    d->m_fontThread->requestInterruption();
     d->m_fontThread = nullptr;
     d->m_fontsCache.clear();
 }

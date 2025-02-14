@@ -23,7 +23,7 @@ PixmapGenerationThread::PixmapGenerationThread(Generator *generator)
 void PixmapGenerationThread::startGeneration(PixmapRequest *request, bool calcBoundingBox)
 {
     mRequest = request;
-    mCalcBoundingBox = calcBoundingBox;
+    mCalcBoundingBox.storeRelaxed(calcBoundingBox);
 
     start(QThread::InheritPriority);
 }
@@ -45,7 +45,7 @@ QImage PixmapGenerationThread::image() const
 
 bool PixmapGenerationThread::calcBoundingBox() const
 {
-    return mCalcBoundingBox;
+    return mCalcBoundingBox.loadRelaxed();
 }
 
 NormalizedRect PixmapGenerationThread::boundingBox() const
@@ -58,7 +58,7 @@ void PixmapGenerationThread::run()
     if (mRequest) {
         PixmapRequestPrivate::get(mRequest)->mResultImage = mGenerator->image(mRequest);
 
-        if (mCalcBoundingBox) {
+        if (mCalcBoundingBox.loadRelaxed()) {
             mBoundingBox = Utils::imageBoundingBox(&PixmapRequestPrivate::get(mRequest)->mResultImage);
         }
     }
@@ -80,14 +80,14 @@ void TextPageGenerationThread::startGeneration()
     }
 }
 
-void TextPageGenerationThread::endGeneration()
+void TextPageGenerationThread::endGeneration() const
 {
     TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
     treqPriv->mPage = nullptr;
     treqPriv->mShouldAbortExtraction = 0;
 }
 
-void TextPageGenerationThread::setPage(Page *page)
+void TextPageGenerationThread::setPage(Page *page) const
 {
     TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
     treqPriv->mPage = page;
@@ -104,7 +104,7 @@ TextPage *TextPageGenerationThread::textPage() const
     return mTextPage;
 }
 
-void TextPageGenerationThread::abortExtraction()
+void TextPageGenerationThread::abortExtraction() const
 {
     // If extraction already finished no point in aborting
     if (!mTextPage) {
@@ -135,7 +135,6 @@ void TextPageGenerationThread::run()
 FontExtractionThread::FontExtractionThread(Generator *generator, int pages)
     : mGenerator(generator)
     , mNumOfPages(pages)
-    , mGoOn(true)
 {
 }
 
@@ -150,14 +149,9 @@ void FontExtractionThread::startExtraction(bool async)
     }
 }
 
-void FontExtractionThread::stopExtraction()
-{
-    mGoOn = false;
-}
-
 void FontExtractionThread::run()
 {
-    for (int i = -1; i < mNumOfPages && mGoOn; ++i) {
+    for (int i = -1; i < mNumOfPages && !isInterruptionRequested(); ++i) {
         const FontInfo::List list = mGenerator->fontsForPage(i);
         for (const FontInfo &fi : list) {
             Q_EMIT gotFont(fi);
