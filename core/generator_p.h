@@ -127,7 +127,7 @@ private:
     Generator *mGenerator;
     PixmapRequest *mRequest;
     NormalizedRect mBoundingBox;
-    bool mCalcBoundingBox : 1;
+    QAtomicInt mCalcBoundingBox;
 };
 
 class TextPageGenerationThread : public QThread
@@ -137,14 +137,14 @@ class TextPageGenerationThread : public QThread
 public:
     explicit TextPageGenerationThread(Generator *generator);
 
-    void endGeneration();
+    void endGeneration() const;
 
-    void setPage(Page *page);
+    void setPage(Page *page) const;
     Page *page() const;
 
     TextPage *textPage() const;
 
-    void abortExtraction();
+    void abortExtraction() const;
     bool shouldAbortExtraction() const;
 
 public Q_SLOTS:
@@ -179,7 +179,6 @@ protected:
 private:
     Generator *mGenerator;
     int mNumOfPages;
-    bool mGoOn;
 };
 
 }

@@ -8,6 +8,8 @@
 #define _OKULAR_TEXTDOCUMENTGENERATOR_P_H_
 
 #include <QAbstractTextDocumentLayout>
+#include <QApplication>
+#include <QPainter>
 #include <QTextBlock>
 #include <QTextDocument>
 
@@ -153,6 +155,27 @@ static Okular::DocumentViewport calculateViewport(QTextDocument *document, const
 }
 }
 
+class TextDocument : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit TextDocument(QTextDocument *document, QMutex *mutex, QObject *parent = nullptr);
+
+    QImage renderPage(const PixmapRequest *request, const QFont &font);
+    Okular::TextPage *createTextPage(int pageNumber);
+
+    QTextDocument *document() const;
+
+private Q_SLOTS:
+    QImage slotRenderPage(const Okular::PixmapRequest *request, const QFont &font) const;
+    Okular::TextPage *slotCreateTextPage(int pageNumber) const;
+
+private:
+    std::unique_ptr<QTextDocument> mDocument;
+    mutable QMutex *mMutex;
+};
+
 class TextDocumentConverterPrivate
 {
 public:
@@ -220,7 +243,7 @@ public:
 
     TextDocumentConverter *mConverter;
 
-    QTextDocument *mDocument;
+    TextDocument *mDocument;
     Okular::DocumentInfo mDocumentInfo;
     Okular::DocumentSynopsis mDocumentSynopsis;
 
