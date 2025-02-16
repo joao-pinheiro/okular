@@ -7,6 +7,7 @@
 #include "textdocumentgenerator.h"
 #include "textdocumentgenerator_p.h"
 
+#include <QApplication>
 #include <QFile>
 #include <QFontDatabase>
 #include <QImage>
@@ -79,42 +80,7 @@ TextDocumentGenerator *TextDocumentConverter::generator() const
  */
 Okular::TextPage *TextDocumentGeneratorPrivate::createTextPage(int pageNumber) const
 {
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    Q_Q(const TextDocumentGenerator);
-#endif
-
-    Okular::TextPage *textPage = new Okular::TextPage;
-
-    int start, end;
-
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    q->userMutex()->lock();
-#endif
-    TextDocumentUtils::calculatePositions(mDocument, pageNumber, start, end);
-
-    {
-        QTextCursor cursor(mDocument);
-        for (int i = start; i < end - 1; ++i) {
-            cursor.setPosition(i);
-            cursor.setPosition(i + 1, QTextCursor::KeepAnchor);
-
-            QString text = cursor.selectedText();
-            if (text.length() == 1) {
-                QRectF rect;
-                TextDocumentUtils::calculateBoundingRect(mDocument, i, i + 1, rect, pageNumber);
-                if (pageNumber == -1) {
-                    text = QStringLiteral("\n");
-                }
-
-                textPage->append(text, Okular::NormalizedRect(rect.left(), rect.top(), rect.right(), rect.bottom()));
-            }
-        }
-    }
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    q->userMutex()->unlock();
-#endif
-
-    return textPage;
+    return mTextDocumentOperations->createTextPage(pageNumber);
 }
 
 void TextDocumentGeneratorPrivate::addAction(Action *action, int cursorBegin, int cursorEnd)
@@ -250,12 +216,12 @@ void TextDocumentGeneratorPrivate::initializeGenerator()
         mFont = mGeneralSettings->font();
     }
 
+    mTextDocumentOperations = std::make_unique<TextDocumentOperations>(mDocument);
+
     q->setFeature(Generator::TextExtraction);
     q->setFeature(Generator::PrintNative);
     q->setFeature(Generator::PrintToFile);
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
     q->setFeature(Generator::Threaded);
-#endif
 
     QObject::connect(mConverter, &TextDocumentConverter::addAction, q, [this](Action *a, int cb, int ce) { addAction(a, cb, ce); });
     QObject::connect(mConverter, &TextDocumentConverter::addAnnotation, q, [this](Annotation *a, int cb, int ce) { addAnnotation(a, cb, ce); });
@@ -265,6 +231,92 @@ void TextDocumentGeneratorPrivate::initializeGenerator()
     QObject::connect(mConverter, &TextDocumentConverter::error, q, &Generator::error);
     QObject::connect(mConverter, &TextDocumentConverter::warning, q, &Generator::warning);
     QObject::connect(mConverter, &TextDocumentConverter::notice, q, &Generator::notice);
+}
+
+TextDocumentOperations::TextDocumentOperations(QTextDocument *document)
+    : mDocument(document)
+{
+    moveToThread(QApplication::instance()->thread());
+}
+
+RenderPageOperation::RenderPageOperation(PixmapRequest *request, const QFont &font)
+    : mRequest(request)
+    , mFont(font)
+{
+    moveToThread(QApplication::instance()->thread());
+}
+
+CreateTextPageOperation::CreateTextPageOperation(int pageNumber)
+    : mPageNumber(pageNumber)
+{
+    moveToThread(QApplication::instance()->thread());
+}
+
+QImage TextDocumentOperations::renderPage(PixmapRequest *request, const QFont &font)
+{
+    const int width = request->width();
+    const int height = request->height();
+    const int pageNumber = request->page()->number();
+
+    QImage image(width, height, QImage::Format_ARGB32);
+    image.fill(Qt::white);
+
+    QPainter p(&image);
+
+    const QSize size = mDocument->pageSize().toSize();
+    p.scale(width / static_cast<qreal>(size.width()), height / static_cast<qreal>(size.height()));
+
+    const QRect rect(0, pageNumber * size.height(), size.width(), size.height());
+    p.translate(QPoint(0, pageNumber * size.height() * -1));
+    p.setClipRect(rect);
+
+    QAbstractTextDocumentLayout::PaintContext context = getSharedContext();
+    context.clip = rect;
+
+    mDocument->setDefaultFont(font);
+    mDocument->documentLayout()->draw(&p, context);
+    p.end();
+
+    return image;
+}
+
+TextPage *TextDocumentOperations::createTextPage(int pageNumber)
+{
+    TextPage *textPage = new TextPage;
+    int start, end;
+
+    TextDocumentUtils::calculatePositions(mDocument, pageNumber, start, end);
+
+    {
+        QTextCursor cursor(mDocument);
+        for (int i = start; i < end - 1; ++i) {
+            cursor.setPosition(i);
+            cursor.setPosition(i + 1, QTextCursor::KeepAnchor);
+
+            QString text = cursor.selectedText();
+            if (text.length() == 1) {
+                QRectF rect;
+                TextDocumentUtils::calculateBoundingRect(mDocument, i, i + 1, rect, pageNumber);
+                if (pageNumber == -1) {
+                    text = QStringLiteral("\n");
+                }
+
+                textPage->append(text, Okular::NormalizedRect(rect.left(), rect.top(), rect.right(), rect.bottom()));
+            }
+        }
+    }
+
+    return textPage;
+}
+
+const QAbstractTextDocumentLayout::PaintContext &TextDocumentOperations::getSharedContext()
+{
+    static auto context = []() {
+        QAbstractTextDocumentLayout::PaintContext ctx;
+        ctx.palette.setColor(QPalette::Text, Qt::black);
+        return ctx;
+    }();
+    return context;
 }
 
 TextDocumentGenerator::TextDocumentGenerator(TextDocumentConverter *converter, const QString &configName, QObject *parent, const QVariantList &args)
@@ -302,6 +354,7 @@ Document::OpenResult TextDocumentGenerator::loadDocumentWithPassword(const QStri
         return openResult;
     }
     d->mDocument = d->mConverter->document();
+    d->mTextDocumentOperations.reset(new TextDocumentOperations(d->mDocument));
 
     d->generateTitleInfos();
     const QList<TextDocumentGeneratorPrivate::LinkInfo> linkInfos = d->generateLinkInfos();
@@ -373,46 +426,51 @@ void TextDocumentGenerator::generatePixmap(Okular::PixmapRequest *request)
     Generator::generatePixmap(request);
 }
 
+PixmapGeneratorBase *TextDocumentGeneratorPrivate::pixmapGenerator()
+{
+    if (!mPixmapGenerator) {
+        Q_Q(TextDocumentGenerator);
+        mPixmapGenerator = std::make_unique<PixmapGeneratorAsync>(q);
+        QObject::connect(static_cast<PixmapGeneratorAsync *>(mPixmapGenerator.get()), &PixmapGeneratorAsync::finished, q, [this] { pixmapGenerationFinished(); }, Qt::QueuedConnection);
+    }
+    return mPixmapGenerator.get();
+}
+
+TextPageGeneratorBase *TextDocumentGeneratorPrivate::textPageGenerator()
+{
+    if (!mTextPageGenerator) {
+        Q_Q(TextDocumentGenerator);
+        mTextPageGenerator = std::make_unique<TextPageGeneratorAsync>(q);
+        QObject::connect(static_cast<TextPageGeneratorAsync *>(mTextPageGenerator.get()), &TextPageGeneratorAsync::finished, q, [this] { textpageGenerationFinished(); }, Qt::QueuedConnection);
+    }
+    return mTextPageGenerator.get();
+}
+
 QImage TextDocumentGeneratorPrivate::image(PixmapRequest *request)
 {
     if (!mDocument) {
         return QImage();
     }
 
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    Q_Q(TextDocumentGenerator);
-#endif
+    return mTextDocumentOperations->renderPage(request, mFont);
+}
 
-    QImage image(request->width(), request->height(), QImage::Format_ARGB32);
-    image.fill(Qt::white);
+QFuture<QImage> TextDocumentGeneratorPrivate::imageAsync(PixmapRequest *request)
+{
+    if (!mDocument) {
+        return QFuture<QImage>();
+    }
 
-    QPainter p;
-    p.begin(&image);
+    return mTextDocumentOperations->enqueue<RenderPageOperation>(request, mFont);
+}
 
-    qreal width = request->width();
-    qreal height = request->height();
+QFuture<TextPage *> TextDocumentGeneratorPrivate::textPageAsync(int pageNumber)
+{
+    if (!mDocument) {
+        return QFuture<TextPage *>();
+    }
 
-    const QSize size = mDocument->pageSize().toSize();
-
-    p.scale(width / (qreal)size.width(), height / (qreal)size.height());
-
-    const QRect rect = QRect(0, request->pageNumber() * size.height(), size.width(), size.height());
-    p.translate(QPoint(0, request->pageNumber() * size.height() * -1));
-    p.setClipRect(rect);
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    q->userMutex()->lock();
-#endif
-    QAbstractTextDocumentLayout::PaintContext context;
-    context.palette.setColor(QPalette::Text, Qt::black);
-    context.clip = rect;
-    mDocument->setDefaultFont(mFont);
-    mDocument->documentLayout()->draw(&p, context);
-#ifdef OKULAR_TEXTDOCUMENT_THREADED_RENDERING
-    q->userMutex()->unlock();
-#endif
-    p.end();
-
-    return image;
+    return mTextDocumentOperations->enqueue<CreateTextPageOperation>(pageNumber);
 }
 
 Okular::TextPage *TextDocumentGenerator::textPage(Okular::TextRequest *request)
@@ -554,6 +612,7 @@ void TextDocumentGenerator::setTextDocument(QTextDocument *textDocument)
     Q_D(TextDocumentGenerator);
 
     d->mDocument = textDocument;
+    d->mTextDocumentOperations.reset(new TextDocumentOperations(textDocument));
 
     for (Page *p : std::as_const(d->m_document->m_pagesVector)) {
         p->setTextPage(nullptr);

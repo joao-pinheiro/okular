@@ -7,20 +7,52 @@
 #include "generator_p.h"
 
 #include <QDebug>
+#include <QFutureWatcher>
 
 #include "fontinfo.h"
 #include "utils.h"
 
 using namespace Okular;
 
-PixmapGenerationThread::PixmapGenerationThread(Generator *generator)
+PixmapGeneratorBase::PixmapGeneratorBase(Generator *generator)
     : mGenerator(generator)
     , mRequest(nullptr)
     , mCalcBoundingBox(false)
 {
 }
 
-void PixmapGenerationThread::startGeneration(PixmapRequest *request, bool calcBoundingBox)
+void PixmapGeneratorBase::endGeneration()
+{
+    mRequest = nullptr;
+}
+
+PixmapRequest *PixmapGeneratorBase::request() const
+{
+    return mRequest;
+}
+
+QImage PixmapGeneratorBase::image() const
+{
+    return mRequest ? PixmapRequestPrivate::get(mRequest)->mResultImage : QImage();
+}
+
+bool PixmapGeneratorBase::calcBoundingBox() const
+{
+    return mCalcBoundingBox;
+}
+
+NormalizedRect PixmapGeneratorBase::boundingBox() const
+{
+    return mBoundingBox;
+}
+
+PixmapGeneratorThread::PixmapGeneratorThread(Generator *generator)
+    : QThread(nullptr)
+    , PixmapGeneratorBase(generator)
+{
+}
+
+void PixmapGeneratorThread::startGeneration(PixmapRequest *request, bool calcBoundingBox)
 {
     mRequest = request;
     mCalcBoundingBox = calcBoundingBox;
@@ -28,32 +60,25 @@ void PixmapGenerationThread::startGeneration(PixmapRequest *request, bool calcBo
     start(QThread::InheritPriority);
 }
 
-void PixmapGenerationThread::endGeneration()
+bool PixmapGeneratorThread::wait()
 {
-    mRequest = nullptr;
+    if (isRunning()) {
+        QThread::wait();
+    }
+    return isFinished();
 }
 
-PixmapRequest *PixmapGenerationThread::request() const
+bool PixmapGeneratorThread::isRunning() const
 {
-    return mRequest;
+    return QThread::isRunning();
 }
 
-QImage PixmapGenerationThread::image() const
+bool PixmapGeneratorThread::isFinished() const
 {
-    return mRequest ? PixmapRequestPrivate::get(mRequest)->mResultImage : QImage();
+    return QThread::isFinished();
 }
 
-bool PixmapGenerationThread::calcBoundingBox() const
-{
-    return mCalcBoundingBox;
-}
-
-NormalizedRect PixmapGenerationThread::boundingBox() const
-{
-    return mBoundingBox;
-}
-
-void PixmapGenerationThread::run()
+void PixmapGeneratorThread::run()
 {
     if (mRequest) {
         PixmapRequestPrivate::get(mRequest)->mResultImage = mGenerator->image(mRequest);
@@ -64,61 +89,135 @@ void PixmapGenerationThread::run()
     }
 }
 
-TextPageGenerationThread::TextPageGenerationThread(Generator *generator)
-    : mGenerator(generator)
-    , mTextPage(nullptr)
+PixmapGeneratorAsync::PixmapGeneratorAsync(Generator *generator)
+    : QObject(nullptr)
+    , PixmapGeneratorBase(generator)
 {
-    TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
-    treqPriv->mPage = nullptr;
-    treqPriv->mShouldAbortExtraction = 0;
+    mWatcher = new QFutureWatcher<QImage>(this);
+    connect(mWatcher, &QFutureWatcher<QImage>::finished, this, &PixmapGeneratorAsync::handleResult);
 }
 
-void TextPageGenerationThread::startGeneration()
+void PixmapGeneratorAsync::startGeneration(PixmapRequest *request, bool calcBoundingBox)
 {
-    if (page()) {
-        start(QThread::InheritPriority);
+    mRequest = request;
+    mCalcBoundingBox = calcBoundingBox;
+
+    Q_EMIT started();
+
+    const auto future = mGenerator->d_ptr->imageAsync(mRequest);
+
+    mWatcher->setFuture(future);
+}
+
+bool PixmapGeneratorAsync::wait()
+{
+    if (mWatcher->isRunning()) {
+        mWatcher->waitForFinished();
+    }
+    return mWatcher->isFinished();
+}
+
+bool PixmapGeneratorAsync::isRunning() const
+{
+    return mWatcher->isRunning();
+}
+
+bool PixmapGeneratorAsync::isFinished() const
+{
+    return mWatcher->isFinished();
+}
+
+void PixmapGeneratorAsync::handleResult()
+{
+    if (mRequest) {
+        PixmapRequestPrivate::get(mRequest)->mResultImage = mWatcher->result();
+
+        if (mCalcBoundingBox) {
+            mBoundingBox = Utils::imageBoundingBox(&PixmapRequestPrivate::get(mRequest)->mResultImage);
+        }
+
+        Q_EMIT finished();
     }
 }
 
-void TextPageGenerationThread::endGeneration()
+TextPageGeneratorBase::TextPageGeneratorBase(Generator *generator)
+    : mGenerator(generator)
+    , mTextPage(nullptr)
+{
+}
+
+void TextPageGeneratorBase::endGeneration() const
 {
     TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
     treqPriv->mPage = nullptr;
     treqPriv->mShouldAbortExtraction = 0;
 }
 
-void TextPageGenerationThread::setPage(Page *page)
+void TextPageGeneratorBase::abortExtraction() const
 {
-    TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
-    treqPriv->mPage = page;
-    treqPriv->mShouldAbortExtraction = 0;
-}
-
-Page *TextPageGenerationThread::page() const
-{
-    return mTextRequest.page();
-}
-
-TextPage *TextPageGenerationThread::textPage() const
-{
-    return mTextPage;
-}
-
-void TextPageGenerationThread::abortExtraction()
-{
-    // If extraction already finished no point in aborting
     if (!mTextPage) {
         TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
         treqPriv->mShouldAbortExtraction = 1;
     }
 }
 
-bool TextPageGenerationThread::shouldAbortExtraction() const
+bool TextPageGeneratorBase::shouldAbortExtraction() const
 {
     return mTextRequest.shouldAbortExtraction();
 }
 
-void TextPageGenerationThread::run()
+void TextPageGeneratorBase::setPage(Page *page) const
+{
+    TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
+    treqPriv->mPage = page;
+    treqPriv->mShouldAbortExtraction = 0;
+}
+
+Page *TextPageGeneratorBase::page() const
+{
+    return mTextRequest.page();
+}
+
+TextPage *TextPageGeneratorBase::textPage() const
+{
+    return mTextPage;
+}
+
+TextPageGeneratorThread::TextPageGeneratorThread(Generator *generator)
+    : QThread(nullptr)
+    , TextPageGeneratorBase(generator)
+{
+    TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
+    treqPriv->mPage = nullptr;
+    treqPriv->mShouldAbortExtraction = 0;
+}
+
+bool TextPageGeneratorThread::wait()
+{
+    if (isRunning()) {
+        QThread::wait();
+    }
+    return isFinished();
+}
+
+bool TextPageGeneratorThread::isRunning() const
+{
+    return QThread::isRunning();
+}
+
+bool TextPageGeneratorThread::isFinished() const
+{
+    return QThread::isFinished();
+}
+
+void TextPageGeneratorThread::startGeneration()
+{
+    if (page()) {
+        start(QThread::InheritPriority);
+    }
+}
+
+void TextPageGeneratorThread::run()
 {
     mTextPage = nullptr;
 
@@ -132,10 +231,66 @@ void TextPageGenerationThread::run()
     }
 }
 
+TextPageGeneratorAsync::TextPageGeneratorAsync(Generator *generator)
+    : QObject(nullptr)
+    , TextPageGeneratorBase(generator)
+{
+    mWatcher = new QFutureWatcher<TextPage *>(this);
+    connect(mWatcher, &QFutureWatcher<TextPage *>::finished, this, &TextPageGeneratorAsync::handleResult);
+
+    TextRequestPrivate *treqPriv = TextRequestPrivate::get(&mTextRequest);
+    treqPriv->mPage = nullptr;
+    treqPriv->mShouldAbortExtraction = 0;
+}
+
+void TextPageGeneratorAsync::startGeneration()
+{
+    if (!page()) {
+        return;
+    }
+
+    const auto future = mGenerator->d_ptr->textPageAsync(page()->number());
+
+    mWatcher->setFuture(future);
+}
+
+bool TextPageGeneratorAsync::wait()
+{
+    if (mWatcher->isRunning()) {
+        mWatcher->waitForFinished();
+    }
+    return mWatcher->isFinished();
+}
+
+bool TextPageGeneratorAsync::isRunning() const
+{
+    return mWatcher->isRunning();
+}
+
+bool TextPageGeneratorAsync::isFinished() const
+{
+    return mWatcher->isFinished();
+}
+
+void TextPageGeneratorAsync::handleResult()
+{
+    mTextPage = nullptr;
+
+    Q_ASSERT(page());
+
+    mTextPage = mWatcher->result();
+
+    if (mTextRequest.shouldAbortExtraction()) {
+        delete mTextPage;
+        mTextPage = nullptr;
+    }
+
+    Q_EMIT finished();
+}
+
 FontExtractionThread::FontExtractionThread(Generator *generator, int pages)
     : mGenerator(generator)
     , mNumOfPages(pages)
-    , mGoOn(true)
 {
 }
 
@@ -150,14 +305,9 @@ void FontExtractionThread::startExtraction(bool async)
     }
 }
 
-void FontExtractionThread::stopExtraction()
-{
-    mGoOn = false;
-}
-
 void FontExtractionThread::run()
 {
-    for (int i = -1; i < mNumOfPages && mGoOn; ++i) {
+    for (int i = -1; i < mNumOfPages && !isInterruptionRequested(); ++i) {
         const FontInfo::List list = mGenerator->fontsForPage(i);
         for (const FontInfo &fi : list) {
             Q_EMIT gotFont(fi);

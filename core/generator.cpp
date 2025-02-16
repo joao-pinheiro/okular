@@ -20,6 +20,7 @@
 
 #include <KLocalizedString>
 #include <QDebug>
+#include <QFuture>
 #include <QIcon>
 #include <QMimeDatabase>
 #include <QTimer>
@@ -39,8 +40,8 @@ using namespace Okular;
 GeneratorPrivate::GeneratorPrivate()
     : q_ptr(nullptr)
     , m_document(nullptr)
-    , mPixmapGenerationThread(nullptr)
-    , mTextPageGenerationThread(nullptr)
+    , mPixmapGenerator(nullptr)
+    , mTextPageGenerator(nullptr)
     , mPixmapReady(true)
     , mTextPageReady(true)
     , m_closing(false)
@@ -52,53 +53,43 @@ GeneratorPrivate::GeneratorPrivate()
 
 GeneratorPrivate::~GeneratorPrivate()
 {
-    if (mPixmapGenerationThread) {
-        mPixmapGenerationThread->wait();
+    if (mPixmapGenerator) {
+        mPixmapGenerator->wait();
     }
 
-    delete mPixmapGenerationThread;
-
-    if (mTextPageGenerationThread) {
-        mTextPageGenerationThread->wait();
+    if (mTextPageGenerator) {
+        mTextPageGenerator->wait();
     }
-
-    delete mTextPageGenerationThread;
 }
 
-PixmapGenerationThread *GeneratorPrivate::pixmapGenerationThread()
+PixmapGeneratorBase *GeneratorPrivate::pixmapGenerator()
 {
-    if (mPixmapGenerationThread) {
-        return mPixmapGenerationThread;
+    if (!mPixmapGenerator) {
+        Q_Q(Generator);
+        mPixmapGenerator = std::make_unique<PixmapGeneratorThread>(q);
+        QObject::connect(static_cast<PixmapGeneratorThread *>(mPixmapGenerator.get()), &PixmapGeneratorThread::finished, q, [this] { pixmapGenerationFinished(); }, Qt::QueuedConnection);
     }
 
-    Q_Q(Generator);
-    mPixmapGenerationThread = new PixmapGenerationThread(q);
-    QObject::connect(
-        mPixmapGenerationThread, &PixmapGenerationThread::finished, q, [this] { pixmapGenerationFinished(); }, Qt::QueuedConnection);
-
-    return mPixmapGenerationThread;
+    return mPixmapGenerator.get();
 }
 
-TextPageGenerationThread *GeneratorPrivate::textPageGenerationThread()
+TextPageGeneratorBase *GeneratorPrivate::textPageGenerator()
 {
-    if (mTextPageGenerationThread) {
-        return mTextPageGenerationThread;
+    if (!mTextPageGenerator) {
+        Q_Q(Generator);
+        mTextPageGenerator = std::make_unique<TextPageGeneratorThread>(q);
+        QObject::connect(static_cast<TextPageGeneratorThread *>(mTextPageGenerator.get()), &TextPageGeneratorThread::finished, q, [this] { textpageGenerationFinished(); }, Qt::QueuedConnection);
     }
 
-    Q_Q(Generator);
-    mTextPageGenerationThread = new TextPageGenerationThread(q);
-    QObject::connect(
-        mTextPageGenerationThread, &TextPageGenerationThread::finished, q, [this] { textpageGenerationFinished(); }, Qt::QueuedConnection);
-
-    return mTextPageGenerationThread;
+    return mTextPageGenerator.get();
 }
 
 void GeneratorPrivate::pixmapGenerationFinished()
 {
     Q_Q(Generator);
-    PixmapRequest *request = mPixmapGenerationThread->request();
-    const QImage &img = mPixmapGenerationThread->image();
-    mPixmapGenerationThread->endGeneration();
+    PixmapRequest *request = mPixmapGenerator->request();
+    const QImage &img = mPixmapGenerator->image();
+    mPixmapGenerator->endGeneration();
 
     QMutexLocker locker(threadsLock());
 
@@ -112,18 +103,18 @@ void GeneratorPrivate::pixmapGenerationFinished()
         return;
     }
 
-    if (!request->shouldAbortRender()) {
+    if (request && !request->shouldAbortRender()) {
         request->page()->setPixmap(request->observer(), new QPixmap(QPixmap::fromImage(img)), request->normalizedRect());
         const int pageNumber = request->page()->number();
 
-        if (mPixmapGenerationThread->calcBoundingBox()) {
-            q->updatePageBoundingBox(pageNumber, mPixmapGenerationThread->boundingBox());
+        if (mPixmapGenerator->calcBoundingBox()) {
+            q->updatePageBoundingBox(pageNumber, mPixmapGenerator->boundingBox());
         }
     } else {
         // Cancel the text page generation too if it's still running
-        if (mTextPageGenerationThread && mTextPageGenerationThread->isRunning()) {
-            mTextPageGenerationThread->abortExtraction();
-            mTextPageGenerationThread->wait();
+        if (mTextPageGenerator && mTextPageGenerator->isRunning()) {
+            mTextPageGenerator->abortExtraction();
+            mTextPageGenerator->wait();
         }
     }
 
@@ -134,14 +125,14 @@ void GeneratorPrivate::pixmapGenerationFinished()
 void GeneratorPrivate::textpageGenerationFinished()
 {
     Q_Q(Generator);
-    Page *page = mTextPageGenerationThread->page();
-    mTextPageGenerationThread->endGeneration();
+    Page *page = mTextPageGenerator->page();
+    mTextPageGenerator->endGeneration();
 
     QMutexLocker locker(threadsLock());
     mTextPageReady = true;
 
     if (m_closing) {
-        delete mTextPageGenerationThread->textPage();
+        delete mTextPageGenerator->textPage();
         if (mPixmapReady) {
             locker.unlock();
             m_closingLoop->quit();
@@ -149,8 +140,8 @@ void GeneratorPrivate::textpageGenerationFinished()
         return;
     }
 
-    if (mTextPageGenerationThread->textPage()) {
-        TextPage *tp = mTextPageGenerationThread->textPage();
+    if (mTextPageGenerator->textPage()) {
+        TextPage *tp = mTextPageGenerator->textPage();
         page->setTextPage(tp);
         q->signalTextGenerationDone(page, tp);
     }
@@ -169,6 +160,16 @@ QVariant GeneratorPrivate::metaData(const QString &, const QVariant &) const
 QImage GeneratorPrivate::image(PixmapRequest *)
 {
     return QImage();
+}
+
+QFuture<QImage> GeneratorPrivate::imageAsync(PixmapRequest *)
+{
+    return QFuture<QImage>();
+}
+
+QFuture<TextPage *> GeneratorPrivate::textPageAsync(int)
+{
+    return QFuture<TextPage *>();
 }
 
 Generator::Generator(QObject *parent, const QVariantList &args)
@@ -274,7 +275,7 @@ void Generator::generatePixmap(PixmapRequest *request)
     const bool calcBoundingBox = !request->isTile() && !request->page()->isBoundingBoxKnown();
 
     if (request->asynchronous() && hasFeature(Threaded)) {
-        if (d->textPageGenerationThread()->isFinished() && !canGenerateTextPage()) {
+        if (d->textPageGenerator()->isFinished() && !canGenerateTextPage()) {
             // It can happen that the text generation has already finished but
             // mTextPageReady is still false because textpageGenerationFinished
             // didn't have time to run, if so queue ourselves
@@ -288,18 +289,18 @@ void Generator::generatePixmap(PixmapRequest *request)
          */
         if (hasFeature(TextExtraction) && !request->page()->hasTextPage() && canGenerateTextPage() && !d->m_closing) {
             d->mTextPageReady = false;
-            d->textPageGenerationThread()->setPage(request->page());
+            d->textPageGenerator()->setPage(request->page());
 
-            // dummy is used as a way to make sure the lambda gets disconnected each time it is executed
-            // since not all the times the pixmap generation thread starts we want the text generation thread to also start
-            QObject *dummy = new QObject();
-            connect(d_ptr->pixmapGenerationThread(), &QThread::started, dummy, [this, dummy] {
-                delete dummy;
-                d_ptr->textPageGenerationThread()->startGeneration();
-            });
+            if (auto *pixmapGeneratorThread = dynamic_cast<PixmapGeneratorThread *>(d->pixmapGenerator()); pixmapGeneratorThread) {
+                connect(pixmapGeneratorThread, &PixmapGeneratorThread::started, this, [this] { d_ptr->textPageGenerator()->startGeneration(); }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+            } else if (auto *pixmapGeneratorAsync = dynamic_cast<PixmapGeneratorAsync *>(d->pixmapGenerator()); pixmapGeneratorAsync) {
+                connect(pixmapGeneratorAsync, &PixmapGeneratorAsync::started, this, [this] { d_ptr->textPageGenerator()->startGeneration(); }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+            } else {
+                Q_ASSERT_X(false, "Generator::generatePixmap", "Unknown PixmapGenerator type");
+            }
         }
-        // pixmap generation thread must be started *after* connect(), else we may miss the start signal and get lock-ups (see bug 396137)
-        d->pixmapGenerationThread()->startGeneration(request, calcBoundingBox);
+        // pixmap generation must be started *after* connect(), else we may miss the start signal and get lock-ups (see bug 396137)
+        d->pixmapGenerator()->startGeneration(request, calcBoundingBox);
 
         return;
     }

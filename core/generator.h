@@ -188,8 +188,10 @@ private:
 class OKULARCORE_EXPORT Generator : public QObject
 {
     /// @cond PRIVATE
-    friend class PixmapGenerationThread;
-    friend class TextPageGenerationThread;
+    friend class PixmapGeneratorThread;
+    friend class PixmapGeneratorAsync;
+    friend class TextPageGeneratorThread;
+    friend class TextPageGeneratorAsync;
     /// @endcond
 
     Q_OBJECT

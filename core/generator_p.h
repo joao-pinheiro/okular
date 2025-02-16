@@ -12,6 +12,7 @@
 
 #include "area.h"
 
+#include <QFuture>
 #include <QImage>
 #include <QMutex>
 #include <QSet>
@@ -29,10 +30,10 @@ class DocumentPrivate;
 class FontInfo;
 class Generator;
 class Page;
-class PixmapGenerationThread;
+class PixmapGeneratorBase;
 class PixmapRequest;
 class TextPage;
-class TextPageGenerationThread;
+class TextPageGeneratorBase;
 class TilesManager;
 
 class GeneratorPrivate
@@ -45,8 +46,8 @@ public:
     Q_DECLARE_PUBLIC(Generator)
     Generator *q_ptr;
 
-    PixmapGenerationThread *pixmapGenerationThread();
-    TextPageGenerationThread *textPageGenerationThread();
+    virtual PixmapGeneratorBase *pixmapGenerator();
+    virtual TextPageGeneratorBase *textPageGenerator();
 
     void pixmapGenerationFinished();
     void textpageGenerationFinished();
@@ -56,12 +57,15 @@ public:
     virtual QVariant metaData(const QString &key, const QVariant &option) const;
     virtual QImage image(PixmapRequest *);
 
+    virtual QFuture<QImage> imageAsync(PixmapRequest *request);
+    virtual QFuture<TextPage *> textPageAsync(int pageNumber);
+
     DocumentPrivate *m_document;
     // NOTE: the following should be a QSet< GeneratorFeature >,
     // but it is not to avoid #include'ing generator.h
     QSet<int> m_features;
-    PixmapGenerationThread *mPixmapGenerationThread;
-    TextPageGenerationThread *mTextPageGenerationThread;
+    std::unique_ptr<PixmapGeneratorBase> mPixmapGenerator;
+    std::unique_ptr<TextPageGeneratorBase> mTextPageGenerator;
     mutable QMutex m_mutex;
     QMutex m_threadsMutex;
     bool mPixmapReady : 1;
@@ -103,16 +107,16 @@ public:
     QAtomicInt mShouldAbortExtraction;
 };
 
-class PixmapGenerationThread : public QThread
+class PixmapGeneratorBase
 {
-    Q_OBJECT
-
 public:
-    explicit PixmapGenerationThread(Generator *generator);
-
-    void startGeneration(PixmapRequest *request, bool calcBoundingBox);
-
+    virtual ~PixmapGeneratorBase() = default;
+    virtual void startGeneration(PixmapRequest *request, bool calcBoundingBox) = 0;
     void endGeneration();
+
+    virtual bool wait() = 0;
+    virtual bool isRunning() const = 0;
+    virtual bool isFinished() const = 0;
 
     PixmapRequest *request() const;
 
@@ -121,42 +125,122 @@ public:
     NormalizedRect boundingBox() const;
 
 protected:
-    void run() override;
+    explicit PixmapGeneratorBase(Generator *generator);
 
-private:
     Generator *mGenerator;
     PixmapRequest *mRequest;
     NormalizedRect mBoundingBox;
     bool mCalcBoundingBox : 1;
 };
 
-class TextPageGenerationThread : public QThread
+class PixmapGeneratorThread : public QThread, public PixmapGeneratorBase
 {
     Q_OBJECT
 
 public:
-    explicit TextPageGenerationThread(Generator *generator);
+    explicit PixmapGeneratorThread(Generator *generator);
 
-    void endGeneration();
+    void startGeneration(PixmapRequest *request, bool calcBoundingBox) override;
 
-    void setPage(Page *page);
-    Page *page() const;
-
-    TextPage *textPage() const;
-
-    void abortExtraction();
-    bool shouldAbortExtraction() const;
-
-public Q_SLOTS:
-    void startGeneration();
+    bool wait() override;
+    bool isRunning() const override;
+    bool isFinished() const override;
 
 protected:
     void run() override;
+};
+
+class PixmapGeneratorAsync : public QObject, public PixmapGeneratorBase
+{
+    Q_OBJECT
+
+public:
+    explicit PixmapGeneratorAsync(Generator *generator);
+
+    void startGeneration(PixmapRequest *request, bool calcBoundingBox) override;
+
+    bool wait() override;
+    bool isRunning() const override;
+    bool isFinished() const override;
+
+Q_SIGNALS:
+    void started();
+    void finished();
+
+private Q_SLOTS:
+    void handleResult();
 
 private:
+    QFutureWatcher<QImage> *mWatcher;
+};
+
+class TextPageGeneratorBase
+{
+public:
+    virtual ~TextPageGeneratorBase() = default;
+    virtual void startGeneration() = 0;
+    void endGeneration() const;
+
+    virtual bool wait() = 0;
+    virtual bool isRunning() const = 0;
+    virtual bool isFinished() const = 0;
+
+    void abortExtraction() const;
+    bool shouldAbortExtraction() const;
+
+    void setPage(Page *page) const;
+    Page *page() const;
+    TextPage *textPage() const;
+
+protected:
+    explicit TextPageGeneratorBase(Generator *generator);
+
     Generator *mGenerator;
     TextPage *mTextPage;
     TextRequest mTextRequest;
+};
+
+class TextPageGeneratorThread : public QThread, public TextPageGeneratorBase
+{
+    Q_OBJECT
+
+public:
+    explicit TextPageGeneratorThread(Generator *generator);
+
+    bool wait() override;
+    bool isRunning() const override;
+    bool isFinished() const override;
+
+public Q_SLOTS:
+    void startGeneration() override;
+
+protected:
+    void run() override;
+};
+
+class TextPageGeneratorAsync : public QObject, public TextPageGeneratorBase
+{
+    Q_OBJECT
+
+public:
+    explicit TextPageGeneratorAsync(Generator *generator);
+
+    void abortExtraction();
+    bool wait() override;
+    bool isRunning() const override;
+    bool isFinished() const override;
+
+Q_SIGNALS:
+    void finished();
+
+public Q_SLOTS:
+    void startGeneration() override;
+
+private Q_SLOTS:
+    void handleResult();
+
+private:
+    QFutureWatcher<TextPage *> *mWatcher;
 };
 
 class FontExtractionThread : public QThread
@@ -167,7 +251,6 @@ public:
     FontExtractionThread(Generator *generator, int pages);
 
     void startExtraction(bool async);
-    void stopExtraction();
 
 Q_SIGNALS:
     void gotFont(const Okular::FontInfo &);
@@ -179,7 +262,6 @@ protected:
 private:
     Generator *mGenerator;
     int mNumOfPages;
-    bool mGoOn;
 };
 
 }
