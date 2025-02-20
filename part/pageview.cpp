@@ -5524,7 +5524,7 @@ PageView::FinishSigningResult PageView::finishSigning()
     case Okular::UserCancelled:
         return Cancelled;
     case Okular::BadPassphrase:
-        KMessageBox::error(this, i18n("Could not sign. Bad Passphrase"));
+        KMessageBox::error(this, i18n("Could not sign. Wrong passphrase"));
         return Cancelled;
     case Okular::SignatureWriteFailed:
         KMessageBox::error(this, i18nc("%1 is a file path", "Could not write signated document at '%1', please ensure you have selected a folder with write permission", d->document->currentDocument().toLocalFile()));
