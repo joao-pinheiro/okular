@@ -1,5 +1,5 @@
 #Configuration update for Okular
-Version=5
+Version=6
 
 #Convert user-defined annotation tools to quick annotation tools
 Id=annotation-toolbar
