@@ -55,6 +55,8 @@ public:
         , clicked(false)
         , xscale(1.0)
         , yscale(1.0)
+        , pagewidth(1.0)
+        , pageheight(1.0)
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
     {
         // parse engine specific attributes
