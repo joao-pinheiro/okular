@@ -55,9 +55,9 @@ public:
         , clicked(false)
         , xscale(1.0)
         , yscale(1.0)
+        , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
     {
         // parse engine specific attributes
-        hoverIconName = engineElement.attribute(QStringLiteral("hoverIcon"));
         iconName = m_annotElement.attribute(QStringLiteral("icon"));
         if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !iconName.simplified().isEmpty()) {
             hoverIconName = iconName;
