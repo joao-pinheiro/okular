@@ -52,13 +52,15 @@ class PickPointEngine : public AnnotatorEngine
 public:
     explicit PickPointEngine(const QDomElement &engineElement)
         : AnnotatorEngine(engineElement)
+        , iconName{m_annotElement.attribute(QStringLiteral("icon"))}
         , clicked(false)
         , xscale(1.0)
         , yscale(1.0)
+        , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
+        , pagewidth(1.0)
+        , pageheight(1.0)
     {
         // parse engine specific attributes
-        hoverIconName = engineElement.attribute(QStringLiteral("hoverIcon"));
-        iconName = m_annotElement.attribute(QStringLiteral("icon"));
         if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !iconName.simplified().isEmpty()) {
             hoverIconName = iconName;
         }
