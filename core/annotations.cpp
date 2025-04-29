@@ -2365,7 +2365,8 @@ class Okular::SignatureAnnotationPrivate : public Okular::AnnotationPrivate
 {
 public:
     SignatureAnnotationPrivate()
-        : AnnotationPrivate(), m_pageNumber(-1)
+        : AnnotationPrivate()
+        , m_pageNumber(-1)
     {
     }
 
