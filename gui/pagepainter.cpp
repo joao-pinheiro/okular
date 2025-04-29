@@ -396,7 +396,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                 else if (type == Okular::Annotation::AHighlight) {
                     // get the annotation
                     Okular::HighlightAnnotation *ha = (Okular::HighlightAnnotation *)a;
-                    Okular::HighlightAnnotation::HighlightType type = ha->highlightType();
+                    Okular::HighlightAnnotation::HighlightType hlType = ha->highlightType();
 
                     // draw each quad of the annotation
                     int quads = ha->highlightQuads().size();
@@ -411,7 +411,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                             path.append(point);
                         }
                         // draw the normalized path into image
-                        switch (type) {
+                        switch (hlType) {
                         // highlight the whole rect
                         case Okular::HighlightAnnotation::Highlight:
                             drawShapeOnImage(backImage, path, true, Qt::NoPen, acolor, pageScale, Multiply);
