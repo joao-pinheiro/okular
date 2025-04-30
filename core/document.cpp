@@ -1227,9 +1227,9 @@ void DocumentPrivate::recalculateForms()
                                         if (form->additionalAction(Okular::FormField::FieldModified) && !form->isReadOnly()) {
                                             m_parent->processKeystrokeCommitAction(form->additionalAction(Okular::FormField::FieldModified), form, returnCode);
                                         }
-                                        if (const Okular::Action *action = form->additionalAction(Okular::FormField::ValidateField)) {
+                                        if (const Okular::Action *validateAction = form->additionalAction(Okular::FormField::ValidateField)) {
                                             if (returnCode) {
-                                                m_parent->processValidateAction(action, form, returnCode);
+                                                m_parent->processValidateAction(validateAction, form, returnCode);
                                             }
                                         }
                                         if (!returnCode) {
@@ -1237,9 +1237,9 @@ void DocumentPrivate::recalculateForms()
                                         } else {
                                             form->commitValue(form->value().toString());
                                         }
-                                        if (const Okular::Action *action = form->additionalAction(Okular::FormField::FormatField)) {
+                                        if (const Okular::Action *formatAction = form->additionalAction(Okular::FormField::FormatField)) {
                                             // The format action handles the refresh.
-                                            m_parent->processFormatAction(action, form);
+                                            m_parent->processFormatAction(formatAction, form);
                                         } else {
                                             form->commitFormattedValue(form->value().toString());
                                             Q_EMIT m_parent->refreshFormWidget(form);
@@ -1590,21 +1590,19 @@ void DocumentPrivate::slotGeneratorConfigChanged()
 
     // reparse generator config and if something changed clear Pages
     bool configchanged = false;
-    QHash<QString, GeneratorInfo>::iterator it = m_loadedGenerators.begin(), itEnd = m_loadedGenerators.end();
-    for (; it != itEnd; ++it) {
-        Okular::ConfigInterface *iface = generatorConfig(it.value());
+    for (const auto& [key, value]: m_loadedGenerators.asKeyValueRange()) {
+        Okular::ConfigInterface *iface = generatorConfig(value);
         if (iface) {
             bool it_changed = iface->reparseConfig();
-            if (it_changed && (m_generator == it.value().generator)) {
+            if (it_changed && (m_generator == value.generator)) {
                 configchanged = true;
             }
         }
     }
     if (configchanged) {
         // invalidate pixmaps
-        QVector<Page *>::const_iterator it = m_pagesVector.constBegin(), end = m_pagesVector.constEnd();
-        for (; it != end; ++it) {
-            (*it)->deletePixmaps();
+        for (auto& page : std::as_const(m_pagesVector)) {
+            page->deletePixmaps();
         }
 
         // [MEM] remove allocation descriptors
