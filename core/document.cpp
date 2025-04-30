@@ -1590,7 +1590,7 @@ void DocumentPrivate::slotGeneratorConfigChanged()
 
     // reparse generator config and if something changed clear Pages
     bool configchanged = false;
-    for (const auto& [key, value]: m_loadedGenerators.asKeyValueRange()) {
+    for (const auto &[key, value] : m_loadedGenerators.asKeyValueRange()) {
         Okular::ConfigInterface *iface = generatorConfig(value);
         if (iface) {
             bool it_changed = iface->reparseConfig();
@@ -1601,7 +1601,7 @@ void DocumentPrivate::slotGeneratorConfigChanged()
     }
     if (configchanged) {
         // invalidate pixmaps
-        for (auto& page : std::as_const(m_pagesVector)) {
+        for (auto &page : std::as_const(m_pagesVector)) {
             page->deletePixmaps();
         }
 
