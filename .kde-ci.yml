@@ -39,7 +39,7 @@ Options:
   cppcheck-arguments: '--enable=warning,style,performance --library=okular-cppcheck.xml --suppress-xml=cppcheck-suppressions.xml'
   cppcheck-ignore-files:
     - autotests
-    - core/synctex/*.c
+    - core/synctex/synctex_parser.c
   xml-validate-include:
     - shell/shell.rc
     - part/part-viewermode.rc
