@@ -52,11 +52,11 @@ class PickPointEngine : public AnnotatorEngine
 public:
     explicit PickPointEngine(const QDomElement &engineElement)
         : AnnotatorEngine(engineElement)
-        , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
         , clicked(false)
         , xscale(1.0)
         , yscale(1.0)
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
+        , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
         , pagewidth(1.0)
         , pageheight(1.0)
     {
