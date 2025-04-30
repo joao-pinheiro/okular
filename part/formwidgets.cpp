@@ -900,7 +900,7 @@ bool FileEdit::eventFilter(QObject *obj, QEvent *event)
         } else if (event->type() == QEvent::ContextMenu) {
             QContextMenuEvent *contextMenuEvent = static_cast<QContextMenuEvent *>(event);
 
-            QMenu *menu = ((QLineEdit *)lineEdit())->createStandardContextMenu();
+            QMenu *menu = lineEdit()->createStandardContextMenu();
 
             QList<QAction *> actionList = menu->actions();
             enum { UndoAct, RedoAct, CutAct, CopyAct, PasteAct, DeleteAct, SelectAllAct };
