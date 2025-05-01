@@ -41,9 +41,9 @@ OKULAR_EXPORT_PLUGIN(DviGenerator, "libokularGenerator_dvi.json")
 
 DviGenerator::DviGenerator(QObject *parent, const QVariantList &args)
     : Okular::Generator(parent, args)
+    , m_resolution {0}
     , m_fontExtracted(false)
     , m_docSynopsis(nullptr)
-    , m_resolution {0}
     , m_dviRenderer(nullptr)
 {
     setFeature(Threaded);
