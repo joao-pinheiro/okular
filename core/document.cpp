@@ -3886,8 +3886,8 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         const bool forward = type == NextMatch;
         const int viewportPage = (*d->m_viewportIterator).pageNumber;
         const int fromStartSearchPage = forward ? 0 : d->m_pagesVector.count() - 1;
-        int currentPage = fromStart ? fromStartSearchPage : ((s->continueOnPage != -1) ? s->continueOnPage : viewportPage);
-        const Page *lastPage = fromStart ? nullptr : d->m_pagesVector[currentPage];
+        int currentPageNumber = fromStart ? fromStartSearchPage : ((s->continueOnPage != -1) ? s->continueOnPage : viewportPage);
+        const Page *lastPage = fromStart ? nullptr : d->m_pagesVector[currentPageNumber];
         int pagesDone = 0;
 
         // continue checking last TextPage first (if it is the current page)
@@ -3900,9 +3900,9 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
             }
             if (!match) {
                 if (forward) {
-                    currentPage++;
+                    currentPageNumber++;
                 } else {
-                    currentPage--;
+                    currentPageNumber--;
                 }
                 pagesDone++;
             }
@@ -3913,7 +3913,7 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         DoContinueDirectionMatchSearchStruct *searchStruct = new DoContinueDirectionMatchSearchStruct();
         searchStruct->pagesToNotify = pagesToNotify;
         searchStruct->match = match;
-        searchStruct->currentPage = currentPage;
+        searchStruct->currentPage = currentPageNumber;
         searchStruct->searchID = searchID;
 
         QTimer::singleShot(0, this, [this, searchStruct] { d->doContinueDirectionMatchSearch(searchStruct); });
