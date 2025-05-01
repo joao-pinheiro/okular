@@ -115,7 +115,7 @@ void dvifile::process_preamble()
     // string.
     char job_id[300];
     magic_number = readUINT8();
-    strncpy(job_id, (char *)command_pointer, magic_number);
+    strncpy(job_id, static_cast<char *>(command_pointer), magic_number);
     job_id[magic_number] = '\0';
     generatorString = QString::fromLocal8Bit(job_id);
 }
@@ -170,7 +170,7 @@ void dvifile::read_postamble()
         quint32 scale = readUINT32();
         quint32 design = readUINT32();
         quint16 len = readUINT8() + readUINT8(); // Length of the font name, including the directory name
-        QByteArray fontname((char *)command_pointer, len);
+        QByteArray fontname(static_cast<char *>(command_pointer), len);
         command_pointer += len;
 
 #ifdef DEBUG_FONTS
