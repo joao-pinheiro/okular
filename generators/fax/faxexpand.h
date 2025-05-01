@@ -55,12 +55,12 @@ public:
     t16bits *data = nullptr;        /* in-memory copy of strip */
     t16bits *dataOrig = nullptr;    /* copy of `data', in case we shift it */
     size_t length = 0;              /* length of data */
-    QSize size;           /* width & height of page in pixels */
-    int inverse = 0;      /* black <=> white */
-    int lsbfirst = 0;     /* bit order is lsb first */
-    int orient = 0;       /* orientation - upsidedown, landscape, mirrored */
-    int vres = 0;         /* vertical resolution: 1 = fine  */
-    QPoint dpi;           /* DPI horz/vert */
+    QSize size;                     /* width & height of page in pixels */
+    int inverse = 0;                /* black <=> white */
+    int lsbfirst = 0;               /* bit order is lsb first */
+    int orient = 0;                 /* orientation - upsidedown, landscape, mirrored */
+    int vres = 0;                   /* vertical resolution: 1 = fine  */
+    QPoint dpi;                     /* DPI horz/vert */
     void (*expander)(class pagenode *, drawfunc) = {};
     unsigned int bytes_per_line = 0;
     QString filename;           /* The name of the file to be opened */
