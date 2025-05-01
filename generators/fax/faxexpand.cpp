@@ -713,10 +713,10 @@ int G3count(pagenode *pn, int twoD)
 {
     t16bits *p = pn->data;
     const t16bits *end = p + pn->length / sizeof(*p); // NOLINT(bugprone-sizeof-expression)
-    int lines = 0;                              /* lines seen so far */
-    int zeros = 0;                              /* number of consecutive zero bits seen */
-    int EOLcnt = 0;                             /* number of consecutive EOLs seen */
-    int empty = 1;                              /* empty line */
+    int lines = 0;                                    /* lines seen so far */
+    int zeros = 0;                                    /* number of consecutive zero bits seen */
+    int EOLcnt = 0;                                   /* number of consecutive EOLs seen */
+    int empty = 1;                                    /* empty line */
     int prezeros, postzeros;
 
     while (p < end && EOLcnt < 6) {
