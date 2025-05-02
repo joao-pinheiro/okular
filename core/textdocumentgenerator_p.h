@@ -153,6 +153,68 @@ static Okular::DocumentViewport calculateViewport(QTextDocument *document, const
 }
 }
 
+class RenderPageOperation : public QObject
+{
+    Q_OBJECT
+
+public:
+    RenderPageOperation(PixmapRequest *request, const QFont &font);
+
+    PixmapRequest *mRequest;
+    QFont mFont;
+    QPromise<QImage> mPromise;
+};
+
+class CreateTextPageOperation : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit CreateTextPageOperation(int pageNumber);
+
+    int mPageNumber;
+    QPromise<TextPage *> mPromise;
+};
+
+class TextDocumentOperations : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit TextDocumentOperations(QTextDocument *document);
+
+    QImage renderPage(PixmapRequest *request, const QFont &font);
+    TextPage *createTextPage(int pageNumber);
+
+    template<typename Op, typename... Args>
+        requires std::same_as<Op, RenderPageOperation> || std::same_as<Op, CreateTextPageOperation>
+    auto enqueue(Args &&...args)
+    {
+        auto op = new Op(std::forward<Args>(args)...);
+        auto future = op->mPromise.future();
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, op]() {
+                if constexpr (std::same_as<Op, RenderPageOperation>) {
+                    op->mPromise.addResult(renderPage(op->mRequest, op->mFont));
+                } else if constexpr (std::same_as<Op, CreateTextPageOperation>) {
+                    op->mPromise.addResult(createTextPage(op->mPageNumber));
+                }
+                op->mPromise.finish();
+                op->deleteLater();
+            },
+            Qt::QueuedConnection);
+
+        return future;
+    }
+
+private:
+    static const QAbstractTextDocumentLayout::PaintContext &getSharedContext();
+
+    QTextDocument *mDocument;
+};
+
 class TextDocumentConverterPrivate
 {
 public:
@@ -201,8 +263,14 @@ public:
 
     Q_DECLARE_PUBLIC(TextDocumentGenerator)
 
+    /* reimp */ PixmapGeneratorBase *pixmapGenerator() override;
+    /* reimp */ TextPageGeneratorBase *textPageGenerator() override;
+
     /* reimp */ QVariant metaData(const QString &key, const QVariant &option) const override;
     /* reimp */ QImage image(PixmapRequest *) override;
+
+    /* reimp */ QFuture<QImage> imageAsync(PixmapRequest *request) override;
+    /* reimp */ QFuture<TextPage *> textPageAsync(int pageNumber) override;
 
     void calculateBoundingRect(int startPosition, int endPosition, QRectF &rect, int &page) const;
     void calculatePositions(int page, int &start, int &end) const;
@@ -221,6 +289,8 @@ public:
     TextDocumentConverter *mConverter;
 
     QTextDocument *mDocument;
+    std::unique_ptr<TextDocumentOperations> mTextDocumentOperations;
+
     Okular::DocumentInfo mDocumentInfo;
     Okular::DocumentSynopsis mDocumentSynopsis;
 

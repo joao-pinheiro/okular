@@ -2226,8 +2226,8 @@ void DocumentPrivate::clearAndWaitForRequests()
                 executingRequest->d->mShouldAbortRender = 1;
             }
 
-            if (m_generator->d_ptr->mTextPageGenerationThread) {
-                m_generator->d_ptr->mTextPageGenerationThread->abortExtraction();
+            if (m_generator->d_ptr->mTextPageGenerator) {
+                m_generator->d_ptr->mTextPageGenerator->abortExtraction();
             }
         }
 
@@ -2662,7 +2662,7 @@ void Document::closeDocument()
 
     if (d->m_fontThread) {
         disconnect(d->m_fontThread, nullptr, this, nullptr);
-        d->m_fontThread->stopExtraction();
+        d->m_fontThread->requestInterruption();
         d->m_fontThread->wait();
         d->m_fontThread = nullptr;
     }
@@ -3006,7 +3006,7 @@ void Document::stopFontReading()
     }
 
     disconnect(d->m_fontThread, nullptr, this, nullptr);
-    d->m_fontThread->stopExtraction();
+    d->m_fontThread->requestInterruption();
     d->m_fontThread = nullptr;
     d->m_fontsCache.clear();
 }
@@ -3341,8 +3341,8 @@ bool DocumentPrivate::cancelRenderingBecauseOf(PixmapRequest *executingRequest, 
 
     executingRequest->d->mShouldAbortRender = 1;
 
-    if (m_generator->d_ptr->mTextPageGenerationThread && m_generator->d_ptr->mTextPageGenerationThread->page() == executingRequest->page()) {
-        m_generator->d_ptr->mTextPageGenerationThread->abortExtraction();
+    if (m_generator->d_ptr->mTextPageGenerator && m_generator->d_ptr->mTextPageGenerator->page() == executingRequest->page()) {
+        m_generator->d_ptr->mTextPageGenerator->abortExtraction();
     }
 
     return true;
