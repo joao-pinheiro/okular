@@ -153,11 +153,10 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                         {*/
 
             Okular::NormalizedRect *limitRect = new Okular::NormalizedRect(nXMin, nYMin, nXMax, nYMax);
-            Okular::HighlightAreaRect::const_iterator hIt;
             for (const Okular::HighlightAreaRect *highlight : page->m_highlights) {
-                for (hIt = highlight->constBegin(); hIt != highlight->constEnd(); ++hIt) {
-                    if ((*hIt).intersects(limitRect)) {
-                        bufferedHighlights->append(qMakePair(highlight->color, *hIt));
+                for (const auto &rect : std::as_const(*highlight)) {
+                    if (rect.intersects(limitRect)) {
+                        bufferedHighlights->append(qMakePair(highlight->color, rect));
                     }
                 }
             }
@@ -172,10 +171,9 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                         {*/
             Okular::NormalizedRect *limitRect = new Okular::NormalizedRect(nXMin, nYMin, nXMax, nYMax);
             const Okular::RegularAreaRect *textSelection = page->textSelection();
-            Okular::HighlightAreaRect::const_iterator hIt = textSelection->constBegin(), hEnd = textSelection->constEnd();
-            for (; hIt != hEnd; ++hIt) {
-                if ((*hIt).intersects(limitRect)) {
-                    bufferedHighlights->append(qMakePair(page->textSelectionColor(), *hIt));
+            for (const auto &rect : std::as_const(*textSelection)) {
+                if (rect.intersects(limitRect)) {
+                    bufferedHighlights->append(qMakePair(page->textSelectionColor(), rect));
                 }
             }
             delete limitRect;
@@ -245,9 +243,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         if (hasTilesManager) {
             const Okular::NormalizedRect normalizedLimits(limitsInPixmap, scaledWidth, scaledHeight);
             const QList<Okular::Tile> tiles = page->tilesAt(observer, normalizedLimits);
-            QList<Okular::Tile>::const_iterator tIt = tiles.constBegin(), tEnd = tiles.constEnd();
-            while (tIt != tEnd) {
-                const Okular::Tile &tile = *tIt;
+            for (const Okular::Tile &tile : tiles) {
                 const QRectF tileRect = tile.rect().geometryF(scaledWidth, scaledHeight).translated(-scaledCrop.topLeft());
                 const QRect dTileRect = tile.rect().geometry(dScaledWidth, dScaledHeight).translated(-dScaledCrop.topLeft());
                 const QRectF limitsInTile = QRectF(limits) & tileRect;
@@ -262,7 +258,6 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                         destPainter->drawPixmap(tileRect, *tilePixmap, tilePixmap->rect());
                     }
                 }
-                ++tIt;
             }
         } else {
             destPainter->drawPixmap(limits, pixmap.scaled(dScaledWidth, dScaledHeight), dLimitsInPixmap);
@@ -282,9 +277,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         if (hasTilesManager) {
             const Okular::NormalizedRect normalizedLimits(limitsInPixmap, scaledWidth, scaledHeight);
             const QList<Okular::Tile> tiles = page->tilesAt(observer, normalizedLimits);
-            QList<Okular::Tile>::const_iterator tIt = tiles.constBegin(), tEnd = tiles.constEnd();
-            while (tIt != tEnd) {
-                const Okular::Tile &tile = *tIt;
+            for (const Okular::Tile &tile : tiles) {
                 const QRectF tileRect = tile.rect().geometryF(scaledWidth, scaledHeight).translated(-scaledCrop.topLeft());
                 const QRect dTileRect = tile.rect().geometry(dScaledWidth, dScaledHeight).translated(-dScaledCrop.topLeft());
                 const QRectF limitsInTile = QRectF(limits) & tileRect;
@@ -302,7 +295,6 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                         p.drawPixmap(limitsInTile.translated(-limits.topLeft()), *tilePixmap, transform.mapRect(dLimitsInTile).translated(-transform.mapRect(dTileRect).topLeft()));
                     }
                 }
-                ++tIt;
             }
         } else {
             // 4B.1. draw the page pixmap: normal or scaled
@@ -380,9 +372,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
             const double yScale = (double)scaledHeight / (double)limits.height();
 
             // paint all buffered annotations in the page
-            QList<Okular::Annotation *>::const_iterator aIt = bufferedAnnotations->constBegin(), aEnd = bufferedAnnotations->constEnd();
-            for (; aIt != aEnd; ++aIt) {
-                Okular::Annotation *a = *aIt;
+            for (Okular::Annotation *a : std::as_const(*bufferedAnnotations)) {
                 const Okular::Annotation::SubType type = a->subType();
                 QColor acolor = a->style().color();
                 if (!acolor.isValid()) {
@@ -513,10 +503,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
     /** 5 -- MIXED FLOW. Draw ANNOTATIONS [OPAQUE ONES] on ACTIVE PAINTER  **/
     if (unbufferedAnnotations) {
         // iterate over annotations and paint AText, AGeom, AStamp
-        QList<Okular::Annotation *>::const_iterator aIt = unbufferedAnnotations->constBegin(), aEnd = unbufferedAnnotations->constEnd();
-        for (; aIt != aEnd; ++aIt) {
-            Okular::Annotation *a = *aIt;
-
+        for (Okular::Annotation *a : std::as_const(*unbufferedAnnotations)) {
             // honor opacity settings on supported types
             const float opacity = a->style().color().alphaF() * a->style().opacity();
             // skip the annotation drawing if all the annotation is fully
