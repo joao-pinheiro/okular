@@ -167,16 +167,6 @@ bool NormalizedRect::intersects(const NormalizedRect &r) const
     return (r.left <= right) && (r.right >= left) && (r.top <= bottom) && (r.bottom >= top);
 }
 
-bool NormalizedRect::intersects(const NormalizedRect *r) const
-{
-    return (r->left <= right) && (r->right >= left) && (r->top <= bottom) && (r->bottom >= top);
-}
-
-bool NormalizedRect::intersects(double l, double t, double r, double b) const
-{
-    return (l <= right) && (r >= left) && (t <= bottom) && (b >= top);
-}
-
 NormalizedRect NormalizedRect::operator|(const NormalizedRect &r) const
 {
     NormalizedRect ret;
