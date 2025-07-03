@@ -307,7 +307,7 @@ public:
 
     virtual bool canSign() const;
 
-    virtual bool sign(const NewSignatureData &data, const QString &rFilename);
+    virtual std::pair<SigningResult, QString> sign(const NewSignatureData &data, const QString &rFilename);
 
     virtual CertificateStore *certificateStore() const;
 
