@@ -1588,6 +1588,8 @@ bool Part::openFile()
     QMimeType mime;
     Document::OpenResult openResult = Document::OpenError;
     bool isCompressedFile = false;
+    //prevents the forms message from reappearing on a file save
+    bool shouldShowFormsMessage = !m_swapInsteadOfOpening || m_formsMessage->isVisible();
     while (!mimes.isEmpty() && openResult == Document::OpenError) {
         mime = mimes.takeFirst();
         openResult = doOpenFile(mime, fileNameToOpen, &isCompressedFile);
@@ -1622,14 +1624,14 @@ bool Part::openFile()
     m_migrationMessage->setVisible(m_document->isDocdataMigrationNeeded());
 
     // Warn the user that XFA forms are not supported yet (NOTE: poppler generator only)
-    if (ok && Okular::Settings::showEmbeddedContentMessages() && m_document->metaData(QStringLiteral("HasUnsupportedXfaForm")).toBool() == true) {
+    if (ok && Okular::Settings::showEmbeddedContentMessages() && m_document->metaData(QStringLiteral("HasUnsupportedXfaForm")).toBool() == true && shouldShowFormsMessage) {
         m_formsMessage->setText(i18n("This document has XFA forms, which are currently <b>unsupported</b>."));
         m_formsMessage->setIcon(QIcon::fromTheme(QStringLiteral("dialog-warning")));
         m_formsMessage->setMessageType(KMessageWidget::Warning);
         m_formsMessage->setVisible(true);
     }
     // m_pageView->toggleFormsAction() may be null on dummy mode
-    else if (ok && Okular::Settings::showEmbeddedContentMessages() && m_pageView->toggleFormsAction() && m_pageView->toggleFormsAction()->isEnabled()) {
+    else if (ok && Okular::Settings::showEmbeddedContentMessages() && m_pageView->toggleFormsAction() && m_pageView->toggleFormsAction()->isEnabled() && shouldShowFormsMessage) {
         m_formsMessage->setText(i18n("This document has forms. Click on the button to interact with them, or use View -> Show Forms."));
         m_formsMessage->setMessageType(KMessageWidget::Information);
         m_formsMessage->setVisible(true);
