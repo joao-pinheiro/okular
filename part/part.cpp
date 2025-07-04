@@ -1588,7 +1588,7 @@ bool Part::openFile()
     QMimeType mime;
     Document::OpenResult openResult = Document::OpenError;
     bool isCompressedFile = false;
-    //prevents the forms message from reappearing on a file save
+    // prevents the forms message from reappearing on a file save
     bool shouldShowFormsMessage = !m_swapInsteadOfOpening || m_formsMessage->isVisible();
     while (!mimes.isEmpty() && openResult == Document::OpenError) {
         mime = mimes.takeFirst();
