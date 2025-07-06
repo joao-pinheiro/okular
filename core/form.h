@@ -587,7 +587,7 @@ public:
     /**
       Signs a field of UnsignedSignature type.
 
-      @since 25.04
+      @since 25.08
      */
     virtual std::pair<SigningResult, QString> sign(const NewSignatureData &data, const QString &newPath) const = 0;
 
