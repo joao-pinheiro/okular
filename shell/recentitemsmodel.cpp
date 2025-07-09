@@ -56,6 +56,22 @@ void RecentItemsModel::clearEntries()
     Q_EMIT layoutChanged();
 }
 
+QHash<int, QByteArray> RecentItemsModel::roleNames() const
+{
+    QHash<int, QByteArray> roles;
+
+    // Standard roles
+    roles[Qt::DisplayRole] = "display";
+    roles[Qt::ToolTipRole] = "toolTip";
+    roles[Qt::DecorationRole] = "icon";
+
+    // Custom roles
+    roles[IconNameRole] = "iconName";
+    roles[UrlRole] = "url";
+
+    return roles;
+}
+
 int RecentItemsModel::rowCount(const QModelIndex &parent) const
 {
     Q_UNUSED(parent);
@@ -94,6 +110,17 @@ QVariant RecentItemsModel::data(const QModelIndex &index, int role) const
                 // Fallback icon for remote files.
                 return QIcon::fromTheme(QStringLiteral("network-server"));
             }
+
+        case IconNameRole:
+            if (item->url.isLocalFile()) {
+                return m_iconProvider.icon(QFileInfo(item->url.toLocalFile())).name();
+            } else {
+                // Fallback icon for remote files.
+                return QIcon::fromTheme(QStringLiteral("network-server")).name();
+            }
+
+        case UrlRole:
+            return item->url.toString();
 
         default:
             return QVariant();
