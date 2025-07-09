@@ -308,6 +308,11 @@ public:
 
     virtual bool canSign() const;
 
+    /**
+     * Signs the document
+     * \since 25.08
+     * @return pair of signing result and a detailed/advanced error message/code in case of errors
+     */
     virtual std::pair<SigningResult, QString> sign(const NewSignatureData &data, const QString &rFilename);
 
     virtual CertificateStore *certificateStore() const;

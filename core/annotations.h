@@ -1384,8 +1384,19 @@ public:
     int page() const;
     void setPage(int page);
 
+    /**
+     * Sets the function to actually implement the signing
+     *
+     * \since 25.08
+     */
     void setSignFunction(std::function<std::pair<SigningResult, QString>(const Okular::NewSignatureData &, const QString &)> func);
 
+    /**
+     * \brief signs this signature annotation
+     * \return result and a detailed/advanced error message/code in case of failure
+     *
+     * \since 25.08
+     */
     std::pair<SigningResult, QString> sign(const Okular::NewSignatureData &data, const QString &fileName);
 
     /**
