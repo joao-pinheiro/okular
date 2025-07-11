@@ -268,14 +268,15 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
             return d->document->page(item->viewport.pageNumber)->label();
         }
         break;
-    case Qt::BackgroundRole:
+    case Qt::BackgroundRole:{
         auto rank = jumpingHistory.indexOf(index);
-
-        auto transparentFactor = 255 / (maxHistoryNumber+2);
+        constexpr int transparentFactor = 255 / (maxHistoryNumber+1);
         if (rank >= 0) {
             // Note: rank is 0-based, the Color is inactive highlight
-            return QVariant(QColor(194, 224, 245, transparentFactor * rank));
+            return QVariant(QColor(194, 224, 55, transparentFactor * rank));
         }
+        break;
+    }
     }
 
 
@@ -515,13 +516,13 @@ bool TOCModel::checkequality(const TOCModel *model, const QModelIndex &parentA, 
 void TOCModel::addJumpingHistory(const QModelIndex &index){
     // remove existing index if already exist
     jumpingHistory.removeOne(index);
-    jumpingHistory.enqueue(index);
-
     if (jumpingHistory.size() > maxHistoryNumber) {
         jumpingHistory.dequeue();
     }
-
-
+    jumpingHistory.enqueue(index);
+    for (auto& idx: jumpingHistory) {
+        Q_EMIT dataChanged(idx, idx, {Qt::BackgroundRole});
+    }
 };
 
 #include "moc_tocmodel.cpp"

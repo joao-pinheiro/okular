@@ -77,8 +77,7 @@ private:
     // keep track which entries was clicked
     QQueue<QModelIndex> jumpingHistory;
     // How many history we want to track?
-    static constexpr int maxHistoryNumber = 5;
-
+    static constexpr int maxHistoryNumber = 4;
 };
 
 #endif

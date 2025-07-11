@@ -152,6 +152,7 @@ void TOC::slotExecuted(const QModelIndex &index)
     if (!index.isValid()) {
         return;
     }
+    m_model->addJumpingHistory(index);
 
     QString url = m_model->urlForIndex(index);
     if (!url.isEmpty()) {
@@ -168,8 +169,6 @@ void TOC::slotExecuted(const QModelIndex &index)
     } else if (viewport.isValid()) {
         m_document->setViewport(viewport);
     }
-
-    m_model->addJumpingHistory(index);
 }
 
 void TOC::saveSearchOptions()
