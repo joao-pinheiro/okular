@@ -8,6 +8,7 @@
 #define TOCMODEL_H
 
 #include <QAbstractItemModel>
+#include <QColor>
 #include <QList>
 #include <QQueue>
 
@@ -59,6 +60,8 @@ public:
     QString urlForIndex(const QModelIndex &index) const;
 
     void addJumpingHistory(const QModelIndex &index);
+    void setJumpingHistoryBaseColor(const QColor color);
+    void setBackgroundColor(const QColor bg);
 
     int count() const
     {
@@ -73,6 +76,9 @@ private:
     friend class TOCModelPrivate;
     TOCModelPrivate *const d;
     bool checkequality(const TOCModel *model, const QModelIndex &parentA = QModelIndex(), const QModelIndex &parentB = QModelIndex()) const;
+
+    QColor colorJumpingHistory;
+    QColor colorBackground;
 
     // keep track which entries was clicked
     QQueue<QModelIndex> jumpingHistory;

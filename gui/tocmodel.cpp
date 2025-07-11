@@ -187,11 +187,7 @@ TOCModel::TOCModel(Okular::Document *document, QObject *parent)
 
     qRegisterMetaType<QModelIndex>();
 
-    // initial empty history
     jumpingHistory = QQueue<QModelIndex>();
-    for (int i = 0; i < maxHistoryNumber; ++i) {
-        jumpingHistory.enqueue(QModelIndex());
-    }
 }
 
 TOCModel::~TOCModel()
@@ -267,12 +263,14 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
         }
         break;
     case Qt::BackgroundRole: {
-        auto rank = jumpingHistory.indexOf(index);
-        constexpr int transparentFactor = 255 / (maxHistoryNumber + 1);
-        if (rank >= 0) {
-            // Note: rank is 0-based, the Color is inactive highlight
-            return QVariant(QColor(194, 224, 55, transparentFactor * rank));
+        if (jumpingHistory.contains(index)) {
+            QColor colorBasedOnRank = colorJumpingHistory;
+            colorBasedOnRank.setAlpha(colorJumpingHistory.alpha() / 6);
+            return QVariant(colorBasedOnRank);
+        } else {
+            return colorBackground;
         }
+
         break;
     }
     }
@@ -515,12 +513,23 @@ void TOCModel::addJumpingHistory(const QModelIndex &index)
     // remove existing index if already exist
     jumpingHistory.removeOne(index);
     if (jumpingHistory.size() > maxHistoryNumber) {
-        jumpingHistory.dequeue();
+        auto old_index = jumpingHistory.dequeue();
+        Q_EMIT dataChanged(old_index, old_index, {Qt::BackgroundRole});
     }
     jumpingHistory.enqueue(index);
-    for (auto &idx : jumpingHistory) {
-        Q_EMIT dataChanged(idx, idx, {Qt::BackgroundRole});
+    for (auto &index : jumpingHistory) {
+        Q_EMIT dataChanged(index, index, {Qt::BackgroundRole});
     }
+};
+
+void TOCModel::setJumpingHistoryBaseColor(const QColor color)
+{
+    colorJumpingHistory = color;
+};
+
+void TOCModel::setBackgroundColor(const QColor color)
+{
+    colorBackground = color;
 };
 
 #include "moc_tocmodel.cpp"

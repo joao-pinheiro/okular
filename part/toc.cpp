@@ -48,7 +48,11 @@ TOC::TOC(QWidget *parent, Okular::Document *document)
     m_treeView = new QTreeView(this);
     mainlay->addWidget(m_treeView);
     m_model = new TOCModel(document, m_treeView);
+    m_model->setJumpingHistoryBaseColor(this->palette().color(QPalette::Highlight));
+    m_model->setBackgroundColor(this->palette().color(QPalette::Base));
+
     m_treeView->setModel(m_model);
+
     m_treeView->setSortingEnabled(false);
     m_treeView->setRootIsDecorated(true);
     m_treeView->setAlternatingRowColors(false);
