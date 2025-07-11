@@ -9,6 +9,7 @@
 
 #include <QAbstractItemModel>
 #include <QList>
+#include <QQueue>
 
 namespace Okular
 {
@@ -57,6 +58,8 @@ public:
     Okular::DocumentViewport viewportForIndex(const QModelIndex &index) const;
     QString urlForIndex(const QModelIndex &index) const;
 
+    void addJumpingHistory(const QModelIndex &index);
+
     int count() const
     {
         return rowCount();
@@ -70,6 +73,12 @@ private:
     friend class TOCModelPrivate;
     TOCModelPrivate *const d;
     bool checkequality(const TOCModel *model, const QModelIndex &parentA = QModelIndex(), const QModelIndex &parentB = QModelIndex()) const;
+
+    // keep track which entries was clicked
+    QQueue<QModelIndex> jumpingHistory;
+    // How many history we want to track?
+    static constexpr int maxHistoryNumber = 5;
+
 };
 
 #endif
