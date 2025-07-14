@@ -122,7 +122,6 @@ public:
         , m_generatorsLoaded(false)
         , m_pageController(nullptr)
         , m_closingLoop(nullptr)
-        , m_scripter(nullptr)
         , m_archiveData(nullptr)
         , m_fontsCached(false)
         , m_annotationEditingEnabled(true)
@@ -320,8 +319,6 @@ public:
 
     PageController *m_pageController;
     QEventLoop *m_closingLoop;
-
-    Scripter *m_scripter;
 
     ArchiveData *m_archiveData;
     QString m_archivedFileName;

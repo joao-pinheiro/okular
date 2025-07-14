@@ -2241,14 +2241,9 @@ int DocumentPrivate::findFieldPageNumber(Okular::FormField *field)
 
 void DocumentPrivate::executeScriptEvent(const std::shared_ptr<Event> &event, const Okular::ScriptAction *linkscript)
 {
-    if (!m_scripter) {
-        m_scripter = new Scripter(this);
-    }
-    m_scripter->setEvent(event.get());
-    m_scripter->execute(linkscript->scriptType(), linkscript->script());
-
-    // Clear out the event after execution
-    m_scripter->setEvent(nullptr);
+    Scripter scripter {this};
+    scripter.setEvent(event.get());
+    scripter.execute(linkscript->scriptType(), linkscript->script());
 }
 
 Document::Document(QWidget *widget)
@@ -2578,7 +2573,6 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
 
     const QStringList docScripts = d->m_generator->metaData(QStringLiteral("DocumentScripts"), QStringLiteral("JavaScript")).toStringList();
     if (!docScripts.isEmpty()) {
-        d->m_scripter = new Scripter(d);
         for (const QString &docscript : docScripts) {
             const Okular::ScriptAction *linkScript = new Okular::ScriptAction(Okular::JavaScript, docscript);
             std::shared_ptr<Event> event = Event::createDocEvent(Event::DocOpen);
@@ -2638,9 +2632,6 @@ void Document::closeDocument()
 
     delete d->m_pageController;
     d->m_pageController = nullptr;
-
-    delete d->m_scripter;
-    d->m_scripter = nullptr;
 
     // remove requests left in queue
     d->clearAndWaitForRequests();
@@ -4319,10 +4310,8 @@ void Document::processAction(const Action *action)
 
     case Action::Script: {
         const ScriptAction *linkscript = static_cast<const ScriptAction *>(action);
-        if (!d->m_scripter) {
-            d->m_scripter = new Scripter(d);
-        }
-        d->m_scripter->execute(linkscript->scriptType(), linkscript->script());
+        Scripter scripter {d};
+        scripter.execute(linkscript->scriptType(), linkscript->script());
     } break;
 
     case Action::Movie:
@@ -4331,10 +4320,8 @@ void Document::processAction(const Action *action)
     case Action::Rendition: {
         const RenditionAction *linkrendition = static_cast<const RenditionAction *>(action);
         if (!linkrendition->script().isEmpty()) {
-            if (!d->m_scripter) {
-                d->m_scripter = new Scripter(d);
-            }
-            d->m_scripter->execute(linkrendition->scriptType(), linkrendition->script());
+            Scripter scripter {d};
+            scripter.execute(linkrendition->scriptType(), linkrendition->script());
         }
 
         Q_EMIT processRenditionAction(static_cast<const RenditionAction *>(action));
@@ -5575,10 +5562,8 @@ void Document::refreshPixmaps(int pageNumber)
 
 void DocumentPrivate::executeScript(const QString &function)
 {
-    if (!m_scripter) {
-        m_scripter = new Scripter(this);
-    }
-    m_scripter->execute(JavaScript, function);
+    Scripter scripter {this};
+    scripter.execute(JavaScript, function);
 }
 
 void DocumentPrivate::requestDone(PixmapRequest *req)
