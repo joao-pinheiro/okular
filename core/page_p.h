@@ -102,12 +102,6 @@ public:
      * Sets the @p color and @p rect of the highlight for the observer with
      * the given @p id.
      */
-    OKULARCORE_DEPRECATED void setHighlight(int id, RegularAreaRect *rect, const QColor &color);
-
-    /**
-     * Sets the @p color and @p rect of the highlight for the observer with
-     * the given @p id.
-     */
     void setHighlight(const RegularAreaRect &rect, const QColor &color, int search_id);
 
     /**
