@@ -20,6 +20,7 @@
 // local includes
 #include "area.h"
 #include "global.h"
+#include "okularcore_export.h"
 
 class QColor;
 
@@ -95,13 +96,19 @@ public:
      * @param r Areas of new text selections.
      * @param color Color of new text selections.
      */
-    void setTextSelections(const RegularAreaRect &r, const QColor &color);
+    void setTextSelections(const RegularAreaRect &rect, const QColor &color);
 
     /**
      * Sets the @p color and @p rect of the highlight for the observer with
      * the given @p id.
      */
-    void setHighlight(int id, RegularAreaRect *rect, const QColor &color);
+    OKULARCORE_DEPRECATED void setHighlight(int id, RegularAreaRect *rect, const QColor &color);
+
+    /**
+     * Sets the @p color and @p rect of the highlight for the observer with
+     * the given @p id.
+     */
+    void setHighlight(const RegularAreaRect &rect, const QColor &color, int search_id);
 
     /**
      * Deletes all highlight objects for the observer with the given @p id.
