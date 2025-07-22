@@ -618,11 +618,6 @@ const QList<ObjectRect *> &Page::objectRects() const
     return m_rects;
 }
 
-void PagePrivate::setHighlight(int s_id, RegularAreaRect *rect, const QColor &color)
-{
-    setHighlight(rect ? *rect : RegularAreaRect(), color, s_id);
-}
-
 void PagePrivate::setHighlight(const RegularAreaRect &rect, const QColor &color, int search_id)
 {
     m_page->m_highlights.append(new HighlightAreaRect(rect, color, search_id));

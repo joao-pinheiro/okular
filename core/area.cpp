@@ -297,8 +297,8 @@ HighlightAreaRect::HighlightAreaRect(const RegularAreaRect &area, const QColor &
     , color(color)
 {
     reserve(area.size());
-    for (const auto &rect : area) {
-        append(NormalizedRect(rect));
+    for (const NormalizedRect &rect : area) {
+        append(rect);
     }
 }
 
