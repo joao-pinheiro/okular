@@ -28,7 +28,7 @@ class DocumentPrivate;
 class FormField;
 class PagePrivate;
 class PageTransition;
-class SourceReference;
+struct SourceReference;
 class TextSelection;
 class Tile;
 
