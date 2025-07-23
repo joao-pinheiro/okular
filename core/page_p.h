@@ -20,7 +20,6 @@
 // local includes
 #include "area.h"
 #include "global.h"
-#include "okularcore_export.h"
 
 class QColor;
 
