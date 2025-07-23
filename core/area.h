@@ -969,7 +969,7 @@ public:
     /**
      * The search ID of the highlight owner.
      */
-    int s_id = INVALID_SEARCH_ID;
+    int s_id;
 
     /**
      * The color of the highlight.
