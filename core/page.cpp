@@ -8,7 +8,6 @@
 */
 
 #include "page.h"
-#include "core/area.h"
 #include "page_p.h"
 
 // qt/kde includes
@@ -27,6 +26,7 @@
 #include "action.h"
 #include "annotations.h"
 #include "annotations_p.h"
+#include "area.h"
 #include "debug_p.h"
 #include "document.h"
 #include "document_p.h"
