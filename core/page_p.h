@@ -99,7 +99,7 @@ public:
 
     /**
      * Sets the @p color and @p rect of the highlight for the observer with
-     * the given @p id.
+     * the given @p search_id.
      */
     void setHighlight(const RegularAreaRect &rect, const QColor &color, int search_id);
 
