@@ -950,7 +950,7 @@ class HighlightAreaRect : public RegularAreaRect
 public:
     /**
      * Creates a new highlight area rect with the coordinates of
-     * the given @p area.
+     * the given @p area, @p color and @p search_id.
      *
      * @since 25.12
      */
