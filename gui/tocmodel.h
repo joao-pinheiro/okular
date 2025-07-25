@@ -76,14 +76,6 @@ private:
     friend class TOCModelPrivate;
     TOCModelPrivate *const d;
     bool checkequality(const TOCModel *model, const QModelIndex &parentA = QModelIndex(), const QModelIndex &parentB = QModelIndex()) const;
-
-    QColor colorJumpingHistory;
-    QColor colorBackground;
-
-    // keep track which entries was clicked
-    QQueue<QModelIndex> jumpingHistory;
-    // How many history we want to track?
-    static constexpr int maxHistoryNumber = 4;
 };
 
 #endif
