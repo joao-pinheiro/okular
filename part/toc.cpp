@@ -49,16 +49,10 @@ TOC::TOC(QWidget *parent, Okular::Document *document)
     mainlay->addWidget(m_treeView);
     m_model = new TOCModel(document, m_treeView);
 
-    if (Okular::Settings::showJumpingHistory()) {
-        m_model->setJumpingHistoryBaseColor(palette().color(QPalette::Highlight));
-        m_model->setBackgroundColor(palette().color(QPalette::Base));
-    } else {
-        m_treeView->setAlternatingRowColors(false);
-    }
-
     m_treeView->setModel(m_model);
     m_treeView->setSortingEnabled(false);
     m_treeView->setRootIsDecorated(true);
+    m_treeView->setAlternatingRowColors(!Okular::Settings::showJumpingHistory());
     m_treeView->setItemDelegate(new PageItemDelegate(m_treeView));
     m_treeView->header()->hide();
     m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -151,6 +145,7 @@ void TOC::reparseConfig()
 {
     m_searchLine->setCaseSensitivity(Okular::Settings::contentsSearchCaseSensitive() ? Qt::CaseSensitive : Qt::CaseInsensitive);
     m_searchLine->setRegularExpression(Okular::Settings::contentsSearchRegularExpression());
+    m_treeView->setAlternatingRowColors(!Okular::Settings::showJumpingHistory());
     m_treeView->update();
 }
 

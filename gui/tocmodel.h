@@ -60,8 +60,6 @@ public:
     QString urlForIndex(const QModelIndex &index) const;
 
     void addJumpingHistory(const QModelIndex &index);
-    void setJumpingHistoryBaseColor(const QColor color);
-    void setBackgroundColor(const QColor bg);
 
     int count() const
     {

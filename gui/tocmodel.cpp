@@ -55,12 +55,9 @@ public:
     TOCModel *m_oldModel;
     QList<QModelIndex> m_oldTocExpandedIndexes;
 
-    QColor colorJumpingHistory;
-    QColor colorBackground;
-           // keep track which entries was clicked
     QQueue<QModelIndex> jumpingHistory;
-    // How many history we want to track?
-    static constexpr int maxHistoryNumber = 4;
+    QColor jumpingHistoryHighlightColor;
+    static constexpr int jumpingHistoryMaxItems = 4;
 
     Q_DISABLE_COPY(TOCModelPrivate)
 };
@@ -110,6 +107,8 @@ TOCModelPrivate::TOCModelPrivate(TOCModel *qq)
     , m_oldModel(nullptr)
 {
     root->model = this;
+    jumpingHistoryHighlightColor = qApp->palette().color(QPalette::Highlight);
+    jumpingHistoryHighlightColor.setAlpha(jumpingHistoryHighlightColor.alpha() / 6);
 }
 
 TOCModelPrivate::~TOCModelPrivate()
@@ -271,11 +270,9 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
     case Qt::BackgroundRole: {
         if (Okular::Settings::showJumpingHistory()) {
             if (d->jumpingHistory.contains(index)) {
-                QColor colorBasedOnRank = d->colorJumpingHistory;
-                colorBasedOnRank.setAlpha(d->colorJumpingHistory.alpha() / 6);
-                return QVariant(colorBasedOnRank);
+                return d->jumpingHistoryHighlightColor;
             } else {
-                return d->colorBackground;
+                return qApp->palette().color(QPalette::Base);
             }
         }
         break;
@@ -395,6 +392,7 @@ void TOCModel::clear()
 
     beginResetModel();
     qDeleteAll(d->root->children);
+    d->jumpingHistory.clear();
     d->root->children.clear();
     d->currentPage.clear();
     endResetModel();
@@ -519,7 +517,7 @@ void TOCModel::addJumpingHistory(const QModelIndex &index)
 {
     // remove existing index if already exist
     d->jumpingHistory.removeOne(index);
-    if (d->jumpingHistory.size() > d->maxHistoryNumber) {
+    if (d->jumpingHistory.size() > d->jumpingHistoryMaxItems) {
         auto old_index = d->jumpingHistory.dequeue();
         Q_EMIT dataChanged(old_index, old_index, {Qt::BackgroundRole});
     }
@@ -527,16 +525,6 @@ void TOCModel::addJumpingHistory(const QModelIndex &index)
     for (auto &index : d->jumpingHistory) {
         Q_EMIT dataChanged(index, index, {Qt::BackgroundRole});
     }
-};
-
-void TOCModel::setJumpingHistoryBaseColor(const QColor color)
-{
-    d->colorJumpingHistory = color;
-};
-
-void TOCModel::setBackgroundColor(const QColor color)
-{
-    d->colorBackground = color;
 };
 
 #include "moc_tocmodel.cpp"
