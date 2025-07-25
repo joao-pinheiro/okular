@@ -7,14 +7,14 @@
 #include "tocmodel.h"
 
 #include <QApplication>
+#include <QFont>
 #include <QList>
 #include <QTreeView>
 #include <qdom.h>
-#include <QFont>
 
-#include "settings.h"
 #include "core/document.h"
 #include "core/page.h"
+#include "settings.h"
 
 Q_DECLARE_METATYPE(QModelIndex)
 
