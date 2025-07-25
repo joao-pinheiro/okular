@@ -57,7 +57,7 @@ public:
 
     QQueue<QModelIndex> jumpingHistory;
     QColor jumpingHistoryHighlightColor;
-    static constexpr int jumpingHistoryMaxItems = 4;
+    static constexpr int jumpingHistoryMaxItems = 5;
 
     Q_DISABLE_COPY(TOCModelPrivate)
 };
@@ -408,6 +408,7 @@ void TOCModel::setCurrentViewport(const Okular::DocumentViewport &viewport)
         }
 
         item->highlight = false;
+        addJumpingHistory(idx);
         Q_EMIT dataChanged(idx, idx);
     }
     d->currentPage.clear();
@@ -515,6 +516,10 @@ bool TOCModel::checkequality(const TOCModel *model, const QModelIndex &parentA, 
 
 void TOCModel::addJumpingHistory(const QModelIndex &index)
 {
+    if (!Okular::Settings::showJumpingHistory()) {
+        return;
+    }
+
     // remove existing index if already exist
     d->jumpingHistory.removeOne(index);
     if (d->jumpingHistory.size() > d->jumpingHistoryMaxItems) {
