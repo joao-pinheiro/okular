@@ -269,10 +269,14 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
         break;
     case Qt::BackgroundRole: {
         if (Okular::Settings::showJumpingHistory()) {
-            if (d->jumpingHistory.contains(index)) {
-                return d->jumpingHistoryHighlightColor;
-            } else {
-                return qApp->palette().color(QPalette::Base);
+            QColor backgroundColor = d->jumpingHistory.contains(index) ? d->jumpingHistoryHighlightColor : qApp->palette().color(QPalette::Base);
+            // TODO see the mobile version comment above
+            QTreeView *view = dynamic_cast<QTreeView *>(QObject::parent());
+            if (!view) {
+                return backgroundColor;
+            }
+            if (!view->isExpanded(index)) {
+                return backgroundColor;
             }
         }
         break;
@@ -408,7 +412,6 @@ void TOCModel::setCurrentViewport(const Okular::DocumentViewport &viewport)
         }
 
         item->highlight = false;
-        addJumpingHistory(idx);
         Q_EMIT dataChanged(idx, idx);
     }
     d->currentPage.clear();
@@ -424,6 +427,7 @@ void TOCModel::setCurrentViewport(const Okular::DocumentViewport &viewport)
             continue;
         }
 
+        addJumpingHistory(idx);
         item->highlight = true;
         Q_EMIT dataChanged(idx, idx);
     }

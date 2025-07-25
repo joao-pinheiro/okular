@@ -154,7 +154,6 @@ void TOC::slotExecuted(const QModelIndex &index)
     if (!index.isValid()) {
         return;
     }
-    m_model->addJumpingHistory(index);
 
     QString url = m_model->urlForIndex(index);
     if (!url.isEmpty()) {
