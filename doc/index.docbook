@@ -2636,6 +2636,14 @@ Context menu actions like Rename Bookmarks etc.)
 					</listitem>
 				</varlistentry>
 				<varlistentry>
+					<term><guilabel>Show jumping history in table of contents</guilabel></term>
+					<listitem>
+						<para>
+						  Enable visiting history tracking in table of contents by adding background shading to entries recently visited.
+						</para>
+					</listitem>
+				</varlistentry>
+				<varlistentry>
 					<term><guilabel>When using Browse Tool, wrap cursor at screen edges</guilabel></term>
 					<listitem>
 						<para>
