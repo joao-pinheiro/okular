@@ -4608,6 +4608,18 @@ void Document::processKVCFActions(Okular::FormField *ff)
     } else {
         ff->commitFormattedValue(ff->value().toString());
     }
+
+    // Process KVCF actions for other connected form fields
+    // Since this will be run not long after the form field ff is changed, the cache is usable
+    while (!d->pendingFormsForKVCFActions.isEmpty()) {
+        Okular::FormField *aField = d->pendingFormsForKVCFActions.takeFirst();
+        processKVCFActions(aField);
+    }
+}
+
+void Document::queueFormForKVCFActions(FormField *ff)
+{
+    d->pendingFormsForKVCFActions.append(ff);
 }
 
 void Document::processDocumentAction(const Action *action, DocumentAdditionalActionType type)

@@ -746,6 +746,8 @@ public:
      */
     void processKVCFActions(Okular::FormField *ff);
 
+    void queueFormForKVCFActions(Okular::FormField *ff);
+
     /**
      * Processes the mouse up @p action on @p ff.
      *
