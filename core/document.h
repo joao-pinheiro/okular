@@ -1156,6 +1156,12 @@ public:
      */
     QList<Okular::FormField *> findFormFieldNameAlikes(const QString &fullyQualifiedName);
 
+    /**
+     * @brief resetNameAlikeFormsCache clear the temporary storage used by name-alike related functions
+     * @note This is expected to be done whenever form field widgets are recreated
+     */
+    void resetNameAlikeFormsCache();
+
 public Q_SLOTS:
     /**
      * This slot is called whenever the user changes the @p rotation of

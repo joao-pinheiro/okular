@@ -2866,6 +2866,14 @@ bool Document::hasNameAlikeFormFields(const FormField *field)
     return d->cacheFormFieldsByFullyQualifiedName.values(field->fullyQualifiedName()).length() > 1;
 }
 
+void Document::resetNameAlikeFormsCache()
+{
+    d->cacheFormFieldsByFullyQualifiedName.clear();
+    // Make sure pending actions are cleared only after
+    // all actions that will otherwise be completed, are done
+    QTimer::singleShot(document_backend_polling_interval, this, [this]() { d->pendingFormsForKVCFActions.clear(); });
+}
+
 ///
 /// \note This function may require changing when adding the functionality to add/remove forms to Okular
 ///
