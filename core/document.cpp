@@ -166,6 +166,9 @@ constexpr int kMemCheckTime = 2000; // in msec
 // getFreeMemory is called every two seconds when checking to see if the system is low on memory. If this timeout was left at kMemCheckTime, half of these checks are useless (when okular is idle) since the cache is used when the cache is
 // <=2 seconds old. This means that after the system is out of memory, up to 4 seconds (instead of 2) could go by before okular starts to free memory.
 constexpr int kFreeMemCacheTimeout = kMemCheckTime - 100;
+// Interval related to updating document parameters at UI related rates
+// pino (7/4/2006): set the polling interval from 10 to 30
+constexpr int document_backend_polling_interval = 30;
 
 /***** Document ******/
 
@@ -1531,8 +1534,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
         m_generator->generatePixmap(request);
     } else {
         m_pixmapRequestsMutex.unlock();
-        // pino (7/4/2006): set the polling interval from 10 to 30
-        QTimer::singleShot(30, m_parent, [this] { sendGeneratorPixmapRequest(); });
+        QTimer::singleShot(document_backend_polling_interval, m_parent, [this] { sendGeneratorPixmapRequest(); });
     }
 }
 
