@@ -2861,6 +2861,11 @@ QString Document::editorCommandOverride() const
     return d->editorCommandOverride;
 }
 
+bool Document::hasNameAlikeFormFields(const FormField *field)
+{
+    return d->cacheFormFieldsByFullyQualifiedName.values(field->fullyQualifiedName()).length() > 1;
+}
+
 ///
 /// \note This function may require changing when adding the functionality to add/remove forms to Okular
 ///

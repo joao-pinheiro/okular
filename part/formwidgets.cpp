@@ -444,7 +444,7 @@ void FormWidgetIface::slotRefresh(Okular::FormField *form)
     if (m_ff != form) {
         return;
     }
-    setVisibility(form->isVisible() && m_controller->shouldFormWidgetBeShown(form));
+    setVisibility((form->isVisible() && m_controller->shouldFormWidgetBeShown(form)) || m_controller->document()->hasNameAlikeFormFields(form));
 
     m_widget->setEnabled(!form->isReadOnly());
 }

@@ -1142,6 +1142,14 @@ public:
     QString editorCommandOverride() const;
 
     /**
+     * @brief hasNameAlikeFormFields Tell whether the given field has other form fields with the same name
+     * @param field for which to look for name-alikes
+     * @return true if a name-alike was found
+     * @note This is to be used AFTER findFormFieldNameAlikes and uses its cache
+     */
+    bool hasNameAlikeFormFields(const Okular::FormField *field);
+
+    /**
      * @brief findFormFieldNameAlikes give all form fields matching the given fully qualified name
      * @param fullyQualifiedName to match to return all name-alikes
      * @return list of form fields with the same fully qualified name
