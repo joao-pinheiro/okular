@@ -1912,6 +1912,9 @@ bool Part::closeUrl(bool promptToSave)
         return false;
     }
 
+    // Do this even if swapping
+    m_document->resetNameAlikeFormsCache();
+
     if (m_swapInsteadOfOpening) {
         // If we're swapping the backing file, we don't want to close the
         // current one when openUrl() calls us internally
