@@ -73,6 +73,8 @@ public:
 
     static bool shouldFormWidgetBeShown(Okular::FormField *form);
 
+    bool processNameAlikes(const QString &fullyQualifiedName, const QVariant &newValue, Okular::FormField *sender);
+
 Q_SIGNALS:
     void changed(int pageNumber);
     void requestUndo();

@@ -174,6 +174,36 @@ bool FormWidgetsController::shouldFormWidgetBeShown(Okular::FormField *form)
     return !form->isReadOnly() || form->type() == Okular::FormField::FormSignature;
 }
 
+// ToDo: make this work with all types of FormFields
+bool FormWidgetsController::processNameAlikes(const QString &fullyQualifiedName, const QVariant &newValue, Okular::FormField *sender)
+{
+    if (sender->isReadOnly()) {
+        // Don't process name-alikes for a R/O field
+        // Instead, values for the R/O fields will be set when processing its R/W name-alike
+        return false;
+    }
+    const QList<Okular::FormField *> allFields = m_doc->findFormFieldNameAlikes(fullyQualifiedName);
+    if (allFields.isEmpty()) {
+        return false;
+    }
+    for (Okular::FormField *aField : allFields) {
+        if (aField == sender) {
+            continue;
+        }
+        if (aField->type() != Okular::FormField::FormText) {
+            continue;
+        }
+        if (aField->value() == QVariant(newValue)) {
+            continue;
+        }
+        aField->setValue(newValue);
+        Q_EMIT refreshFormWidget(aField);
+        Q_EMIT changed(aField->page()->number());
+        m_doc->queueFormForKVCFActions(aField);
+    }
+    return true;
+}
+
 void FormWidgetsController::slotButtonClicked(QAbstractButton *button)
 {
     int pageNumber = -1;
