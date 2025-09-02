@@ -779,6 +779,7 @@ TextAreaEdit::TextAreaEdit(Okular::FormFieldText *text, PageView *pageView)
     setUndoRedoEnabled(false);
 
     connect(this, &QTextEdit::textChanged, this, &TextAreaEdit::slotChanged);
+    connect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
     connect(this, &QTextEdit::cursorPositionChanged, this, &TextAreaEdit::slotChanged);
     connect(this, &KTextEdit::aboutToShowContextMenu, this, &TextAreaEdit::slotUpdateUndoAndRedoInContextMenu);
     m_prevCursorPos = textCursor().position();
@@ -793,6 +794,7 @@ TextAreaEdit::~TextAreaEdit()
     // that ends up calling text changed but then we go to slotChanged and we're already
     // half destructed and all is bad
     disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::slotChanged);
+    disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
 }
 
 bool TextAreaEdit::event(QEvent *e)
@@ -913,6 +915,15 @@ void TextAreaEdit::slotChanged()
     }
     m_prevCursorPos = cursorPos;
     m_prevAnchorPos = textCursor().anchor();
+}
+
+void TextAreaEdit::propagateChange()
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), toPlainText(), formField())) {
+        disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
+    }
 }
 
 void TextAreaEdit::slotRefresh(Okular::FormField *form)

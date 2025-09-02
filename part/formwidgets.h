@@ -255,6 +255,7 @@ public Q_SLOTS:
 
 private Q_SLOTS:
     void slotChanged();
+    void propagateChange();
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
