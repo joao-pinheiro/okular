@@ -2861,6 +2861,29 @@ QString Document::editorCommandOverride() const
     return d->editorCommandOverride;
 }
 
+///
+/// \note This function may require changing when adding the functionality to add/remove forms to Okular
+///
+QList<FormField *> Document::findFormFieldNameAlikes(const QString &fullyQualifiedName)
+{
+    QList<FormField *> ret = d->cacheFormFieldsByFullyQualifiedName.values(fullyQualifiedName);
+    if (!ret.isEmpty()) {
+        return ret;
+    }
+    const QList<Okular::Page *> pages = d->m_pagesVector;
+    for (Okular::Page *aPage : pages) {
+        const QList<FormField *> ffList = aPage->formFields();
+        for (Okular::FormField *aField : ffList) {
+            const QString fqn = aField->fullyQualifiedName();
+            d->cacheFormFieldsByFullyQualifiedName.insert(fqn, aField);
+            if (fqn == fullyQualifiedName) {
+                ret.append(aField);
+            }
+        }
+    }
+    return ret;
+}
+
 DocumentInfo Document::documentInfo() const
 {
     QSet<DocumentInfo::Key> keys;

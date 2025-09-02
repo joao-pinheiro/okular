@@ -1139,6 +1139,13 @@ public:
      */
     QString editorCommandOverride() const;
 
+    /**
+     * @brief findFormFieldNameAlikes give all form fields matching the given fully qualified name
+     * @param fullyQualifiedName to match to return all name-alikes
+     * @return list of form fields with the same fully qualified name
+     */
+    QList<Okular::FormField *> findFormFieldNameAlikes(const QString &fullyQualifiedName);
+
 public Q_SLOTS:
     /**
      * This slot is called whenever the user changes the @p rotation of
