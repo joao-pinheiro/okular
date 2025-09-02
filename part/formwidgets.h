@@ -300,6 +300,7 @@ public:
 private Q_SLOTS:
     void slotSelectionChanged();
     void slotHandleFormListChangedByUndoRedo(int pageNumber, Okular::FormFieldChoice *listForm, const QList<int> &choices);
+    void propagateChange();
 
 protected:
     void slotRefresh(Okular::FormField *form) override;

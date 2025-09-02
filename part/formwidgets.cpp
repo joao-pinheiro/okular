@@ -1080,6 +1080,7 @@ ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     }
 
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
+    connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::propagateChange);
 
     setVisible(choice->isVisible());
     setCursor(Qt::ArrowCursor);
@@ -1119,6 +1120,26 @@ void ListEdit::slotHandleFormListChangedByUndoRedo(int pageNumber, Okular::FormF
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
 
     setFocus();
+}
+
+void ListEdit::propagateChange()
+{
+    QList<int> rows;
+    {
+        const QList<QListWidgetItem *> selection = selectedItems();
+        for (const QListWidgetItem *item : selection) {
+            rows.append(row(item));
+        }
+        Okular::FormFieldChoice *form = static_cast<Okular::FormFieldChoice *>(m_ff);
+        if (rows == form->currentChoices()) {
+            return;
+        }
+    }
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), rows, formField())) {
+        disconnect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::propagateChange);
+    }
 }
 
 void ListEdit::slotRefresh(Okular::FormField *form)
