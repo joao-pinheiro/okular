@@ -1188,6 +1188,7 @@ ComboEdit::ComboEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::slotValueChanged);
     connect(this, &QComboBox::editTextChanged, this, &ComboEdit::slotValueChanged);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
+    connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::propagateChange);
 
     m_editing = false;
     setVisible(choice->isVisible());
@@ -1269,6 +1270,15 @@ void ComboEdit::slotHandleFormComboChangedByUndoRedo(int pageNumber, Okular::For
     lineEdit()->cursorForward(true, cursorPos - anchorPos);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
     setFocus();
+}
+
+void ComboEdit::propagateChange(const int currentIndex)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), QList<int> {currentIndex}, formField())) {
+        disconnect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::propagateChange);
+    }
 }
 
 void ComboEdit::contextMenuEvent(QContextMenuEvent *event)

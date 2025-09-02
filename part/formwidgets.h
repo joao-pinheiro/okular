@@ -320,6 +320,7 @@ public:
 private Q_SLOTS:
     void slotValueChanged();
     void slotHandleFormComboChangedByUndoRedo(int pageNumber, Okular::FormFieldChoice *comboForm, const QString &text, int cursorPos, int anchorPos);
+    void propagateChange(const int currentIndex);
 
 private:
     int m_prevCursorPos;
