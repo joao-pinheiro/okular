@@ -281,6 +281,7 @@ protected:
 private Q_SLOTS:
     void slotChanged();
     void slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormFieldText *form, const QString &contents, int cursorPos, int anchorPos);
+    void propagateChange(const QString &newText);
 
 private:
     int m_prevCursorPos;

@@ -950,6 +950,7 @@ FileEdit::FileEdit(Okular::FormFieldText *text, PageView *pageView)
     m_prevAnchorPos = lineEdit()->cursorPosition();
 
     connect(this, &KUrlRequester::textChanged, this, &FileEdit::slotChanged);
+    connect(this, &KUrlRequester::textChanged, this, &FileEdit::propagateChange);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &FileEdit::slotChanged);
     setVisible(text->isVisible());
 }
@@ -1046,6 +1047,15 @@ void FileEdit::slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormField
     m_prevCursorPos = cursorPos;
     m_prevAnchorPos = anchorPos;
     setFocus();
+}
+
+void FileEdit::propagateChange(const QString &newText)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), newText, formField())) {
+        disconnect(this, &KUrlRequester::textChanged, this, &FileEdit::propagateChange);
+    }
 }
 
 ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
