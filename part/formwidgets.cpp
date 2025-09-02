@@ -605,6 +605,7 @@ FormLineEdit::FormLineEdit(Okular::FormFieldText *text, PageView *pageView)
 
     connect(this, &QLineEdit::textEdited, this, &FormLineEdit::slotChanged);
     connect(this, &QLineEdit::cursorPositionChanged, this, &FormLineEdit::slotChanged);
+    connect(this, &QLineEdit::textChanged, this, &FormLineEdit::propagateChange);
 
     setVisible(text->isVisible());
 }
@@ -720,6 +721,19 @@ void FormLineEdit::slotChanged()
         } else {
             m_prevAnchorPos = selectionStart();
         }
+    }
+}
+
+///
+/// \warning This function is optimised for the condition that forms are not added/removed
+/// and will need to be changed when adding functionality to add/remove forms
+///
+void FormLineEdit::propagateChange(const QString &newText)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), newText, formField())) {
+        disconnect(this, &QLineEdit::textChanged, this, &FormLineEdit::propagateChange);
     }
 }
 

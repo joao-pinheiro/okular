@@ -227,6 +227,7 @@ public Q_SLOTS:
     void slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormFieldText *textForm, const QString &contents, int cursorPos, int anchorPos);
 private Q_SLOTS:
     void slotChanged();
+    void propagateChange(const QString &newText);
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
