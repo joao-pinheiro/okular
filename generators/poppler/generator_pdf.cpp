@@ -2099,6 +2099,25 @@ Okular::PrintOptionsWidget *PDFGenerator::printConfigurationWidget() const
 {
     if (!pdfOptionsPage) {
         const_cast<PDFGenerator *>(this)->pdfOptionsPage = new PDFOptionsPage();
+        bool hasPrintableAnnotations = false;
+        const auto pageNumber = pdfdoc->numPages();
+        for (auto pageIndex = 0; pageIndex < pageNumber && !hasPrintableAnnotations; ++pageIndex) {
+            const auto page = pdfdoc->page(pageIndex);
+            if (!page) {
+                continue;
+            }
+            const auto annotations = page->annotations();
+            if (annotations.empty()) {
+                continue;
+            }
+            for (const auto &annotation : annotations) {
+                if (!annotation->flags().testFlag(Poppler::Annotation::DenyPrint)) {
+                    hasPrintableAnnotations = true;
+                    break;
+                }
+            }
+        }
+        pdfOptionsPage->setPrintAnnots(hasPrintableAnnotations);
     }
     return pdfOptionsPage;
 }
