@@ -10,8 +10,8 @@
 #include <KLocalizedString>
 #include <QBuffer>
 #include <QDateTime>
-#include <QFontDatabase>
 #include <QFile>
+#include <QFontDatabase>
 #include <QImageReader>
 #include <QList>
 #include <QMutex>
