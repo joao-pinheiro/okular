@@ -409,6 +409,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 
     // [left toolbox: Bookmarks] | []
     m_bookmarkList = new BookmarkList(m_document, nullptr);
+    connect(m_bookmarkList, &BookmarkList::openUrl, this, &Part::handleUrlFromBookmarkList);
     m_sidebar->addItem(m_bookmarkList, QIcon::fromTheme(QStringLiteral("bookmarks")), i18n("Bookmarks"));
 
     // [left toolbox optional item: Signature Panel] | []
@@ -1176,6 +1177,11 @@ void Part::openUrlFromBookmarks(const QUrl &_url)
     }
 }
 
+void Part::handleUrlFromBookmarkList(const QUrl &_url)
+{
+    Q_EMIT openUrlFromBookmarkList(_url);
+}
+
 void Part::handleDroppedUrls(const QList<QUrl> &urls)
 {
     if (urls.isEmpty()) {
@@ -1772,16 +1778,20 @@ bool Part::openUrl(const QUrl &_url, bool swapInsteadOfOpening)
      * to read it */
     m_swapInsteadOfOpening = swapInsteadOfOpening;
 
-    // The subsequent call to closeUrl clears the arguments.
-    // We want to save them and restore them later.
-    const KParts::OpenUrlArguments args = arguments();
+    QUrl __url(_url);
+    __url.setFragment(QString());
+    if (m_document->currentDocument() != __url) {
+        // The subsequent call to closeUrl clears the arguments.
+        // We want to save them and restore them later.
+        const KParts::OpenUrlArguments args = arguments();
 
-    // Close current document if any
-    if (!closeUrl()) {
-        return false;
+        // Close current document if any
+        if (!closeUrl()) {
+            return false;
+        }
+
+        setArguments(args);
     }
-
-    setArguments(args);
 
     QUrl url(_url);
     if (url.hasFragment()) {
@@ -1807,7 +1817,17 @@ bool Part::openUrl(const QUrl &_url, bool swapInsteadOfOpening)
             vp.rePos.pos = Okular::DocumentViewport::TopLeft;
             m_document->setNextDocumentViewport(vp);
         } else {
-            m_document->setNextDocumentDestination(dest);
+            const Okular::DocumentViewport vp = Okular::DocumentViewport(dest);
+            if (vp.isValid()) {
+                m_document->setNextDocumentViewport(vp);
+                url.setFragment(QString());
+                if (m_document->currentDocument() == url) {
+                    m_document->setViewport(vp);
+                    return true;
+                }
+            } else {
+                m_document->setNextDocumentDestination(dest);
+            }
         }
         url.setFragment(QString());
     } else {

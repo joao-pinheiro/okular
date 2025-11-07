@@ -943,10 +943,18 @@ void Shell::openNewTab(const QUrl &url, const QString &serializedOptions)
     QMetaObject::invokeMethod(activePart, "activateTabIfAlreadyOpenFile", Q_RETURN_ARG(bool, activateTabIfAlreadyOpen));
 
     if (activateTabIfAlreadyOpen) {
-        const int tabIndex = findTabIndex(url);
+        QUrl _url(url);
+        _url.setFragment(QString());
+        const int tabIndex = findTabIndex(_url);
 
         if (tabIndex >= 0) {
             setActiveTab(tabIndex);
+            if (url.hasFragment()) {
+                KParts::ReadWritePart *const part = m_tabs[tabIndex].part;
+                // This is safe since currently only the newly added
+                // bookmark list url call has fragment.
+                part->openUrl(url);
+            }
             m_recent->addUrl(url);
             return;
         }
@@ -1012,6 +1020,7 @@ void Shell::connectPart(const KParts::ReadWritePart *part)
     connect(part, SIGNAL(maxRecentItemsChanged(int)), this, SLOT(triggerUpdateRecentItems(int))); // clazy:exclude=old-style-connect
 
     // clang-format off
+    connect(part, SIGNAL(openUrlFromBookmarkList(QUrl)), this, SLOT(handleUrlFromBookmarkList(QUrl))); // clazy:exclude=old-style-connect
     connect(part, SIGNAL(requestOpenNewlySignedFile(QString,int)), this, SLOT(openNewlySignedFile(QString,int))); // clazy:exclude=old-style-connect
     // Otherwise the QSize,QSize gets turned into QSize, QSize that is not normalized signals and is slightly slower
     connect(part, SIGNAL(fitWindowToPage(QSize,QSize)), this, SLOT(slotFitWindowToPage(QSize,QSize)));   // clazy:exclude=old-style-connect
@@ -1106,6 +1115,11 @@ int Shell::findTabIndex(const QUrl &url) const
 {
     auto it = std::find_if(m_tabs.begin(), m_tabs.end(), [&url](const TabState state) { return state.part->url() == url; });
     return (it != m_tabs.end()) ? std::distance(m_tabs.begin(), it) : -1;
+}
+
+void Shell::handleUrlFromBookmarkList(const QUrl &url)
+{
+    openUrl(url);
 }
 
 void Shell::handleDroppedUrls(const QList<QUrl> &urls)

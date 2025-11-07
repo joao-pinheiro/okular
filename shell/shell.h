@@ -127,6 +127,7 @@ private Q_SLOTS:
     void setPrintEnabled(bool enabled);
     void setCloseEnabled(bool enabled);
     void setTabIcon(const QMimeType &mimeType);
+    void handleUrlFromBookmarkList(const QUrl &url);
     void handleDroppedUrls(const QList<QUrl> &urls);
     void triggerUpdateRecentItems(const int maxItems);
 
