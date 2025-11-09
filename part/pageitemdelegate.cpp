@@ -125,8 +125,6 @@ QSize PageItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QMode
 
     QRect outRect = metrics.boundingRect(QRect(QPoint(0, 0), sz), Qt::AlignLeft | Qt::TextWordWrap, index.data().toString());
     sz.setHeight(outRect.height());
-    sz.setWidth(-1);
-    qDebug() << "calc H" << outRect.height();
     return sz;
 }
 
