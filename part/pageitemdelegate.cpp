@@ -13,7 +13,9 @@
 #include <QHeaderView>
 #include <QModelIndex>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QVariant>
+#include <qdebug.h>
 
 // local includes
 #include "gui/tocmodel.h"
@@ -49,13 +51,13 @@ PageItemDelegate::~PageItemDelegate()
 void PageItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
     d->index = index;
-//    QStyleOptionViewItem m_option = option;
-//    d->model->setData(index, option.rect.width(), ItemModelWidth);
     QItemDelegate::paint(painter, option, index);
 }
 
 void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem &option, const QRect &rect, const QString &text) const
 {
+    qDebug() << "Paint width " << rect.width() << "Paint height " << rect.height() << "decorationPosition " << option.decorationPosition << "FOr index" << text;
+    // qDebug() << "Paint QRect " << rect.width() << "Paint QRect " << rect.height();
     QVariant pageVariant = d->index.data(TOCModel::PageRole);
     QVariant labelVariant = d->index.data(TOCModel::PageLabelRole);
     if ((labelVariant.metaType().id() != QMetaType::QString && !pageVariant.canConvert(QMetaType {QMetaType::QString})) || !Okular::Settings::tocPageColumn()) {
@@ -78,16 +80,10 @@ void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem
     } else {
         pageRect.translate(newRect.width() + PAGEITEMDELEGATE_INTERNALMARGIN - 2 * margindelta, 0);
     }
-    // Apply word wrapping if applicable
-    //    if (Okular::Settings::self()->tOCWordWrap()) {
-    //        QSize sz = newRect.size();
-    //        QFontMetrics metrics(option.font);
-    //        QRect outRect = metrics.boundingRect(QRect(QPoint(0, 0), sz), Qt::AlignLeft | Qt::TextWordWrap, text);
-    //        sz.setHeight(outRect.height());
-
-    //        newRect.setSize(sz);
-    //    }
-    qDebug() << "Paint width " << option.rect.width() << "FOr index" << text;
+    qDebug() << "drawDisplay newRect" << newRect.width();
+    qDebug() << "drawDisplay pageRectWidth" << pageRectWidth;
+    qDebug() << "drawDisplay page" << page;
+    qDebug() << "drawDisplay pageVariant" << pageVariant;
     QItemDelegate::drawDisplay(painter, option, newRect, text);
     QStyleOptionViewItem newoption(option);
     newoption.displayAlignment = (option.displayAlignment & ~Qt::AlignHorizontal_Mask) | Qt::AlignRight;
@@ -96,15 +92,54 @@ void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem
 
 QSize PageItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-    qDebug() << "PageItemDelegate::sizeHint width" << d->parent->header()->width() << "For Index " << index.data().toString();
-//    QSize sz = QItemDelegate::sizeHint(option, index);
-//     https://stackoverflow.com/questions/34623036/implementing-a-delegate-for-wordwrap-in-a-qtreeview-qt-pyside-pyqt
-    QSize sz = QSize(d->parent->header()->width()*0.6, 10000);
-//    QSize sz = QSize(index.data(ItemModelWidth).toInt(), 10000);
-//    qDebug() << index.data().toString() << sz;
+    if (!Okular::Settings::self()->tOCWordWrap()) {
+        return QItemDelegate::sizeHint(option, index);
+    }
+
+    // small hack to get the current index level
+    int indexLvl = 0;
+    for (QModelIndex p = index.parent(); p.isValid(); p = p.parent()) {
+        indexLvl++;
+    }
+    if (d->parent->rootIsDecorated()) {
+        indexLvl++;
+    }
+
     QFontMetrics metrics(index.data(Qt::FontRole).value<QFont>());
+
+    int sectionSize = d->parent->header()->sectionSize(option.viewItemPosition);
+    int indentSize = d->parent->indentation();
+
+    int margindelta = QApplication::style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
+
+    // a copy of what's inside `drawDisplay` to get the correct width
+    QVariant pageVariant = d->index.data(TOCModel::PageRole);
+    QVariant labelVariant = d->index.data(TOCModel::PageLabelRole);
+    /**
+     * while debugging, sometimes the page number label (both pageVariant and labelVariant) return incorrect page numbers in this function.
+     * in the future this should be looked into to improve this function
+     */
+    QString label = labelVariant.toString();
+    QString page = label.isEmpty() ? pageVariant.toString() : label;
+    QTextDocument document;
+    document.setPlainText(page);
+    document.setDefaultFont(option.font);
+    int pageRectWidth = (int)document.size().width();
+
+    qDebug() << "PageItemDelegate::sizeHint sectionSizeHint" << sectionSize << " - " << indentSize << "*" << indexLvl;
+    qDebug() << "PageItemDelegate::sizeHint parent header width" << d->parent->header()->width() << "For Index " << index.data().toString();
+
+    // due to the page number not beign correct as noted aboce, we also add one digit character to compensate
+    QSize sz = QSize(sectionSize - (indentSize * indexLvl) - pageRectWidth - PAGEITEMDELEGATE_INTERNALMARGIN - (2 * margindelta) - metrics.horizontalAdvance(u'0'), 10000);
+    qDebug() << sz.width();
+    qDebug() << "drawDisplay pageRectWidth" << pageRectWidth;
+    qDebug() << "drawDisplay page" << page;
+    qDebug() << "drawDisplay pageVariant" << pageVariant;
+
     QRect outRect = metrics.boundingRect(QRect(QPoint(0, 0), sz), Qt::AlignLeft | Qt::TextWordWrap, index.data().toString());
     sz.setHeight(outRect.height());
+    sz.setWidth(-1);
+    qDebug() << "calc H" << outRect.height();
     return sz;
 }
 

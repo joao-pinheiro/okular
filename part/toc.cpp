@@ -58,6 +58,7 @@ TOC::TOC(QWidget *parent, Okular::Document *document)
     connect(m_searchLine, &KTreeViewSearchLine::searchOptionsChanged, this, &TOC::saveSearchOptions);
 
     m_treeView = new QTOC(this);
+    // m_treeView = new QTreeView(this);
     mainlay->addWidget(m_treeView);
     m_model = new TOCModel(document, m_treeView);
     m_treeView->setModel(m_model);
