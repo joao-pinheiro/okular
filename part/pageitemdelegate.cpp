@@ -56,8 +56,6 @@ void PageItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 
 void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem &option, const QRect &rect, const QString &text) const
 {
-    qDebug() << "Paint width " << rect.width() << "Paint height " << rect.height() << "decorationPosition " << option.decorationPosition << "FOr index" << text;
-    // qDebug() << "Paint QRect " << rect.width() << "Paint QRect " << rect.height();
     QVariant pageVariant = d->index.data(TOCModel::PageRole);
     QVariant labelVariant = d->index.data(TOCModel::PageLabelRole);
     if ((labelVariant.metaType().id() != QMetaType::QString && !pageVariant.canConvert(QMetaType {QMetaType::QString})) || !Okular::Settings::tocPageColumn()) {
@@ -80,10 +78,6 @@ void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem
     } else {
         pageRect.translate(newRect.width() + PAGEITEMDELEGATE_INTERNALMARGIN - 2 * margindelta, 0);
     }
-    qDebug() << "drawDisplay newRect" << newRect.width();
-    qDebug() << "drawDisplay pageRectWidth" << pageRectWidth;
-    qDebug() << "drawDisplay page" << page;
-    qDebug() << "drawDisplay pageVariant" << pageVariant;
     QItemDelegate::drawDisplay(painter, option, newRect, text);
     QStyleOptionViewItem newoption(option);
     newoption.displayAlignment = (option.displayAlignment & ~Qt::AlignHorizontal_Mask) | Qt::AlignRight;
@@ -126,26 +120,14 @@ QSize PageItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QMode
     document.setDefaultFont(option.font);
     int pageRectWidth = (int)document.size().width();
 
-    qDebug() << "PageItemDelegate::sizeHint sectionSizeHint" << sectionSize << " - " << indentSize << "*" << indexLvl;
-    qDebug() << "PageItemDelegate::sizeHint parent header width" << d->parent->header()->width() << "For Index " << index.data().toString();
-
     // due to the page number not beign correct as noted aboce, we also add one digit character to compensate
     QSize sz = QSize(sectionSize - (indentSize * indexLvl) - pageRectWidth - PAGEITEMDELEGATE_INTERNALMARGIN - (2 * margindelta) - metrics.horizontalAdvance(u'0'), 10000);
-    qDebug() << sz.width();
-    qDebug() << "drawDisplay pageRectWidth" << pageRectWidth;
-    qDebug() << "drawDisplay page" << page;
-    qDebug() << "drawDisplay pageVariant" << pageVariant;
 
     QRect outRect = metrics.boundingRect(QRect(QPoint(0, 0), sz), Qt::AlignLeft | Qt::TextWordWrap, index.data().toString());
     sz.setHeight(outRect.height());
     sz.setWidth(-1);
     qDebug() << "calc H" << outRect.height();
     return sz;
-}
-
-void PageItemDelegate::updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option, const QModelIndex &index) const
-{
-    QItemDelegate::updateEditorGeometry(editor, option, index);
 }
 
 #include "moc_pageitemdelegate.cpp"

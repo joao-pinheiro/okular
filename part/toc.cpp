@@ -31,10 +31,9 @@ QTOC::QTOC(QWidget *parent)
 {
 }
 
-void QTOC::resizeEvent(QResizeEvent *event){
-    qDebug() << event;
+void QTOC::resizeEvent(QResizeEvent *event)
+{
     QTreeView::resizeEvent(event);
-    qDebug() << this->model()->index(0, 0) << this->model()->index(this->model()->rowCount(), 0);
     QTreeView::dataChanged(this->model()->index(0, 0), this->model()->index(this->model()->rowCount()-1, 0));
 }
 
@@ -58,7 +57,6 @@ TOC::TOC(QWidget *parent, Okular::Document *document)
     connect(m_searchLine, &KTreeViewSearchLine::searchOptionsChanged, this, &TOC::saveSearchOptions);
 
     m_treeView = new QTOC(this);
-    // m_treeView = new QTreeView(this);
     mainlay->addWidget(m_treeView);
     m_model = new TOCModel(document, m_treeView);
     m_treeView->setModel(m_model);
