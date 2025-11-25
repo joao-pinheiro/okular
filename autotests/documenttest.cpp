@@ -1,6 +1,6 @@
 /*
     SPDX-FileCopyrightText: 2013 Fabio D 'Urso <fabiodurso@hotmail.it>
-
+,
     Work sponsored by the LiMux project of the city of Munich:
     SPDX-FileCopyrightText: 2017 Klarälvdalens Datakonsult AB a KDAB Group company <info@kdab.com>
 
