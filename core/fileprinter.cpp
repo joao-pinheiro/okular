@@ -416,18 +416,12 @@ QString FilePrinter::mediaPaperSource(QPrinter &printer)
     return QString();
 }
 
-QStringList FilePrinter::optionOrientation(QPrinter &printer, QPageLayout::Orientation documentOrientation)
+QStringList FilePrinter::optionOrientation(QPrinter &printer, QPageLayout::Orientation)
 {
-    // portrait and landscape options rotate the document according to the document orientation
-    // If we want to print a landscape document as one would expect it, we have to pass the
-    // portrait option so that the document is not rotated additionally
-    if (printer.pageLayout().orientation() == documentOrientation) {
-        // the user wants the document printed as is
+    if (printer.pageLayout().orientation() == QPageLayout::Portrait) {
         return QStringList(QStringLiteral("-o")) << QStringLiteral("portrait");
-    } else {
-        // the user expects the document being rotated by 90 degrees
-        return QStringList(QStringLiteral("-o")) << QStringLiteral("landscape");
     }
+    return QStringList(QStringLiteral("-o")) << QStringLiteral("landscape");
 }
 
 QStringList FilePrinter::optionDoubleSidedPrinting(QPrinter &printer)
