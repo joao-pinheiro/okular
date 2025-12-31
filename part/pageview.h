@@ -96,6 +96,12 @@ public:
     // keep in sync with pageviewutils
     void displayMessage(const QString &message, const QString &details = QString(), PageViewMessage::Icon icon = PageViewMessage::Info, int duration = -1);
 
+    /**
+     * @brief Set whether this view should act independently of the global document viewport.
+     * @param independent If true, this view will not sync its viewport with the document.
+     */
+    void setIndependentView(bool independent);
+
     // inherited from DocumentObserver
     void notifySetup(const QList<Okular::Page *> &pages, int setupFlags) override;
     void notifyViewportChanged(bool smoothMove) override;
@@ -144,6 +150,7 @@ public:
 public Q_SLOTS:
     void copyTextSelection(PageView::TextCopyMode mode = TextCopyMode::AsProvided) const;
     void selectAll();
+    void slotSelectBuiltinAnnotation(int toolId);
 
     void openAnnotationWindow(Okular::Annotation *annotation, int pageNumber);
     void reloadForms();
