@@ -627,6 +627,9 @@ Part::Part(QObject *parent, const QVariantList &args)
         for (const QString &name : zoomActions) {
             QAction *a = ac->action(name);
             if (a) {
+                // DISCONNECT original PageView slots so only our hijacked slot runs!
+                disconnect(a, &QAction::triggered, nullptr, nullptr);
+                
                 // Determine slot by name assumption or explicit mapping (zoom logic is simple enough)
                 if (name == QLatin1String("view_zoom_in")) connect(a, &QAction::triggered, this, &Part::slotGlobalZoomIn);
                 else if (name == QLatin1String("view_zoom_out")) connect(a, &QAction::triggered, this, &Part::slotGlobalZoomOut);
@@ -4046,6 +4049,12 @@ void Part::slotSplitView()
         // allowing the view to initialize its internal action state
         KActionCollection *dummyAc = new KActionCollection(newInstance);
         dummyAc->setObjectName(QStringLiteral("SecondaryActionCollection"));
+        
+        // ColorModeMenu asserts that this action exists, so we must add it to the dummy collection
+        QAction *configureColorModes = actionCollection()->action(QStringLiteral("options_configure_color_modes"));
+        if (configureColorModes) {
+            dummyAc->addAction(QStringLiteral("options_configure_color_modes"), configureColorModes);
+        }
 
 
         newInstance->setupBaseActions(dummyAc);
