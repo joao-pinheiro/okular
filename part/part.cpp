@@ -48,7 +48,6 @@
 #include <QScrollBar>
 #include <QSlider>
 #include <QSpinBox>
-#include <QSpinBox>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -505,8 +504,8 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_pageView = new PageView(m_splitter, m_document);
     m_pageViews.append(m_pageView);
     m_splitter->addWidget(m_pageView);
-    m_lastActiveView = m_pageView; 
-    
+    m_lastActiveView = m_pageView;
+
     rightContainer->setFocusProxy(m_pageView);
     QMetaObject::invokeMethod(m_pageView, "setFocus", Qt::QueuedConnection); // usability setting
     //    m_splitter->setFocusProxy(m_pageView);
@@ -576,7 +575,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     } else {
         setViewerShortcuts();
     }
-    
+
     setupViewerActions();
 
     // document watcher and reloader
@@ -615,25 +614,25 @@ Part::Part(QObject *parent, const QVariantList &args)
     // NOW Hijack zoom and tool actions (after PageView created them)
     // Forward zoom and tool actions to the active split view
     // Use QTimer to ensure actions are fully initialized by KXMLGUI
-    QTimer::singleShot(0, this, [this](){
+    QTimer::singleShot(0, this, [this]() {
         KActionCollection *ac = actionCollection();
 
-        const QStringList zoomActions = { 
-            QStringLiteral("view_zoom_in"), 
-            QStringLiteral("view_zoom_out"), 
-            QStringLiteral("view_actual_size") 
-        };
-        
+        const QStringList zoomActions = {QStringLiteral("view_zoom_in"), QStringLiteral("view_zoom_out"), QStringLiteral("view_actual_size")};
+
         for (const QString &name : zoomActions) {
             QAction *a = ac->action(name);
             if (a) {
                 // DISCONNECT original PageView slots so only our hijacked slot runs!
                 disconnect(a, &QAction::triggered, nullptr, nullptr);
-                
+
                 // Determine slot by name assumption or explicit mapping (zoom logic is simple enough)
-                if (name == QLatin1String("view_zoom_in")) connect(a, &QAction::triggered, this, &Part::slotGlobalZoomIn);
-                else if (name == QLatin1String("view_zoom_out")) connect(a, &QAction::triggered, this, &Part::slotGlobalZoomOut);
-                else if (name == QLatin1String("view_actual_size")) connect(a, &QAction::triggered, this, &Part::slotGlobalZoomActual);
+                if (name == QLatin1String("view_zoom_in")) {
+                    connect(a, &QAction::triggered, this, &Part::slotGlobalZoomIn);
+                } else if (name == QLatin1String("view_zoom_out")) {
+                    connect(a, &QAction::triggered, this, &Part::slotGlobalZoomOut);
+                } else if (name == QLatin1String("view_actual_size")) {
+                    connect(a, &QAction::triggered, this, &Part::slotGlobalZoomActual);
+                }
             }
         }
 
@@ -675,21 +674,19 @@ Part::Part(QObject *parent, const QVariantList &args)
         }
 
         // Sync Annotation Tool Actions
-        const QStringList annotationActions = {
-            QStringLiteral("annotation_highlighter"),
-            QStringLiteral("annotation_underline"),
-            QStringLiteral("annotation_squiggle"),
-            QStringLiteral("annotation_strike_out"),
-            QStringLiteral("annotation_typewriter"),
-            QStringLiteral("annotation_inline_note"),
-            QStringLiteral("annotation_popup_note"),
-            QStringLiteral("annotation_freehand_line"),
-            QStringLiteral("annotation_arrow"),
-            QStringLiteral("annotation_straight_line"),
-            QStringLiteral("annotation_rectangle"),
-            QStringLiteral("annotation_ellipse"),
-            QStringLiteral("annotation_polygon")
-        };
+        const QStringList annotationActions = {QStringLiteral("annotation_highlighter"),
+                                               QStringLiteral("annotation_underline"),
+                                               QStringLiteral("annotation_squiggle"),
+                                               QStringLiteral("annotation_strike_out"),
+                                               QStringLiteral("annotation_typewriter"),
+                                               QStringLiteral("annotation_inline_note"),
+                                               QStringLiteral("annotation_popup_note"),
+                                               QStringLiteral("annotation_freehand_line"),
+                                               QStringLiteral("annotation_arrow"),
+                                               QStringLiteral("annotation_straight_line"),
+                                               QStringLiteral("annotation_rectangle"),
+                                               QStringLiteral("annotation_ellipse"),
+                                               QStringLiteral("annotation_polygon")};
 
         for (const QString &name : annotationActions) {
             QAction *a = ac->action(name);
@@ -697,7 +694,7 @@ Part::Part(QObject *parent, const QVariantList &args)
                 connect(a, &QAction::toggled, this, [this, a](bool checked) {
                     // Start syncing only if the secondary view is active
                     if (m_lastActiveView && m_lastActiveView != m_pageView) {
-                        KActionCollection *localAc = m_lastActiveView->findChild<KActionCollection*>("SecondaryActionCollection");
+                        KActionCollection *localAc = m_lastActiveView->findChild<KActionCollection *>("SecondaryActionCollection");
                         if (localAc) {
                             QAction *localAction = localAc->action(a->objectName());
                             // Trigger local action to switch internal state (cursor, engine)
@@ -834,8 +831,6 @@ void Part::setupViewerActions()
     m_nextBookmark->setWhatsThis(i18n("Go to the next bookmark"));
     connect(m_nextBookmark, &QAction::triggered, this, &Part::slotNextBookmark);
 
-
-
     // Find and other actions
     m_find = KStandardAction::find(this, SLOT(slotShowFindBar()), ac);
     QList<QKeySequence> s = m_find->shortcuts();
@@ -854,13 +849,10 @@ void Part::setupViewerActions()
         m_saveAs = nullptr;
     }
 
-
     QAction *configureColorModes = new QAction(i18nc("@action", "Configure Color Modes…"), ac);
     ac->addAction(QStringLiteral("options_configure_color_modes"), configureColorModes);
     configureColorModes->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
     connect(configureColorModes, &QAction::triggered, this, &Part::slotAccessibilityPreferences);
-
-
 
     QAction *prefs = KStandardAction::preferences(this, SLOT(slotPreferences()), ac);
     if (m_embedMode == NativeShellMode) {
@@ -910,8 +902,6 @@ void Part::setupViewerActions()
 #if HAVE_PURPOSE
 #endif
 
-
-
     m_aboutBackend = ac->addAction(QStringLiteral("help_about_backend"));
     m_aboutBackend->setText(i18n("About Backend"));
     m_aboutBackend->setEnabled(false);
@@ -934,8 +924,6 @@ void Part::setupViewerActions()
     pageno->setText(i18n("Page Number"));
     pageno->setDefaultWidget(m_pageNumberTool);
     ac->addAction(QStringLiteral("page_number"), pageno);
-
-
 }
 
 void Part::setViewerShortcuts()
@@ -4056,30 +4044,28 @@ void Part::slotSplitView()
         PageView *newInstance = new PageView(m_splitter, m_document);
         newInstance->setIndependentView(true); // enable for new view
         m_pageViews.append(newInstance);
-        
+
         m_document->registerView(newInstance);
         m_document->addObserver(newInstance);
-        
-        
+
         // Setup actions for secondary view using dummy collection
-        // Dummy collection prevents duplicate action registration while 
+        // Dummy collection prevents duplicate action registration while
         // allowing the view to initialize its internal action state
         KActionCollection *dummyAc = new KActionCollection(newInstance);
         dummyAc->setObjectName(QStringLiteral("SecondaryActionCollection"));
-        
+
         // ColorModeMenu asserts that this action exists, so we must add it to the dummy collection
         QAction *configureColorModes = actionCollection()->action(QStringLiteral("options_configure_color_modes"));
         if (configureColorModes) {
             dummyAc->addAction(QStringLiteral("options_configure_color_modes"), configureColorModes);
         }
 
-
         newInstance->setupBaseActions(dummyAc);
         newInstance->setupViewerActions(dummyAc);
         newInstance->updateActionState(false, false);
-        
+
         m_splitter->addWidget(newInstance);
-        
+
         // Connect necessary signals
         connect(newInstance, &PageView::rightClick, this, &Part::slotShowMenu);
         connect(newInstance, &PageView::triggerSearch, this, [this](const QString &searchText) {
@@ -4095,10 +4081,10 @@ void Part::slotSplitView()
         PageView *viewToRemove = m_pageViews.takeLast();
         m_document->removeObserver(viewToRemove);
         if (m_lastActiveView == viewToRemove) {
-             m_lastActiveView = m_pageViews.first();
+            m_lastActiveView = m_pageViews.first();
         }
         viewToRemove->deleteLater();
-        
+
         // Restore primary view state
         if (!m_pageViews.isEmpty()) {
             m_pageViews.first()->setIndependentView(false);
@@ -4110,12 +4096,14 @@ void Part::slotSplitView()
 
 void Part::slotFocusChanged(QWidget *, QWidget *now)
 {
-    if (!now) return;
-    
+    if (!now) {
+        return;
+    }
+
     for (PageView *view : std::as_const(m_pageViews)) {
         if (view == now || view->isAncestorOf(now)) {
             m_lastActiveView = view;
-            fprintf(stderr, "Focus changed to view: %p (primary: %p)\n", (void*)view, (void*)m_pageView.data());
+            fprintf(stderr, "Focus changed to view: %p (primary: %p)\n", (void *)view, (void *)m_pageView.data());
             break;
         }
     }
@@ -4123,7 +4111,7 @@ void Part::slotFocusChanged(QWidget *, QWidget *now)
 
 void Part::slotGlobalZoomIn()
 {
-    fprintf(stderr, "slotGlobalZoomIn called, m_lastActiveView: %p\n", (void*)m_lastActiveView);
+    fprintf(stderr, "slotGlobalZoomIn called, m_lastActiveView: %p\n", (void *)m_lastActiveView);
     if (m_lastActiveView) {
         QMetaObject::invokeMethod(m_lastActiveView, "slotZoomIn");
     }
@@ -4145,32 +4133,44 @@ void Part::slotGlobalZoomActual()
 
 void Part::slotGlobalSetMouseNormal()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseNormal");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseNormal");
+    }
 }
 
 void Part::slotGlobalSetMouseZoom()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseZoom");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseZoom");
+    }
 }
 
 void Part::slotGlobalSetMouseSelect()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseSelect");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseSelect");
+    }
 }
 
 void Part::slotGlobalSetMouseTextSelect()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseTextSelect");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseTextSelect");
+    }
 }
 
 void Part::slotGlobalSetMouseTableSelect()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseTableSelect");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseTableSelect");
+    }
 }
 
 void Part::slotGlobalSetMouseMagnifier()
 {
-    if (m_lastActiveView) QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseMagnifier");
+    if (m_lastActiveView) {
+        QMetaObject::invokeMethod(m_lastActiveView, "slotSetMouseMagnifier");
+    }
 }
 
 void Part::slotToggleSplitOrientation()
@@ -4183,7 +4183,7 @@ void Part::slotToggleSplitOrientation()
 
 void Part::slotOpenAnnotationWindow(Okular::Annotation *annotation, int pageNumber)
 {
-    fprintf(stderr, "slotOpenAnnotationWindow called for page %d, m_lastActiveView: %p\n", pageNumber, (void*)m_lastActiveView);
+    fprintf(stderr, "slotOpenAnnotationWindow called for page %d, m_lastActiveView: %p\n", pageNumber, (void *)m_lastActiveView);
     if (m_lastActiveView) {
         m_lastActiveView->openAnnotationWindow(annotation, pageNumber);
     }
