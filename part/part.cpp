@@ -321,7 +321,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 {
     // make sure that the component name is okular otherwise the XMLGUI .rc files are not found
     // when this part is used in an application other than okular (e.g. unit tests)
-    setComponentName(QStringLiteral("okular"), QStringLiteral(""));
+    setComponentName(QStringLiteral("okular"), QString());
 
     setupConfigSkeleton(args);
 

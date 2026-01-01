@@ -42,7 +42,7 @@ class CloseButton : public QPushButton
     Q_OBJECT
 
 public:
-    explicit CloseButton(QWidget *parent = Q_NULLPTR)
+    explicit CloseButton(QWidget *parent = nullptr)
         : QPushButton(parent)
     {
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);

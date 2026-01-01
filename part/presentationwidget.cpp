@@ -122,7 +122,7 @@ class PresentationToolBar : public QToolBar
     Q_OBJECT
 
 public:
-    explicit PresentationToolBar(QWidget *parent = Q_NULLPTR)
+    explicit PresentationToolBar(QWidget *parent = nullptr)
         : QToolBar(parent)
     {
     }
