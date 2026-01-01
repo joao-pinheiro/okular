@@ -1419,7 +1419,9 @@ void PageView::clearLastSourceLocationViewport()
 
 void PageView::notifyViewportChanged(bool smoothMove)
 {
-    if (d->independentMode) return;
+    if (d->independentMode) {
+        return;
+    }
     QMetaObject::invokeMethod(this, "slotRealNotifyViewportChanged", Qt::QueuedConnection, Q_ARG(bool, smoothMove));
 }
 
@@ -1550,7 +1552,9 @@ void PageView::notifyContentsCleared(int changedFlags)
 
 void PageView::notifyZoom(int factor)
 {
-    if (d->independentMode) return;
+    if (d->independentMode) {
+        return;
+    }
     if (factor > 0) {
         updateZoom(ZoomIn);
     } else {

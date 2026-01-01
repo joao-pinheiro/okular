@@ -184,7 +184,7 @@ private:
 
 K_PLUGIN_FACTORY_WITH_JSON(OkularPartFactory, "okular_part.json", registerPlugin<Okular::Part>();)
 
-static QAction *actionForExportFormat(const Okular::ExportFormat &format, QObject *parent = Q_NULLPTR)
+static QAction *actionForExportFormat(const Okular::ExportFormat &format, QObject *parent = nullptr)
 {
     QAction *act = new QAction(format.description(), parent);
     if (!format.icon().isNull()) {
@@ -321,7 +321,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 {
     // make sure that the component name is okular otherwise the XMLGUI .rc files are not found
     // when this part is used in an application other than okular (e.g. unit tests)
-    setComponentName(QStringLiteral("okular"), QString());
+    setComponentName(QStringLiteral("okular"), QStringLiteral(""));
 
     setupConfigSkeleton(args);
 
@@ -694,7 +694,7 @@ Part::Part(QObject *parent, const QVariantList &args)
                 connect(a, &QAction::toggled, this, [this, a](bool checked) {
                     // Start syncing only if the secondary view is active
                     if (m_lastActiveView && m_lastActiveView != m_pageView) {
-                        KActionCollection *localAc = m_lastActiveView->findChild<KActionCollection *>("SecondaryActionCollection");
+                        KActionCollection *localAc = m_lastActiveView->findChild<KActionCollection *>(QStringLiteral("SecondaryActionCollection"));
                         if (localAc) {
                             QAction *localAction = localAc->action(a->objectName());
                             // Trigger local action to switch internal state (cursor, engine)
@@ -4013,7 +4013,7 @@ void Part::setReadWrite(bool readwrite)
 
 void Part::enableStartWithFind(const QString &text)
 {
-    m_textToFindOnOpen = QString(text);
+    m_textToFindOnOpen = text;
 }
 
 void Part::setEditorCmd(const QString &editorCmd)

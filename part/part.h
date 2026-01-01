@@ -385,7 +385,7 @@ private:
 #endif
     QPointer<ThumbnailList> m_thumbnailList;
     QPointer<PageView> m_pageView;
-    QList<PageView*> m_pageViews;
+    QList<PageView *> m_pageViews;
     PageView *m_lastActiveView;
     bool m_splitHorizontal = false;
     QPointer<TOC> m_toc;
