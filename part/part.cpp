@@ -637,24 +637,41 @@ Part::Part(QObject *parent, const QVariantList &args)
             }
         }
 
-        // Forward mouse mode actions (exclusive state switches)
-        const struct { const char *name; const char *slot; } mouseActions[] = {
-            { "mouse_drag", "slotSetMouseNormal" },
-            { "mouse_zoom", "slotSetMouseZoom" },
-            { "mouse_select", "slotSetMouseSelect" },
-            { "mouse_textselect", "slotSetMouseTextSelect" },
-            { "mouse_tableselect", "slotSetMouseTableSelect" },
-            { "mouse_magnifier", "slotSetMouseMagnifier" }
-        };
+        // Forward mouse mode actions to active split view
+        QAction *mouseDrag = ac->action(QStringLiteral("mouse_drag"));
+        if (mouseDrag) {
+            disconnect(mouseDrag, &QAction::triggered, nullptr, nullptr);
+            connect(mouseDrag, &QAction::triggered, this, &Part::slotGlobalSetMouseNormal);
+        }
 
-        for (const auto &actionMap : mouseActions) {
-            QAction *a = ac->action(QString::fromLatin1(actionMap.name));
-            if (a) {
-                disconnect(a, &QAction::triggered, nullptr, nullptr);
-                connect(a, &QAction::triggered, this, [this, slotName = actionMap.slot]() {
-                    QMetaObject::invokeMethod(this, slotName);
-                });
-            }
+        QAction *mouseZoom = ac->action(QStringLiteral("mouse_zoom"));
+        if (mouseZoom) {
+            disconnect(mouseZoom, &QAction::triggered, nullptr, nullptr);
+            connect(mouseZoom, &QAction::triggered, this, &Part::slotGlobalSetMouseZoom);
+        }
+
+        QAction *mouseSelect = ac->action(QStringLiteral("mouse_select"));
+        if (mouseSelect) {
+            disconnect(mouseSelect, &QAction::triggered, nullptr, nullptr);
+            connect(mouseSelect, &QAction::triggered, this, &Part::slotGlobalSetMouseSelect);
+        }
+
+        QAction *mouseTextSelect = ac->action(QStringLiteral("mouse_textselect"));
+        if (mouseTextSelect) {
+            disconnect(mouseTextSelect, &QAction::triggered, nullptr, nullptr);
+            connect(mouseTextSelect, &QAction::triggered, this, &Part::slotGlobalSetMouseTextSelect);
+        }
+
+        QAction *mouseTableSelect = ac->action(QStringLiteral("mouse_tableselect"));
+        if (mouseTableSelect) {
+            disconnect(mouseTableSelect, &QAction::triggered, nullptr, nullptr);
+            connect(mouseTableSelect, &QAction::triggered, this, &Part::slotGlobalSetMouseTableSelect);
+        }
+
+        QAction *mouseMagnifier = ac->action(QStringLiteral("mouse_magnifier"));
+        if (mouseMagnifier) {
+            disconnect(mouseMagnifier, &QAction::triggered, nullptr, nullptr);
+            connect(mouseMagnifier, &QAction::triggered, this, &Part::slotGlobalSetMouseMagnifier);
         }
 
         // Sync Annotation Tool Actions
