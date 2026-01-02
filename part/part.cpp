@@ -672,10 +672,6 @@ Part::Part(QObject *parent, const QVariantList &args)
             disconnect(mouseMagnifier, &QAction::triggered, nullptr, nullptr);
             connect(mouseMagnifier, &QAction::triggered, this, &Part::slotGlobalSetMouseMagnifier);
         }
-
-
-
-
     });
 
     m_sidebar->setSidebarVisibility(false);
