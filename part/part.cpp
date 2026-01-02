@@ -673,39 +673,9 @@ Part::Part(QObject *parent, const QVariantList &args)
             connect(mouseMagnifier, &QAction::triggered, this, &Part::slotGlobalSetMouseMagnifier);
         }
 
-        // Sync Annotation Tool Actions
-        const QStringList annotationActions = {QStringLiteral("annotation_highlighter"),
-                                               QStringLiteral("annotation_underline"),
-                                               QStringLiteral("annotation_squiggle"),
-                                               QStringLiteral("annotation_strike_out"),
-                                               QStringLiteral("annotation_typewriter"),
-                                               QStringLiteral("annotation_inline_note"),
-                                               QStringLiteral("annotation_popup_note"),
-                                               QStringLiteral("annotation_freehand_line"),
-                                               QStringLiteral("annotation_arrow"),
-                                               QStringLiteral("annotation_straight_line"),
-                                               QStringLiteral("annotation_rectangle"),
-                                               QStringLiteral("annotation_ellipse"),
-                                               QStringLiteral("annotation_polygon")};
 
-        for (const QString &name : annotationActions) {
-            QAction *a = ac->action(name);
-            if (a) {
-                connect(a, &QAction::toggled, this, [this, a](bool checked) {
-                    // Start syncing only if the secondary view is active
-                    if (m_lastActiveView && m_lastActiveView != m_pageView) {
-                        KActionCollection *localAc = m_lastActiveView->findChild<KActionCollection *>(QStringLiteral("SecondaryActionCollection"));
-                        if (localAc) {
-                            QAction *localAction = localAc->action(a->objectName());
-                            // Trigger local action to switch internal state (cursor, engine)
-                            if (localAction && localAction->isChecked() != checked) {
-                                localAction->trigger();
-                            }
-                        }
-                    }
-                });
-            }
-        }
+
+
     });
 
     m_sidebar->setSidebarVisibility(false);
@@ -4034,23 +4004,19 @@ QAbstractItemModel *Part::annotationsModel() const
 void Part::slotSplitView()
 {
     if (m_pageViews.count() < 2) {
-        // Set split orientation based on flag
         m_splitter->setOrientation(m_splitHorizontal ? Qt::Horizontal : Qt::Vertical);
 
-        // enable independent mode for primary view
         m_pageViews.first()->setIndependentView(true);
 
-        // Create second view
         PageView *newInstance = new PageView(m_splitter, m_document);
-        newInstance->setIndependentView(true); // enable for new view
+        newInstance->setIndependentView(true);
         m_pageViews.append(newInstance);
 
         m_document->registerView(newInstance);
         m_document->addObserver(newInstance);
 
         // Setup actions for secondary view using dummy collection
-        // Dummy collection prevents duplicate action registration while
-        // allowing the view to initialize its internal action state
+
         KActionCollection *dummyAc = new KActionCollection(newInstance);
         dummyAc->setObjectName(QStringLiteral("SecondaryActionCollection"));
 
@@ -4066,7 +4032,6 @@ void Part::slotSplitView()
 
         m_splitter->addWidget(newInstance);
 
-        // Connect necessary signals
         connect(newInstance, &PageView::rightClick, this, &Part::slotShowMenu);
         connect(newInstance, &PageView::triggerSearch, this, [this](const QString &searchText) {
             m_findBar->startSearch(searchText);
@@ -4077,7 +4042,6 @@ void Part::slotSplitView()
         connect(m_findBar, &FindBar::forwardKeyPressEvent, newInstance, &PageView::externalKeyPressEvent);
         connect(m_findBar, &FindBar::onCloseButtonPressed, newInstance, QOverload<>::of(&PageView::setFocus));
     } else {
-        // Remove secondary view
         PageView *viewToRemove = m_pageViews.takeLast();
         m_document->removeObserver(viewToRemove);
         if (m_lastActiveView == viewToRemove) {
@@ -4085,11 +4049,9 @@ void Part::slotSplitView()
         }
         viewToRemove->deleteLater();
 
-        // Restore primary view state
         if (!m_pageViews.isEmpty()) {
             m_pageViews.first()->setIndependentView(false);
         }
-        // Reset splitter
         m_splitter->setOrientation(Qt::Horizontal);
     }
 }
@@ -4103,7 +4065,6 @@ void Part::slotFocusChanged(QWidget *, QWidget *now)
     for (PageView *view : std::as_const(m_pageViews)) {
         if (view == now || view->isAncestorOf(now)) {
             m_lastActiveView = view;
-            fprintf(stderr, "Focus changed to view: %p (primary: %p)\n", (void *)view, (void *)m_pageView.data());
             break;
         }
     }
@@ -4111,7 +4072,6 @@ void Part::slotFocusChanged(QWidget *, QWidget *now)
 
 void Part::slotGlobalZoomIn()
 {
-    fprintf(stderr, "slotGlobalZoomIn called, m_lastActiveView: %p\n", (void *)m_lastActiveView);
     if (m_lastActiveView) {
         QMetaObject::invokeMethod(m_lastActiveView, "slotZoomIn");
     }
@@ -4183,7 +4143,6 @@ void Part::slotToggleSplitOrientation()
 
 void Part::slotOpenAnnotationWindow(Okular::Annotation *annotation, int pageNumber)
 {
-    fprintf(stderr, "slotOpenAnnotationWindow called for page %d, m_lastActiveView: %p\n", pageNumber, (void *)m_lastActiveView);
     if (m_lastActiveView) {
         m_lastActiveView->openAnnotationWindow(annotation, pageNumber);
     }
