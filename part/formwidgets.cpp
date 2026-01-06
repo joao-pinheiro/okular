@@ -247,6 +247,11 @@ void FormWidgetsController::slotFormButtonsChangedByUndoRedo(int pageNumber, con
     }
 }
 
+void FormWidgetsController::resetAllForms() 
+{
+    Q_EMIT refreshAllFormWidgets();
+}
+
 Okular::Document *FormWidgetsController::document() const
 {
     return m_doc;
@@ -413,6 +418,11 @@ PushButtonEdit::PushButtonEdit(Okular::FormFieldButton *button, PageView *pageVi
     setCursor(Qt::ArrowCursor);
 }
 
+void PushButtonEdit::resetValue()
+{
+    // Push buttons don't have state to reset
+}
+
 CheckBoxEdit::CheckBoxEdit(Okular::FormFieldButton *button, PageView *pageView)
     : QCheckBox(pageView->viewport())
     , FormWidgetIface(this, button)
@@ -450,6 +460,15 @@ void CheckBoxEdit::slotRefresh(Okular::FormField *form)
     if (oldState != newState) {
         setChecked(button->state());
         doActivateAction();
+    }
+}
+
+void CheckBoxEdit::resetValue()
+{
+    Okular::FormFieldButton *button = static_cast<Okular::FormFieldButton *>(m_ff);
+    // Clear the checkbox on reset
+    if (button->state()) {
+        m_controller->document()->editFormButtons(pageItem()->pageNumber(), {button}, {false});
     }
 }
 
@@ -508,6 +527,15 @@ void RadioButtonEdit::slotRefresh(Okular::FormField *form)
         if (form->activationAction()) {
             m_controller->signalAction(form->activationAction());
         }
+    }
+}
+
+void RadioButtonEdit::resetValue()
+{
+    Okular::FormFieldButton *button = static_cast<Okular::FormFieldButton *>(m_ff);
+    // Clear all radio buttons on reset
+    if (button->state()) {
+        m_controller->document()->editFormButtons(pageItem()->pageNumber(), {button}, {false});
     }
 }
 
@@ -704,6 +732,11 @@ void FormLineEdit::slotRefresh(Okular::FormField *form)
     setText(text->text());
 }
 
+void FormLineEdit::resetValue()
+{
+    setText(QString());
+}
+
 TextAreaEdit::TextAreaEdit(Okular::FormFieldText *text, PageView *pageView)
     : KTextEdit(pageView->viewport())
     , FormWidgetIface(this, text)
@@ -862,6 +895,11 @@ void TextAreaEdit::slotRefresh(Okular::FormField *form)
     setPlainText(text->text());
 }
 
+void TextAreaEdit::resetValue()
+{
+    setPlainText(QString());
+}
+
 FileEdit::FileEdit(Okular::FormFieldText *text, PageView *pageView)
     : KUrlRequester(pageView->viewport())
     , FormWidgetIface(this, text)
@@ -973,6 +1011,11 @@ void FileEdit::slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormField
     setFocus();
 }
 
+void FileEdit::resetValue()
+{
+    lineEdit()->clear();
+}
+
 ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     : QListWidget(pageView->viewport())
     , FormWidgetIface(this, choice)
@@ -1060,6 +1103,11 @@ void ListEdit::slotRefresh(Okular::FormField *form)
         }
     }
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
+}
+
+void ListEdit::resetValue()
+{
+    clearSelection();
 }
 
 ComboEdit::ComboEdit(Okular::FormFieldChoice *choice, PageView *pageView)
@@ -1268,6 +1316,12 @@ void ComboEdit::slotRefresh(Okular::FormField *form)
     connect(this, &QComboBox::editTextChanged, this, &ComboEdit::slotValueChanged);
 }
 
+void ComboEdit::resetValue()
+{
+    setCurrentIndex(-1);
+    lineEdit()->clear();
+}
+
 SignatureEdit::SignatureEdit(Okular::FormFieldSignature *signature, PageView *pageView)
     : QAbstractButton(pageView->viewport())
     , FormWidgetIface(this, signature)
@@ -1395,6 +1449,11 @@ void SignatureEdit::signUnsignedSignature()
     const Okular::FormFieldSignature *formSignature = static_cast<Okular::FormFieldSignature *>(formField());
     PageView *pageView = static_cast<PageView *>(parent()->parent());
     SignaturePartUtils::signUnsignedSignature(formSignature, pageView, pageView->document());
+}
+
+void SignatureEdit::resetValue()
+{
+    // Signature fields cannot be reset
 }
 
 // Code for additional action handling.

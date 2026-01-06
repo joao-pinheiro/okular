@@ -331,6 +331,7 @@ private Q_SLOTS:
     void slotTrimMarginsToggled(bool);
     void slotTrimToSelectionToggled(bool);
     void slotToggleForms();
+    void slotResetForms();
     void slotRefreshPage();
 #if HAVE_SPEECH
     void slotSpeakDocument();

@@ -220,6 +220,13 @@ public:
      */
     void commitFormattedValue(const QString &value);
 
+    /**
+     * The default value of this form field.
+     *
+     * @since 24.12
+     */
+    QString defaultValue() const;
+
 protected:
     /// @cond PRIVATE
     explicit FormField(FormFieldPrivate &dd);

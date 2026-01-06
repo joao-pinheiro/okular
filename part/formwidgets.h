@@ -70,6 +70,7 @@ public:
     bool canRedo();
 
     Okular::Document *document() const;
+    void resetAllForms();
 
     static bool shouldFormWidgetBeShown(Okular::FormField *form);
 
@@ -98,6 +99,7 @@ Q_SIGNALS:
     void mouseAction(Okular::Action *action, Okular::FormField *form, Okular::Document::MouseEventType fieldMouseEventType);
 
     void refreshFormWidget(Okular::FormField *form);
+    void refreshAllFormWidgets();
 
 private Q_SLOTS:
     void slotButtonClicked(QAbstractButton *button);
@@ -143,6 +145,7 @@ public:
     Okular::FormField *formField() const;
 
     virtual void setFormWidgetsController(FormWidgetsController *controller);
+    virtual void resetValue() = 0;
 
 protected:
     virtual void slotRefresh(Okular::FormField *form);
@@ -170,6 +173,7 @@ class PushButtonEdit : public QPushButton, public FormWidgetIface
 
 public:
     explicit PushButtonEdit(Okular::FormFieldButton *button, PageView *pageView);
+    void resetValue() override;
 
     DECLARE_ADDITIONAL_ACTIONS
 };
@@ -183,6 +187,7 @@ public:
 
     // reimplemented from FormWidgetIface
     void setFormWidgetsController(FormWidgetsController *controller) override;
+    void resetValue() override;
 
     void doActivateAction();
 
@@ -202,6 +207,7 @@ public:
 
     // reimplemented from FormWidgetIface
     void setFormWidgetsController(FormWidgetsController *controller) override;
+    void resetValue() override;
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
@@ -219,6 +225,7 @@ public:
     void setFormWidgetsController(FormWidgetsController *controller) override;
     bool event(QEvent *e) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void resetValue() override;
 
 public Q_SLOTS:
     void slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormFieldText *textForm, const QString &contents, int cursorPos, int anchorPos);
@@ -244,6 +251,7 @@ public:
     ~TextAreaEdit() override;
     void setFormWidgetsController(FormWidgetsController *controller) override;
     bool event(QEvent *e) override;
+    void resetValue() override;
 
 public Q_SLOTS:
     void slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormFieldText *textForm, const QString &contents, int cursorPos, int anchorPos);
@@ -269,6 +277,7 @@ class FileEdit : public KUrlRequester, public FormWidgetIface
 public:
     explicit FileEdit(Okular::FormFieldText *text, PageView *pageView);
     void setFormWidgetsController(FormWidgetsController *controller) override;
+    void resetValue() override;
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -290,6 +299,7 @@ class ListEdit : public QListWidget, public FormWidgetIface
 public:
     explicit ListEdit(Okular::FormFieldChoice *choice, PageView *pageView);
     void setFormWidgetsController(FormWidgetsController *controller) override;
+    void resetValue() override;
 
 private Q_SLOTS:
     void slotSelectionChanged();
@@ -309,6 +319,7 @@ public:
     void setFormWidgetsController(FormWidgetsController *controller) override;
     bool event(QEvent *e) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void resetValue() override;
 
 private Q_SLOTS:
     void slotValueChanged();
@@ -336,6 +347,7 @@ public:
     // color will change and borders will remain otherwise visibility of this widget will change.
     // During the change all interactions will be disabled.
     void setDummyMode(bool set);
+    void resetValue() override;
 
 protected:
     bool event(QEvent *e) override;

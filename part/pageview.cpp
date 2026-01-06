@@ -260,6 +260,7 @@ public:
     KToggleAction *aViewContinuous = nullptr;
     QAction *aPrevAction = nullptr;
     KToggleAction *aToggleForms = nullptr;
+    QAction *aResetForms = nullptr;
     QAction *aSpeakDoc = nullptr;
     QAction *aSpeakDocFromPage = nullptr;
     QAction *aSpeakPage = nullptr;
@@ -776,6 +777,11 @@ void PageView::setupActions(KActionCollection *ac)
     connect(d->aToggleForms, &QAction::toggled, this, &PageView::slotToggleForms);
     d->aToggleForms->setEnabled(false);
     toggleFormWidgets(false);
+
+    d->aResetForms = new QAction(i18n("Reset Forms"), this);
+    ac->addAction(QStringLiteral("view_reset_forms"), d->aResetForms);
+    connect(d->aResetForms, &QAction::triggered, this, &PageView::slotResetForms);
+    d->aResetForms->setEnabled(false);
 
     // Setup undo and redo actions
     QAction *kundo = KStandardAction::create(KStandardAction::Undo, d->document, SLOT(undo()), ac);
@@ -1343,6 +1349,11 @@ void PageView::updateActionState(bool haspages, bool hasformwidgets)
     if (d->aToggleForms) { // may be null if dummy mode is on
         d->aToggleForms->setEnabled(haspages && hasformwidgets);
     }
+
+    if (d->aResetForms) {
+        d->aResetForms->setEnabled(haspages && hasformwidgets);
+    }
+
     bool allowAnnotations = d->document->isAllowed(Okular::AllowNotes);
     if (d->annotator) {
         bool allowTools = haspages && allowAnnotations;
@@ -5479,6 +5490,16 @@ void PageView::slotTrimToSelectionToggled(bool on)
 void PageView::slotToggleForms()
 {
     toggleFormWidgets(!d->m_formsVisible);
+}
+
+void PageView::slotResetForms() 
+{
+    for (PageViewItem *item : std::as_const(d->items)) {
+        const QSet<FormWidgetIface *> widgets = item->formWidgets();
+        for (FormWidgetIface *widget : widgets) {
+            widget->resetValue();
+        }
+    }
 }
 
 void PageView::slotFormChanged(int pageNumber)
