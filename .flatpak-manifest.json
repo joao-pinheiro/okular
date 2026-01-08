@@ -37,11 +37,6 @@
     "modules": [
         {
             "name": "gnustep-make",
-            "buildsystem": "simple",
-            "build-commands": [
-                "./configure --prefix=/app",
-                "make -j $FLATPAK_BUILDER_N_JOBS install"
-            ],
             "sources": [
                 {
                     "type": "archive",
@@ -58,12 +53,6 @@
         },
         {
             "name": "gnustep",
-            "buildsystem": "simple",
-            "build-commands": [
-                "./configure --prefix=/app",
-                "make -j $FLATPAK_BUILDER_N_JOBS install",
-                "ls /app/include"
-            ],
             "sources": [
                 {
                     "type": "archive",
@@ -75,6 +64,10 @@
                         "stable-only": true,
                         "url-template": "https://github.com/gnustep/libs-base/archive/refs/tags/base-$version.tar.gz"
                     }
+                },
+                {
+                    "type": "patch",
+                    "path": ".flatpak-patches/gnustep-base-fix_GCC15.patch"
                 }
             ]
         },
@@ -181,7 +174,8 @@
             "buildsystem": "cmake-ninja",
             "builddir": true,
             "config-opts": [
-                "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
             ],
             "sources": [
                 {
