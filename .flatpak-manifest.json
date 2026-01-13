@@ -221,7 +221,8 @@
         {
             "name": "ghostscript",
             "config-opts": [
-                "--disable-cups"
+                "--disable-cups",
+                "--without-tesseract"
             ],
             "make-args": [
                 "so"
@@ -247,10 +248,6 @@
                         "stable-only": true,
                         "url-template": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs${major}0$minor$patch/ghostscript-$version.tar.gz"
                     }
-                },
-                {
-                    "type": "patch",
-                    "path": "ghostscript-gcc15.patch"
                 }
             ]
         },
