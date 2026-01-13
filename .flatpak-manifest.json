@@ -37,11 +37,6 @@
     "modules": [
         {
             "name": "gnustep-make",
-            "buildsystem": "simple",
-            "build-commands": [
-                "./configure --prefix=/app",
-                "make -j $FLATPAK_BUILDER_N_JOBS install"
-            ],
             "sources": [
                 {
                     "type": "archive",
@@ -58,12 +53,6 @@
         },
         {
             "name": "gnustep",
-            "buildsystem": "simple",
-            "build-commands": [
-                "./configure --prefix=/app",
-                "make -j $FLATPAK_BUILDER_N_JOBS install",
-                "ls /app/include"
-            ],
             "sources": [
                 {
                     "type": "archive",
@@ -148,8 +137,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.bz2",
-                    "sha256": "85a33fa22621b4f314f8e85e1a5e2a9363d22e4f4992925d4bb3bc631b5a0c7a",
+                    "url": "https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.bz2",
+                    "sha256": "49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305",
                     "x-checker-data": {
                         "type": "anitya",
                         "project-id": 6845,
@@ -362,19 +351,6 @@
             ]
         },
         {
-            "name": "pcre",
-            "config-opts": [
-                "--enable-unicode-properties"
-            ],
-            "sources": [
-                {
-                    "type": "archive",
-                    "url": "http://prdownloads.sourceforge.net/pcre/pcre-8.45.tar.bz2",
-                    "sha256": "4dae6fdcd2bb0bb6c37b5f97c33c2be954da743985369cddac3546e3218bffb8"
-                }
-            ]
-        },
-        {
             "name": "libkexiv2",
             "buildsystem": "cmake-ninja",
             "builddir": true,
@@ -466,10 +442,6 @@
                 {
                     "type": "patch",
                     "path": ".flatpak-patches/vlc-ignore-time-for-cache.patch"
-                },
-                {
-                    "type": "patch",
-                    "path": ".flatpak-patches/vlc-taglib-2.patch"
                 }
             ]
         },

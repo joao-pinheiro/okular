@@ -228,6 +228,7 @@
       <li xml:lang="nl">Ondersteunde formaten: PDF, PS, Tiff, DjVu, Afbeeldingen, DVI, XPS, Fictionbook, Stripboek, Plucker, EPub, Fax</li>
       <li xml:lang="pl">Obsługiwane formaty: PDF, PS, TIFF, DjVu, DVI, XPS, FB2, Plucker, ePub,  a także różne formaty komisów, obrazów i faks.</li>
       <li xml:lang="pt-BR">Suporte aos formatos: PDF, PS, Tiff, DjVu, imagens, DVI, XPS, Fiction Book, Comic Book, Plucker, EPub, Fax</li>
+      <li xml:lang="ro">Formate susținute: PDF, PS, Tiff, DjVu, imagini, DVI, XPS, Fiction Book, Comic Book, Plucker, EPub, Fax</li>
       <li xml:lang="ru">Поддержка форматов PDF, PS, Tiff, DjVu, изображений, DVI, XPS, Fiction Book, Comic Book, Plucker, EPub, факсов;</li>
       <li xml:lang="sl">Podprti formati: PDF, PS, Tiff, DjVu, slike, DVI, XPS, Fiction Book, Comic Book, Plucker, EPub, Fax</li>
       <li xml:lang="sv">Format som stöds: PDF, PS, Tiff, DjVu, bilder, DVI, XPS, Fiction Book, Comic Book, Plucker, EPub, Fax</li>
@@ -404,6 +405,7 @@
   <content_rating type="oars-1.1"/>
   <launchable type="desktop-id">org.kde.okular.kirigami.desktop</launchable>
   <releases>
+    <release version="25.12.1" date="2026-01-08"/>
     <release version="25.12.0" date="2025-12-11"/>
     <release version="25.08.3" date="2025-11-06"/>
     <release version="25.08.2" date="2025-10-09"/>
