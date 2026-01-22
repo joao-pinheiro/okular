@@ -270,25 +270,25 @@ PresentationWidget::PresentationWidget(QWidget *parent, Okular::Document *doc, D
     if (Okular::Settings::laserPointer() == true) {
         QPixmap laserPixmap(32, 32);
         laserPixmap.fill(Qt::transparent);
-        
+
         QPainter p(&laserPixmap);
         p.setRenderHint(QPainter::Antialiasing, true);
-        
+
         // red dot
         p.setBrush(QColor(255, 0, 0));
         p.setPen(Qt::NoPen);
         p.drawEllipse(QPoint(16, 16), 4, 4);
-        
+
         // optional glow
         QColor glow(255, 0, 0, 120);
         p.setBrush(glow);
         p.drawEllipse(QPoint(16, 16), 7, 7);
-        
+
         p.end();
 
-	this->m_defaultPresentationCursor = QCursor(laserPixmap, 16, 16);
-        
-	setCursor(this->m_defaultPresentationCursor);
+        this->m_defaultPresentationCursor = QCursor(laserPixmap, 16, 16);
+
+        setCursor(this->m_defaultPresentationCursor);
     }
 
     // handle cursor appearance as specified in configuration
@@ -1666,7 +1666,7 @@ void PresentationWidget::slotChangeDrawingToolEngine(const QDomElement &element)
         delete m_drawingEngine;
         m_drawingEngine = nullptr;
         m_drawingRect = QRect();
-        setCursor(this->m_defaultPresentationCursor); //TODO Hidden cursor option
+        setCursor(this->m_defaultPresentationCursor); // TODO Hidden cursor option
     } else {
         m_drawingEngine = new SmoothPathEngine(element);
         setCursor(QCursor(QPixmap(QStringLiteral("pencil")), Qt::ArrowCursor));
@@ -1816,8 +1816,8 @@ void PresentationWidget::showTopBar(bool show)
         m_topBar->hide();
 
         if (Okular::Settings::slidesCursor() != Okular::Settings::EnumSlidesCursor::Hidden) {
-		setCursor(this->m_defaultPresentationCursor);
-	}
+            setCursor(this->m_defaultPresentationCursor);
+        }
 
         // Reenable autohide if need be when leaving the toolbar
         if (Okular::Settings::slidesCursor() == Okular::Settings::EnumSlidesCursor::HiddenDelay) {
