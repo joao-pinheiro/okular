@@ -34,6 +34,7 @@ Options:
     - '--enable=warning,style,performance'
     - '--library=okular-cppcheck.xml'
     - '--suppress-xml=cppcheck-suppressions.xml'
+  enable-lsan: True
   cppcheck-ignore-files:
     - autotests
     - core/synctex/synctex_parser.c
