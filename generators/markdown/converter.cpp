@@ -179,7 +179,7 @@ void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragm
                     internalLinks.insert(href.mid(1), textFragment);
                 } else {
                     auto action = std::make_unique<Okular::BrowseAction>(QUrl(textCharFormat.anchorHref()));
-                    Q_EMIT addAction(action, textFragment.position(), textFragment.position() + textFragment.length());
+                    Q_EMIT addAction(action.get(), textFragment.position(), textFragment.position() + textFragment.length());
                 }
                 const QStringList anchorNames = textCharFormat.anchorNames();
                 for (const QString &anchorName : anchorNames) {
