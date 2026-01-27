@@ -178,10 +178,9 @@ void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragm
                 if (href.startsWith(QLatin1Char('#'))) { // It's an internal link, store it and we'll resolve it at the end
                     internalLinks.insert(href.mid(1), textFragment);
                 } else {
-                    Okular::BrowseAction *action = new Okular::BrowseAction(QUrl(textCharFormat.anchorHref()));
+                    auto action = std::make_unique<Okular::BrowseAction>(QUrl(textCharFormat.anchorHref()));
                     Q_EMIT addAction(action, textFragment.position(), textFragment.position() + textFragment.length());
                 }
-
                 const QStringList anchorNames = textCharFormat.anchorNames();
                 for (const QString &anchorName : anchorNames) {
                     documentAnchors.insert(anchorName, parent);
