@@ -279,7 +279,7 @@ PresentationWidget::PresentationWidget(QWidget *parent, Okular::Document *doc, D
         p.setPen(Qt::NoPen);
         p.drawEllipse(QPoint(16, 16), 4, 4);
 
-        // optional glow
+        // glow
         QColor glow(255, 0, 0, 120);
         p.setBrush(glow);
         p.drawEllipse(QPoint(16, 16), 7, 7);
