@@ -477,11 +477,27 @@ private:
 
     // Current value of maxRecentItems to detect value change, and inform shell
     int m_maxRecentItems;
+    
+    // Document history stacks
+    struct DocumentState {
+        QUrl url;
+        Okular::DocumentViewport viewport;
+    };
+
+    QList<DocumentState> m_documentBackStack;
+    QList<DocumentState> m_documentForwardStack;
+
+    QAction *m_backToPreviousDocument;
+    QAction *m_forwardToNextDocument;
+
+    QList<int> m_pageHistory;
 
 private Q_SLOTS:
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();
     void slotHandleActivatedSourceReference(const QString &absFileName, int line, int col, bool *handled);
+    void slotBackToPreviousDocument();
+    void slotForwardToNextDocument();
 };
 
 }

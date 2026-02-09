@@ -160,6 +160,8 @@ public Q_SLOTS:
 #endif
 
 Q_SIGNALS:
+    void backspacePressed();
+    void forwardPressed();
     void rightClick(const Okular::Page *, const QPoint);
     void mouseBackButtonClick();
     void mouseForwardButtonClick();

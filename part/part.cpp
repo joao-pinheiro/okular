@@ -496,6 +496,8 @@ Part::Part(QObject *parent, const QVariantList &args)
     rightContainer->setFocusProxy(m_pageView);
     QMetaObject::invokeMethod(m_pageView, "setFocus", Qt::QueuedConnection); // usability setting
     //    m_splitter->setFocusProxy(m_pageView);
+    connect(m_pageView.data(), &PageView::backspacePressed, this, &Part::slotBackToPreviousDocument);
+    connect(m_pageView.data(), &PageView::forwardPressed,   this, &Part::slotForwardToNextDocument);
     connect(m_pageView.data(), &PageView::rightClick, this, &Part::slotShowMenu);
     connect(m_pageView, &PageView::triggerSearch, this, [this](const QString &searchText) {
         m_findBar->startSearch(searchText);
@@ -977,6 +979,21 @@ void Part::setupActions()
     QAction *playPauseAction = new QAction(i18n("Play/Pause Presentation"), ac);
     ac->addAction(QStringLiteral("presentation_play_pause"), playPauseAction);
     playPauseAction->setEnabled(false);
+
+    // Document navigation actions
+    m_backToPreviousDocument = ac->addAction(QStringLiteral("back_to_previous_document"));
+    m_backToPreviousDocument->setText(i18n("Back to previous document"));
+    m_backToPreviousDocument->setIcon(QIcon::fromTheme(QStringLiteral("go-previous")));
+    m_backToPreviousDocument->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Left));
+    m_backToPreviousDocument->setEnabled(false);
+    connect(m_backToPreviousDocument, &QAction::triggered, this, &Part::slotBackToPreviousDocument);
+
+    m_forwardToNextDocument = ac->addAction(QStringLiteral("forward_to_next_document"));
+    m_forwardToNextDocument->setText(i18n("Forward to next document"));
+    m_forwardToNextDocument->setIcon(QIcon::fromTheme(QStringLiteral("go-next")));
+    m_forwardToNextDocument->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Right));
+    m_forwardToNextDocument->setEnabled(false);
+    connect(m_forwardToNextDocument, &QAction::triggered, this, &Part::slotForwardToNextDocument);
 }
 
 Part::~Part()
@@ -1022,6 +1039,9 @@ Part::~Part()
 #ifdef OKULAR_KEEP_FILE_OPEN
     delete m_keeper;
 #endif
+    // Clean up document navigation history stacks
+    m_documentBackStack.clear();
+    m_documentForwardStack.clear();
 }
 
 bool Part::openDocument(const QUrl &url, uint page)
@@ -1150,6 +1170,15 @@ void Part::openUrlFromDocument(const QUrl &url)
         return;
     }
 
+    // Make a snapshot of the current state **BEFORE** opening the new URL
+    DocumentState currentState;
+    bool hasState = m_document->isOpened();
+    if (hasState) {
+        currentState.url = m_document->currentDocument();
+        currentState.viewport = m_document->viewport();
+    }
+
+    // Open the new URL – first check if it exists
     if (url.isLocalFile()) {
         if (!QFile::exists(url.toLocalFile())) {
             KMessageBox::error(widget(), i18n("Could not open '%1'. File does not exist", url.toDisplayString()));
@@ -1166,7 +1195,63 @@ void Part::openUrlFromDocument(const QUrl &url)
 
     Q_EMIT m_bExtension->openUrlNotify();
     Q_EMIT m_bExtension->setLocationBarUrl(url.toDisplayString());
+
+    // Open the new URL
     openUrl(url);
+
+    // After opening, if successful, push the previous state onto the back stack
+    if (m_document->isOpened() && 
+    (m_documentBackStack.isEmpty() || m_documentBackStack.last().url != m_document->currentDocument())) {
+        if (hasState) {
+            m_documentBackStack.append(currentState);
+            m_documentForwardStack.clear();
+            updateViewActions();
+        }
+    }
+    
+}
+
+
+// Document navigation slots
+void Part::slotBackToPreviousDocument()
+{
+    if (m_documentBackStack.isEmpty()) {
+        return;
+    }
+
+    DocumentState prev = m_documentBackStack.takeLast();
+    m_documentForwardStack.prepend(DocumentState{m_document->currentDocument(), m_document->viewport()});
+
+    openUrl(prev.url);
+
+    // Delay setting the viewport to ensure the document is fully loaded
+    QTimer::singleShot(1000, this, [this, prev]() {
+        if (m_document->isOpened()) {
+            m_document->setViewport(prev.viewport);
+        }
+    });
+
+    updateViewActions();
+}
+
+void Part::slotForwardToNextDocument()
+{
+    if (m_documentForwardStack.isEmpty()) {
+        return;
+    }
+
+    DocumentState next = m_documentForwardStack.takeFirst();
+    m_documentBackStack.append(DocumentState{m_document->currentDocument(), m_document->viewport()});
+
+    openUrl(next.url);
+
+    QTimer::singleShot(1000, this, [this, next]() {
+        if (m_document->isOpened()) {
+            m_document->setViewport(next.viewport);
+        }
+    });
+
+    updateViewActions();
 }
 
 void Part::openUrlFromBookmarks(const QUrl &_url)
@@ -2000,6 +2085,7 @@ bool Part::closeUrl(bool promptToSave)
 
 bool Part::closeUrl()
 {
+    updateViewActions();
     return closeUrl(true);
 }
 
@@ -2174,6 +2260,8 @@ bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
 
 void Part::updateViewActions()
 {
+    m_backToPreviousDocument->setEnabled(!m_documentBackStack.isEmpty());
+    m_forwardToNextDocument->setEnabled(!m_documentForwardStack.isEmpty());
     bool opened = m_document->pages() > 0;
     if (opened) {
         m_gotoPage->setEnabled(m_document->pages() > 1);

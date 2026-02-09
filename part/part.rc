@@ -61,6 +61,9 @@
     <Action name="go_document_back"/>
     <Action name="go_document_forward" />
     <Separator/>
+    <Action name="back_to_previous_document"/>
+    <Action name="forward_to_next_document"/>
+    <Separator/>
     <Action name="go_goto_page"/>
   </Menu>
   <Menu name="bookmarks"><text>&amp;Bookmarks</text>
