@@ -478,6 +478,10 @@ private:
     // Current value of maxRecentItems to detect value change, and inform shell
     int m_maxRecentItems;
 
+    QList<int> m_pageHistory;
+    int m_currentHistoryIndex;
+    static const int MaxPageHistory = 10;
+
 private Q_SLOTS:
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();

@@ -52,6 +52,12 @@
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QWidgetAction>
+#include <QIcon>
+#include <QPixmap>
+#include <QPainter>
+#include <KWindowSystem>
+#include <QListWidget>
+#include <QListWidgetItem>
 
 #include <KAboutPluginDialog>
 #include <KActionCollection>
@@ -2348,48 +2354,105 @@ void Part::slotHideFindBar()
     }
 }
 
-// BEGIN go to page dialog
+// BEGIN go to page dialog with history and bookmarks
 class GotoPageDialog : public QDialog
 {
     Q_OBJECT
-
 public:
-    GotoPageDialog(QWidget *p, int current, int max)
+    GotoPageDialog(QWidget *p, int current, int max, const QList<int>& history, int historyIndex, Okular::Document *document)
         : QDialog(p)
+        , m_document(document)
     {
         setWindowTitle(i18n("Go to Page"));
-        buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-        connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
-        connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
         QVBoxLayout *topLayout = new QVBoxLayout(this);
         topLayout->setContentsMargins(6, 6, 6, 6);
-        QHBoxLayout *midLayout = new QHBoxLayout();
+
+        // Page input
+        QHBoxLayout *inputLayout = new QHBoxLayout();
+        QLabel *label = new QLabel(i18n("&Page:"), this);
         spinbox = new QSpinBox(this);
         spinbox->setRange(1, max);
         spinbox->setValue(current);
         spinbox->setFocus();
+        label->setBuddy(spinbox);
 
         slider = new QSlider(Qt::Horizontal, this);
         slider->setRange(1, max);
         slider->setValue(current);
-        slider->setSingleStep(1);
-        slider->setTickPosition(QSlider::TicksBelow);
-        slider->setTickInterval(max / 10);
-
         connect(slider, &QSlider::valueChanged, spinbox, &QSpinBox::setValue);
-        connect(spinbox, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), slider, &QSlider::setValue);
+        connect(spinbox, QOverload<int>::of(&QSpinBox::valueChanged), slider, &QSlider::setValue);
 
-        QLabel *label = new QLabel(i18n("&Page:"), this);
-        label->setBuddy(spinbox);
-        topLayout->addWidget(label);
-        topLayout->addLayout(midLayout);
-        midLayout->addWidget(slider);
-        midLayout->addWidget(spinbox);
+        inputLayout->addWidget(label);
+        inputLayout->addWidget(spinbox);
+        inputLayout->addWidget(slider);
+        topLayout->addLayout(inputLayout);
 
-        // A little bit extra space
+        // History of visited pages
+        if (!history.isEmpty()) {
+            QLabel *historyLabel = new QLabel(i18n("<b>Recently visited pages:</b>"), this);
+            historyLabel->setStyleSheet(QStringLiteral("margin-top: 15px;"));
+            topLayout->addWidget(historyLabel);
+
+            QListWidget *historyList = new QListWidget(this);
+            historyList->setMaximumHeight(120);
+            historyList->setSelectionMode(QAbstractItemView::SingleSelection);
+
+            for (int i = history.size() - 1; i >= 0; --i) {
+                int page = history.at(i);
+                QString text = i18n("Page %1", page);
+                if (i == historyIndex) {
+                    text += i18n(" (current)");
+                }
+                QListWidgetItem *item = new QListWidgetItem(text, historyList);
+                item->setData(Qt::UserRole, page);
+                if (page == current) {
+                    historyList->setCurrentItem(item);
+                }
+            }
+
+            connect(historyList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+                spinbox->setValue(item->data(Qt::UserRole).toInt());
+            });
+
+            topLayout->addWidget(historyList);
+        }
+
+        // Bookmarks
+        const QList<KBookmark> bookmarks = m_document->bookmarkManager()->bookmarks(m_document->currentDocument());
+        if (!bookmarks.isEmpty()) {
+            QLabel *bookmarkLabel = new QLabel(i18n("<b>Bookmarks:</b>"), this);
+            bookmarkLabel->setStyleSheet(QStringLiteral("margin-top: 15px;"));
+            topLayout->addWidget(bookmarkLabel);
+
+            QListWidget *bookmarkList = new QListWidget(this);
+            bookmarkList->setMaximumHeight(150);
+            bookmarkList->setSelectionMode(QAbstractItemView::SingleSelection);
+
+            for (const KBookmark &bm : bookmarks) {
+                Okular::DocumentViewport vp(bm.url().fragment(QUrl::FullyDecoded));
+                if (vp.isValid()) {
+                    QString title = bm.fullText();
+                    if (title.isEmpty()) title = i18n("Bookmark on page %1", vp.pageNumber + 1);
+                    QListWidgetItem *item = new QListWidgetItem(title, bookmarkList);
+                    item->setData(Qt::UserRole, vp.pageNumber + 1);
+                    item->setIcon(QIcon::fromTheme(QStringLiteral("bookmarks")));
+                }
+            }
+
+            connect(bookmarkList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+                spinbox->setValue(item->data(Qt::UserRole).toInt());
+            });
+
+            topLayout->addWidget(bookmarkList);
+        }
+
         topLayout->addStretch(10);
+
+        QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+        connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+        connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
         topLayout->addWidget(buttonBox);
+
         spinbox->setFocus();
     }
 
@@ -2398,18 +2461,41 @@ public:
         return spinbox->value();
     }
 
-protected:
+private:
     QSpinBox *spinbox;
     QSlider *slider;
-    QDialogButtonBox *buttonBox;
+    Okular::Document *m_document;
 };
-// END go to page dialog
+// END go to page dialog with history and bookmarks
 
 void Part::slotGoToPage()
 {
-    GotoPageDialog pageDialog(m_pageView, m_document->currentPage() + 1, m_document->pages());
-    if (pageDialog.exec() == QDialog::Accepted) {
-        m_document->setViewportPage(pageDialog.getPage() - 1, nullptr, true);
+    int current = m_document->currentPage() + 1;
+    int max = m_document->pages();
+
+    GotoPageDialog dlg(widget(), current, max, m_pageHistory, m_currentHistoryIndex, m_document);
+    if (dlg.exec() == QDialog::Accepted) {
+        int page = dlg.getPage();
+        if (page >= 1 && page <= max) {
+            // Set the page
+            m_document->setViewportPage(page - 1);
+
+            // Append to history
+            if (m_currentHistoryIndex >= 0 && m_currentHistoryIndex < m_pageHistory.size() - 1) {
+                // Clear forward history
+                m_pageHistory = m_pageHistory.mid(0, m_currentHistoryIndex + 1);
+            }
+
+            // Append the new page
+            m_pageHistory.append(page);
+            m_currentHistoryIndex = m_pageHistory.size() - 1;
+
+            // Limit history size
+            if (m_pageHistory.size() > MaxPageHistory) {
+                m_pageHistory.removeFirst();
+                m_currentHistoryIndex--;
+            }
+        }
     }
 }
 
