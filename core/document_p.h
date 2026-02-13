@@ -333,6 +333,14 @@ public:
 
     // overrides the editor command (for example with a command from the command line)
     QString editorCommandOverride;
+
+     // Accessibility
+    // see above for currentPage(), page() and pages
+        // which are used for navigating the text cursor
+    int currentOffset = 0;
+    int anchorTextCursor = -1;
+
+
 };
 
 class DocumentInfoPrivate

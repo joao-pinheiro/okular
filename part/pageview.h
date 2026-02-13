@@ -1,4 +1,4 @@
-/*
+/**
     SPDX-FileCopyrightText: 2004 Enrico Ros <eros.kde@email.it>
     SPDX-FileCopyrightText: 2004 Albert Astals Cid <aacid@kde.org>
 
@@ -24,6 +24,7 @@
 #include "core/observer.h"
 #include "core/view.h"
 #include "pageviewutils.h"
+#include <QAccessibleTextInterface>
 #include <QAbstractScrollArea>
 #include <QList>
 
@@ -136,6 +137,14 @@ public:
 
     void updateCursor();
 
+    // functions for caret browsing
+// most of the heavy lifting done in Document, Page and TextPage
+// see also slotCaretActionToggled, slotUpdateCaretModeAction, slotCaretModeToggled and chunks in keyPressEvent.
+// the actions are in PageViewPrivate but configured in this class
+    
+    void updateTextCursor( int page = -1, bool withSelection = false);
+void unsetTextSelection() const;
+
     void highlightSignatureFormWidget(const Okular::FormFieldSignature *form);
 
     void showNoSigningCertificatesDialog(bool nonDateValidCerts);
@@ -205,6 +214,12 @@ protected:
     void scrollContentsBy(int dx, int dy) override;
 
 private:
+    friend class AccessiblePageView;
+
+    // Geometry bounds of the viewport for annotation windows, excludes scrollbars
+    const QRect &viewportBoundsForAnnotationWindows();
+    // Notify all annotation windows of the new viewport geometry, so they could reposition themselves
+    void notifyAnnotationWindowsAboutViewportBoundsChange();
     // draw background and items on the opened qpainter
     void drawDocumentOnPainter(const QRect contentsRect, QPainter *p);
     // update item width and height using current zoom parameters
@@ -314,6 +329,11 @@ private Q_SLOTS:
     void slotContinuousToggled();
     void slotReadingDirectionToggled(bool leftToRight);
     void slotUpdateReadingDirectionAction();
+
+    // slots for caret mode / accessibility
+    void slotCaretModeToggled(bool cMode);
+    void slotUpdateCaretModeAction();
+
     void slotSetMouseNormal();
     void slotSetMouseZoom();
     void slotSetMouseMagnifier();

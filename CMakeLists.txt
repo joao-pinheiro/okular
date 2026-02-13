@@ -544,6 +544,7 @@ if(BUILD_DESKTOP)
     part/pageviewannotator.cpp
     part/pageviewmouseannotation.cpp
     part/pageview.cpp
+    part/accessiblepageview.cpp
     part/magnifierview.cpp
     part/pageviewutils.cpp
     part/presentationsearchbar.cpp

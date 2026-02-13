@@ -902,8 +902,171 @@ QString TextPage::text(const RegularAreaRect *area, TextAreaInclusionBehaviour b
     return ret;
 }
 
+QString TextPage::caretText() const
+{
+   QString t = text();
+    if (!t.endsWith(QLatin1Char('\n'))) {
+        t.append( QLatin1Char('\n'));
+    }
+    return t;
+}
+
+std::unique_ptr<NormalizedRect> TextPage::charBoxAtOffset( const int offset, bool rtl ) const
+{
+    TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    int searchOffset = 0;
+    for (; it != itEnd; ++it) {
+        int wLength = it->text().size();
+        if ((offset >= searchOffset)  && (offset < searchOffset+ wLength)) {
+            if (wLength == 1) {
+                NormalizedRect r = it->area();
+                return std::make_unique<NormalizedRect>(r); //(it->area());
+            } else {
+                // this rather horrifically divides the TextEntity!
+                // something more sophisticated surely must be done 
+                if (it->text().endsWith(QLatin1Char('\n'))) {
+                    if (offset == searchOffset + wLength -1 ) {
+                         return std::make_unique<NormalizedRect>(it->area().right, it->area().top,it->area().right+0.005,it->area().bottom);
+                    } else {
+                         --wLength;
+                    }
+                } 
+                int charOffset = offset - searchOffset;
+                double x1 = it->area().left + charOffset * it->area().width() / wLength;
+                double x2 = it->area().left +  (charOffset + 1 ) * it->area().width()/ wLength;
+                double y1 = it->area().top;
+                double y2 = it->area().bottom; 
+                return std::make_unique<NormalizedRect>( x1, y1, x2, y2 );
+            }
+        } else {
+                searchOffset += wLength;
+        }  
+    }
+    //The text has been modified for caret browsing to ensure there is a carriage return at the end
+    --it;
+    if (!it->text().endsWith(QLatin1Char('\n'))){
+        if (rtl) {
+            return std::make_unique<NormalizedRect>(it->area().left-0.01, it->area().top, it->area().left-0.05,it->area().bottom);
+        } else {
+            return std::make_unique<NormalizedRect>(it->area().left+0.005, it->area().top,it->area().left+0.01, it->area().bottom);
+        }
+    }
+    return nullptr;
+}
+
+int TextPage::offsetAtPoint(const NormalizedPoint nP ) const
+{
+     TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    int foundOffset = -1;
+    int searchOffset = 0;
+    while ((foundOffset < 0) && (it != itEnd)){
+         if (it->area().contains(nP.x, nP.y)) {
+            if (it->text().size() == 1 ){
+                foundOffset =searchOffset;
+            } else {
+                double xOff = it->area().right - nP.x;
+                for (int i=0; i<it->text().size(); i++) {
+                    QRect r( it->area().left + xOff*i, it->area().top, it->area().left+ xOff *(i+1),it->area().bottom);
+                    if (r.contains(nP.x, nP.y )) {
+                        foundOffset = searchOffset + i; 
+                    }
+                }
+            }
+        }
+        searchOffset += it->text().size();
+        ++it;
+    }
+    return foundOffset;
+}
+
+
+int TextPage::wordStart( int offset ) const
+{
+     TextEntity::List::ConstIterator itBegin = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    TextEntity::List::ConstIterator it = itBegin;
+    int foundOffset = -1;
+    int searchOffset = 0;
+        bool wordStartFound = false;
+    while ((foundOffset < 0) && (it != itEnd)){
+        if ((offset >= searchOffset) && (offset < (searchOffset + it->text().size()))){
+            // we have found the right word
+            foundOffset = searchOffset;
+            while (!wordStartFound && (it!=itBegin)) {
+                //going back to find the start of the word
+                --it;
+                if (it->text().right(1).at(0).isSpace() ) {
+                    wordStartFound = true;
+                } else {
+                     foundOffset -= it->text().size();  
+                }            
+            } // end of backtracking
+
+        } // end of found condition
+searchOffset += it->text().size();
+        ++it;
+    }
+    return foundOffset;
+}
+
+QString TextPage::wordAtOffset( int offset ) const
+{
+
+    int i = 0;
+    QString s;
+    bool stringFinished = false;
+     TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    while ((it !=itEnd) && !stringFinished){
+        if (i == offset ){
+            // found the start of our string
+            while (( it != itEnd) && !stringFinished) {
+                s.append( it->text());
+                if ( s.right(1).at(0).isSpace()) {
+                    stringFinished = true;
+                } else {
+                    ++it;
+                }
+            } //end of look-ahead to end of string
+        } //end of f found condition
+        i+=it->text().size();
+        ++it;    
+    }
+    return s;
+}
+
+std::unique_ptr<RegularAreaRect> TextPage::selectArea( int offset1, int offset2 ) const
+{
+    if ((offset1 < 0) || (offset2 < 0) || (offset1==offset2)){
+        return nullptr;
+    } 
+    //This assumes offset1 < offset2 (cf. the function in Page
+    // selecting up to offset2, so to the right of offset2 - 1
+    --offset2;
+    int i=0;
+    auto ret = std::make_unique<RegularAreaRect>();
+    TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    while ((it !=itEnd) && (i <= offset2)) {
+        int nChars = it->text().size();
+        if ((i >= offset1) && ((i + nChars - 1) <= offset2)) {
+            ret->appendShape( it->area());
+        } else if (((i + nChars) > offset1) || ((i + nChars - 1) > offset2)) {
+            // at beginning or end, boxes may need to be split
+            // singletons will be caught already
+            int divisor = it->text().endsWith(QLatin1Char('\n')) ? nChars - 1 : nChars;
+            double leftPos = (i < offset1) ? it->area().left + (offset1 - i) * it->area().width() / divisor : it->area().left;
+           double rightPos = ((i + nChars) > offset2 ) ? it->area().left + (1+offset2 - i ) * it->area().width() / divisor : it->area().right;
+            ret->appendShape(NormalizedRect(leftPos,it->area().top,rightPos,it->area().bottom));
+        }
+        i += nChars;
+        ++it;
+    }
+    // Note as this is only picking up the shapes, there is no problem having empty boxes for the \n
+    // similarly, if we run over the page, or want a notional final \n, there is no problem with stopping at this point
+    return ret;
+}
+
 static bool compareTinyTextEntityX(const WordWithCharacters &first, const WordWithCharacters &second)
 {
+    //ignoring any possible extra carriage returns at page end, given they are effectively zero-width.
     QRect firstArea = first.area().roundedGeometry(1000, 1000);
     QRect secondArea = second.area().roundedGeometry(1000, 1000);
 

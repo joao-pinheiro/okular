@@ -50,6 +50,9 @@
     </Menu>
     <Action name="view_trim_mode"/>
     <Separator/>
+    <Action name="caret_mode"/>
+    <Separator/>
+ 
     <Action name="view_toggle_forms"/>
   </Menu>
   <Menu name="go"><text>&amp;Go</text>
