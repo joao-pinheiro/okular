@@ -24,8 +24,8 @@
 #include "core/observer.h"
 #include "core/view.h"
 #include "pageviewutils.h"
-#include <QAccessibleTextInterface>
 #include <QAbstractScrollArea>
+#include <QAccessibleTextInterface>
 #include <QList>
 
 #include "signaturepartutils.h"
@@ -138,12 +138,12 @@ public:
     void updateCursor();
 
     // functions for caret browsing
-// most of the heavy lifting done in Document, Page and TextPage
-// see also slotCaretActionToggled, slotUpdateCaretModeAction, slotCaretModeToggled and chunks in keyPressEvent.
-// the actions are in PageViewPrivate but configured in this class
-    
-    void updateTextCursor( int page = -1, bool withSelection = false);
-void unsetTextSelection() const;
+    // most of the heavy lifting done in Document, Page and TextPage
+    // see also slotCaretActionToggled, slotUpdateCaretModeAction, slotCaretModeToggled and chunks in keyPressEvent.
+    // the actions are in PageViewPrivate but configured in this class
+
+    void updateTextCursor(int page = -1, bool withSelection = false);
+    void unsetTextSelection() const;
 
     void highlightSignatureFormWidget(const Okular::FormFieldSignature *form);
 

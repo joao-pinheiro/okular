@@ -132,19 +132,14 @@
 
 #include "accessiblepageview.h"
 
-
-QAccessibleInterface* pageViewFactory(const QString &classname, QObject *object)
+QAccessibleInterface *pageViewFactory(const QString &classname, QObject *object)
 {
     if (classname == QLatin1String("PageView") && object) {
         // We only create an accessible interface for PageView widgets
-        return new AccessiblePageView(qobject_cast<QWidget*>(object));
+        return new AccessiblePageView(qobject_cast<QWidget *>(object));
     }
     return nullptr;
 }
-
-
-
-
 
 #ifdef OKULAR_KEEP_FILE_OPEN
 class FileKeeper
@@ -495,7 +490,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 #endif
 
     // Install the PageView Accessibility Interface
-    QAccessible::installFactory( pageViewFactory); 
+    QAccessible::installFactory(pageViewFactory);
 
     m_pageView = new PageView(rightContainer, m_document);
     rightContainer->setFocusProxy(m_pageView);
@@ -2405,9 +2400,9 @@ protected:
 void Part::slotGoToPage()
 {
     GotoPageDialog pageDialog(m_pageView, m_document->currentPage() + 1, m_document->pages());
-    if (pageDialog.exec() == QDialog::Accepted)  {
+    if (pageDialog.exec() == QDialog::Accepted) {
         if (Okular::Settings::caretMode()) {
-            m_pageView->updateTextCursor(m_document->cursorToPage(pageDialog.getPage()-1));
+            m_pageView->updateTextCursor(m_document->cursorToPage(pageDialog.getPage() - 1));
         } else {
             m_document->setViewportPage(pageDialog.getPage() - 1, nullptr, true);
         }
@@ -2431,12 +2426,12 @@ void Part::slotNextPage()
 void Part::slotGotoFirst()
 {
     if (m_document->isOpened()) {
-        if (Okular::Settings::caretMode()){
-		m_pageView->updateTextCursor(m_document->cursorToDocumentStart());
+        if (Okular::Settings::caretMode()) {
+            m_pageView->updateTextCursor(m_document->cursorToDocumentStart());
         } else {
             m_document->setViewportPage(0, nullptr, true);
         }
-            m_beginningOfDocument->setEnabled(false);
+        m_beginningOfDocument->setEnabled(false);
     }
 }
 
@@ -2446,7 +2441,7 @@ void Part::slotGotoLast()
         if (Okular::Settings::caretMode()) {
             m_pageView->updateTextCursor(m_document->cursorToDocumentEnd());
         } else {
-         DocumentViewport endPage(m_document->pages() - 1);
+            DocumentViewport endPage(m_document->pages() - 1);
             endPage.rePos.enabled = true;
             endPage.rePos.normalizedX = 0;
             endPage.rePos.normalizedY = 1;
@@ -3428,7 +3423,6 @@ void Part::slotUpdateHamburgerMenu()
     // CARET BROWSING
     curatedViewMenu->addAction(findActionInKPartHierarchy(QStringLiteral("view_caret_mode")));
     curatedViewMenu->addSeparator();
- 
 
     curatedViewMenu->addAction(ac->action(QStringLiteral("view_toggle_forms")));
     m_hamburgerMenuAction->hideActionsOf(curatedViewMenu);

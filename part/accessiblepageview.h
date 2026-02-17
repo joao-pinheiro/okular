@@ -1,16 +1,15 @@
 
 #ifndef _OKULAR_ACCESSIBLEPAGEVIEW_H_
 #define _OKULAR_ACCESSIBLEPAGEVIEW_H_
-#include <QAccessible>
-#include <QAccessibleWidget>
-#include <QAccessibleTextInterface>
 #include "pageview.h"
+#include <QAccessible>
+#include <QAccessibleTextInterface>
+#include <QAccessibleWidget>
 
 class AccessiblePageView : public QAccessibleWidget, public QAccessibleTextInterface
 {
-
 public:
-    AccessiblePageView(QWidget *o, const QString& name = QString());
+    AccessiblePageView(QWidget *o, const QString &name = QString());
 
     QString text(QAccessible::Text t) const override;
     void setText(QAccessible::Text t, const QString &text) override;
@@ -26,12 +25,9 @@ public:
     int offsetAtPoint(const QPoint &point) const override;
     void selection(int selectionIndex, int *startOffset, int *endOffset) const override;
     QString text(int startOffset, int endOffset) const override;
-    QString textBeforeOffset (int offset, QAccessible::TextBoundaryType boundaryType,
-            int *startOffset, int *endOffset) const override;
-    QString textAfterOffset(int offset, QAccessible::TextBoundaryType boundaryType,
-            int *startOffset, int *endOffset) const override;
-    QString textAtOffset(int offset, QAccessible::TextBoundaryType boundaryType,
-            int *startOffset, int *endOffset) const override;
+    QString textBeforeOffset(int offset, QAccessible::TextBoundaryType boundaryType, int *startOffset, int *endOffset) const override;
+    QString textAfterOffset(int offset, QAccessible::TextBoundaryType boundaryType, int *startOffset, int *endOffset) const override;
+    QString textAtOffset(int offset, QAccessible::TextBoundaryType boundaryType, int *startOffset, int *endOffset) const override;
     void removeSelection(int selectionIndex) override;
     void setCursorPosition(int position) override;
     void setSelection(int selectionIndex, int startOffset, int endOffset) override;
@@ -40,8 +36,6 @@ public:
 
 protected:
     PageView *pageView() const;
-
-
 };
 
 #endif // AccessiblePageView

@@ -321,209 +321,198 @@ public:
      */
     uint currentPage() const;
 
-/* Wrap of currentPage() as int */
-int cPageNum() const;
+    /* Wrap of currentPage() as int */
+    int cPageNum() const;
 
-/* shorthand for selecting current Page */
-const Page *cPage() const;
-
+    /* shorthand for selecting current Page */
+    const Page *cPage() const;
 
     /**
      * Returns the number of pages of the document.
      */
     uint pages() const;
-/* 
- * returns the current offset of the document
- * cf. QAccessibleTextInterface 
-*/
-int offset() const;
+    /*
+     * returns the current offset of the document
+     * cf. QAccessibleTextInterface
+     */
+    int offset() const;
 
-/* 
- * sets the offset of the document with an integer
- * cf. QAccessibleTextInterface
- */
-int setOffset( int offset ) const;
+    /*
+     * sets the offset of the document with an integer
+     * cf. QAccessibleTextInterface
+     */
+    int setOffset(int offset) const;
 
+    /*/
+     * Syncs the doc cursor to the current page
+     */
+    void syncCursorToPage();
 
-/*/ 
-  * Syncs the doc cursor to the current page
- */
-void syncCursorToPage(); 
+    /*
+     *  The final offset position of the document
+     */
+    int end() const;
 
-/* 
-*  The final offset position of the document
-*/  
-int end() const;
+    /*
+     * returns the overall length of the document
+     * cf. QAccessibleTextInterface
+     */
+    int length() const;
 
+    /*
+     * Returns the complete text of the document
+     * Required by QAccessibleTextInterface
+     */
+    QString text() const;
 
+    /*
+     * Returns the text betweenn these two offsets (inclusive
+     * Required by QAccessibleTextInterface
+     */
+    QString textBetween(int offset1, int offset2) const;
 
-/*
- * returns the overall length of the document
- * cf. QAccessibleTextInterface
- */
-int length() const;
+    /*
+     * Sets the offset through page number, line number
+     * and character offset in the line; any excess offset is trimmed
+     */
+    void setOffsetInLine(const int p, int line, int charOffset) const;
 
-/*
- * Returns the complete text of the document 
- * Required by QAccessibleTextInterface
- */
- QString text() const;
+    /*
+     * This scrolls the cursor up by n lines
+     * If we go over the page end, it will go back max one page.
+     * This does nothing to the visuals (see PageView)
+     *it does not move the viewport.
+     * Note: this returns a Page number, to facilitate the PageView stuff
+     */
+    int cursorLinesUp(const int lines = 1) const;
 
-/*
- * Returns the text betweenn these two offsets (inclusive
- * Required by QAccessibleTextInterface
- */
-QString textBetween( int offset1, int offset2 ) const;
+    /*
+     * Scrolls down n lines (cf. cursorLinesUp)
+     */
+    int cursorLinesDown(const int lines = 1) const;
 
+    /*
+     * advances cursor; returns page number
+     */
+    int cursorForward() const;
 
-/* 
- * Sets the offset through page number, line number
-    * and character offset in the line; any excess offset is trimmed
-*/
-void setOffsetInLine( const int p, int line, int charOffset) const;
+    /*
+     * moves cursor one character back
+     *
+     */
+    int cursorBackward() const;
 
-/* 
- * This scrolls the cursor up by n lines
- * If we go over the page end, it will go back max one page.
-* This does nothing to the visuals (see PageView)
- *it does not move the viewport.
- * Note: this returns a Page number, to facilitate the PageView stuff
- */ 
-int cursorLinesUp( const int lines = 1) const;
- 
-/*
- * Scrolls down n lines (cf. cursorLinesUp)
- */ 
-int cursorLinesDown(const int lines = 1) const;
+    /*
+     * Gives the character at the offset position
+     */
+    QString charAtOffset(int offset) const;
 
-/*
- * advances cursor; returns page number 
-*/
-int cursorForward() const;
+    /*
+     * Gives the  word at a given offset
+     */
+    QString wordAtOffset(int offset) const;
 
-/*
- * moves cursor one character back
- * 
- */
-int cursorBackward() const;
+    /*
+     * Gives the text of the current line
+     */
+    QString lineAtOffset(int offset) const;
 
+    /*
+     * Gives the page for a given cursor offset
+     */
+    int pageAtOffset(int offset) const;
 
+    /*
+     * gives the opening of a line for a given offset
+     */
+    int lineStart(int offset) const;
 
-/*
- * Gives the character at the offset position
- */
-QString charAtOffset(int offset) const;
+    /*
+     * finds the start of the prev line (on same page)
+     */
+    int prevLineStart(int offset) const;
 
-/*
- * Gives the  word at a given offset
- */
-QString wordAtOffset( int offset ) const;
+    /*
+     * finds the start of the next line (same page)
+     */
+    int nextLineStart(int offset) const;
+    /*
+     * Gives the opening position  of a word at a given offset
+     */
+    int wordStart(int offset) const;
 
-/*
- * Gives the text of the current line
- */
-QString lineAtOffset( int offset ) const;
+    /*
+     * Gives the offset of the previous word
+     */
+    int prevWordStart(int offset) const;
 
-/*
- * Gives the page for a given cursor offset
- */
-int pageAtOffset( int offset ) const;
+    /*
+     * Gives offset of the next word
+     */
+    int nextWordStart(int offset) const;
 
-/*
- * gives the opening of a line for a given offset
- */
-int lineStart( int offset ) const;
+    /*
+     * Goes to previous word
+     */
+    int cursorToPrevWord() const;
 
-/*
- * finds the start of the prev line (on same page)
- */
-int prevLineStart( int offset ) const;
+    /*
+     * Moves cursor to the next word; returns page num
+     */
+    int cursorToNextWord() const;
 
-/*
- * finds the start of the next line (same page)
- */
-int nextLineStart( int offset ) const;
-/*
- * Gives the opening position  of a word at a given offset
- */
-int wordStart(int offset) const;
+    /*
+     * The equivalent of "Home"
+     * returns the current page number, for convenience
+     */
+    int cursorToLineStart() const;
 
-/*
- * Gives the offset of the previous word
- */ 
-int prevWordStart( int offset ) const;
+    /*
+     *  Moves to a line end (usually a \n
+     * returns the current page number, for convenience
+     */
+    int cursorToLineEnd() const;
 
-/*
- * Gives offset of the next word
- */
-int nextWordStart( int offset) const;
+    /* moves to first char in page */
+    void cursorToPageStart() const;
 
-/*
- * Goes to previous word
- */
-int cursorToPrevWord() const;
+    /* moves to final element on page, usually \ '\n' */
+    void cursorToPageEnd() const;
 
-/*
- * Moves cursor to the next word; returns page num
-*/
- int cursorToNextWord() const;
+    /* Moves to first char in document */
+    int cursorToDocumentStart() const;
 
+    /* Moves to the final element, usually \ \n */
+    int cursorToDocumentEnd() const;
 
-/*
- * The equivalent of "Home"
- * returns the current page number, for convenience
-*/
-int cursorToLineStart() const;
+    /*
+     *Moves the cursor to the top of a given page
+     */
+    int cursorToPage(const int p) const;
 
-/*
- *  Moves to a line end (usually a \n 
- * returns the current page number, for convenience
-*/
-int cursorToLineEnd() const;
+    /*
+     * sets the anchorTextCursor and currentOffset to any legal values
+     * This is for the QAccessibleTextInterface, rather than anything else
+     * returns the page number, so it can be chained with updateTextCursor
+     * calling updateTextCursor without the withSelection flag will cause the selection to be cleared.
+     */
+    int setTextSelection(int StartIndex, int endIndex) const;
 
-/* moves to first char in page */
-void cursorToPageStart() const;
+    /*
+     * returns the value of anchorTextCursor
+     * returns the value of anchorTextCursor
+     */
+    int anchorTextCursor() const;
 
-/* moves to final element on page, usually \ '\n' */
-void cursorToPageEnd() const;
+    /*
+     * sets the anchor for a selection, thereby creating a selection, or unsetting it (-1)
+     */
+    void setAnchorTextCursor(int anchor) const;
 
-/* Moves to first char in document */
-int cursorToDocumentStart() const;
-
-/* Moves to the final element, usually \ \n */
-int cursorToDocumentEnd() const;
- 
-/*
- *Moves the cursor to the top of a given page
- */
-int cursorToPage(const int p) const;
-
-
-/*
- * sets the anchorTextCursor and currentOffset to any legal values
- * This is for the QAccessibleTextInterface, rather than anything else
- * returns the page number, so it can be chained with updateTextCursor
- * calling updateTextCursor without the withSelection flag will cause the selection to be cleared.
- */
-int setTextSelection( int StartIndex, int endIndex) const;
-
-/*
- * returns the value of anchorTextCursor
- * returns the value of anchorTextCursor
- */
-int anchorTextCursor() const;
-
-
-/*
- * sets the anchor for a selection, thereby creating a selection, or unsetting it (-1)
- */
-void setAnchorTextCursor( int anchor) const;
-
-
-/*
- * returns the selected text on the basis of anchorTextCursor and currentOffset
- */
-QString selectedText() const;
+    /*
+     * returns the selected text on the basis of anchorTextCursor and currentOffset
+     */
+    QString selectedText() const;
 
     /**
      * Returns the url of the currently opened document.
@@ -1903,8 +1892,6 @@ public:
 
     /// @since 25.04
     void setLeftFontSize(double fontSize);
-
-
 
 private:
     NewSignatureDataPrivate *const d;

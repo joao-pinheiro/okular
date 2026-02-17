@@ -163,7 +163,7 @@ public:
 
     int m_start;
     int m_end;
-    QList<int> m_lineOffsets; 
+    QList<int> m_lineOffsets;
 
     PageTransition *m_transition;
     HighlightAreaRect *m_textSelections;

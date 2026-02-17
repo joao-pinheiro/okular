@@ -188,11 +188,11 @@ public:
      */
     std::unique_ptr<RegularAreaRect> wordAt(const NormalizedPoint &p) const;
 
-/*
- * wraps the text function to provide a more caret-browsing-friendly string
- * co-ordinates with charBoxAtPos which needs to work with the caret-friendly string 
- */
-QString caretText() const;
+    /*
+     * wraps the text function to provide a more caret-browsing-friendly string
+     * co-ordinates with charBoxAtPos which needs to work with the caret-friendly string
+     */
+    QString caretText() const;
 
     /**
      * Returns a rectangle for the character at
@@ -200,7 +200,7 @@ QString caretText() const;
 
      * Note that ownership of the returned area belongs to the caller.
      */
-    std::unique_ptr<NormalizedRect> charBoxAtOffset(const int offset, bool rtl  = false  ) const;
+    std::unique_ptr<NormalizedRect> charBoxAtOffset(const int offset, bool rtl = false) const;
 
     /**
      * Returns the area and text of the line at the given point
@@ -212,10 +212,10 @@ QString caretText() const;
      * Returns the rectangular area of the given @p selection.
      */
     std::unique_ptr<RegularAreaRect> textArea(const TextSelection &selection) const;
-int offsetAtPoint(const NormalizedPoint n) const;
-int wordStart( int offset) const;
-QString wordAtOffset( int offset ) const;
-std::unique_ptr<RegularAreaRect> selectArea( int offset1 = -1, int offset2 = -1) const;
+    int offsetAtPoint(const NormalizedPoint n) const;
+    int wordStart(int offset) const;
+    QString wordAtOffset(int offset) const;
+    std::unique_ptr<RegularAreaRect> selectArea(int offset1 = -1, int offset2 = -1) const;
 
 private:
     TextPagePrivate *const d;
