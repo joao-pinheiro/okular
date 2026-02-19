@@ -331,7 +331,7 @@ private Q_SLOTS:
     void slotUpdateReadingDirectionAction();
 
     // slots for caret mode / accessibility
-    void slotCaretModeToggled(bool cMode);
+    void slotCaretModeToggled(bool caretMode);
     void slotUpdateCaretModeAction();
 
     void slotSetMouseNormal();

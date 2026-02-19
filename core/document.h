@@ -375,7 +375,7 @@ public:
      * Sets the offset through page number, line number
      * and character offset in the line; any excess offset is trimmed
      */
-    void setOffsetInLine(const int p, int line, int charOffset) const;
+    void setOffsetInLine(const int pNum, int l, int cOff) const;
 
     /*
      * This scrolls the cursor up by n lines

@@ -31,8 +31,9 @@ QString AccessiblePageView::text(QAccessible::Text t) const
             str = pageView()->document()->text();
         }
     }
-    if (str.isEmpty())
+    if (str.isEmpty()) {
         str = QAccessibleWidget::text(t);
+    }
     // not sure if we need to do specific things for Name and Description
     // or leave the accessibleName placeholder defined in the PageView class
     return str;
@@ -58,8 +59,9 @@ QAccessible::State AccessiblePageView::state() const
 
 void *AccessiblePageView::interface_cast(QAccessible::InterfaceType t)
 {
-    if (t == QAccessible::TextInterface)
+    if (t == QAccessible::TextInterface) {
         return static_cast<QAccessibleTextInterface *>(this);
+    }
     return QAccessibleWidget::interface_cast(t);
 }
 

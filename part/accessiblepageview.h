@@ -9,7 +9,7 @@
 class AccessiblePageView : public QAccessibleWidget, public QAccessibleTextInterface
 {
 public:
-    AccessiblePageView(QWidget *o, const QString &name = QString());
+    explicit AccessiblePageView(QWidget *w, const QString &name = QString());
 
     QString text(QAccessible::Text t) const override;
     void setText(QAccessible::Text t, const QString &text) override;

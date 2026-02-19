@@ -224,7 +224,7 @@ public:
     /*
      * Returns a text offset at the normalised point or -1
      */
-    int offsetAtPoint( const NormalizedPoint &nP) const;
+    int offsetAtPoint(const NormalizedPoint &nP) const;
 
     /*
      * wraps text to make the output more convenient for caret browsing
@@ -269,7 +269,7 @@ public:
      * returns the text between two document offsets
      *  Note that the function converts to internal page offsets
      */
-    QString textBetween(int docOffset1, int docOfffset2) const;
+    QString textBetween(int docOffset1, int docOffset2) const;
 
     /*
      * Finds the opening position of a word that contains the given offset
