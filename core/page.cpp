@@ -1133,7 +1133,7 @@ std::unique_ptr<NormalizedRect> Page::charBoxAtOffset(const int docOffset, const
     }
 }
 
-int Page::offsetAtPoint(NormalizedPoint nP) const
+int Page::offsetAtPoint(const NormalizedPoint &nP) const
 {
     if (!hasTextPage()) {
         return -1;

@@ -212,7 +212,7 @@ public:
      * Returns the rectangular area of the given @p selection.
      */
     std::unique_ptr<RegularAreaRect> textArea(const TextSelection &selection) const;
-    int offsetAtPoint(const NormalizedPoint n) const;
+    int offsetAtPoint(const NormalizedPoint &n) const;
     int wordStart(int offset) const;
     QString wordAtOffset(int offset) const;
     std::unique_ptr<RegularAreaRect> selectArea(int offset1 = -1, int offset2 = -1) const;

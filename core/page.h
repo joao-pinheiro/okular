@@ -224,7 +224,7 @@ public:
     /*
      * Returns a text offset at the normalised point or -1
      */
-    int offsetAtPoint(NormalizedPoint nP) const;
+    int offsetAtPoint( const NormalizedPoint &nP) const;
 
     /*
      * wraps text to make the output more convenient for caret browsing

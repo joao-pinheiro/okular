@@ -954,7 +954,7 @@ std::unique_ptr<NormalizedRect> TextPage::charBoxAtOffset(const int offset, bool
     return nullptr;
 }
 
-int TextPage::offsetAtPoint(const NormalizedPoint nP) const
+int TextPage::offsetAtPoint(const NormalizedPoint &nP) const
 {
     TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
     int foundOffset = -1;
