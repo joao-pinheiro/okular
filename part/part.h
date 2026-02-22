@@ -435,6 +435,7 @@ private:
     KToggleAction *m_showMenuBarAction;
     KToggleAction *m_showLeftPanel;
     KToggleAction *m_showBottomBar;
+    KToggleAction *m_showTransparencyGrid;
     QAction *m_showSignaturePanel;
     KToggleFullScreenAction *m_showFullScreenAction;
     QAction *m_aboutBackend;

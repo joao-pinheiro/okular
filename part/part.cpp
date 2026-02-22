@@ -819,6 +819,17 @@ void Part::setupViewerActions()
     ac->addAction(QStringLiteral("options_configure_color_modes"), configureColorModes);
     configureColorModes->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
     connect(configureColorModes, &QAction::triggered, this, &Part::slotAccessibilityPreferences);
+
+    m_showTransparencyGrid = ac->add<KToggleAction>(QStringLiteral("show_transparency_grid"));
+    m_showTransparencyGrid->setText(i18n("Show Transparency &Grid"));
+    m_showTransparencyGrid->setIcon(QIcon::fromTheme(QStringLiteral("view-grid")));
+    m_showTransparencyGrid->setChecked(Okular::SettingsCore::showTransparencyGrid());
+    connect(m_showTransparencyGrid, &QAction::toggled, this, [this](bool on) {
+        Okular::SettingsCore::setShowTransparencyGrid(on);
+        Okular::SettingsCore::self()->save();
+        m_document->reparseConfig();
+        m_pageView->viewport()->update();
+    });
 }
 
 void Part::setViewerShortcuts()

@@ -1357,6 +1357,12 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     // 3. UNLOCK [re-enables shared access]
     userMutex()->unlock();
 
+    // when the paper is transparent in colour, poppler renders with ARGB32
+    // we set the format correctly so QPixmap::fromImage() preserves the transparency poppler rendered
+    if (!img.isNull() && pdfdoc->paperColor().alpha() == 0 && !img.hasAlphaChannel()) {
+        img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    }
+
     return img;
 }
 
