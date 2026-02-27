@@ -28,6 +28,9 @@ public:
     void setCurrentItem(QWidget *widget);
     QWidget *currentItem() const;
 
+    QString currentItemName() const;
+    void setCurrentItemByName(const QString &name);
+
     void setSidebarVisibility(bool visible);
     bool isSidebarVisible() const;
 

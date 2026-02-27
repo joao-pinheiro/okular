@@ -27,6 +27,8 @@
 // qt/kde includes
 #include <QApplication>
 #include <QContextMenuEvent>
+#include <kconfiggroup.h>
+#include <qhashfunctions.h>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -399,16 +401,19 @@ Part::Part(QObject *parent, const QVariantList &args)
     thumbsBox->layout()->addWidget(m_thumbnailList);
     //	ThumbnailController * m_tc = new ThumbnailController( thumbsBox, m_thumbnailList );
     connect(m_thumbnailList.data(), &ThumbnailList::rightClick, this, &Part::slotShowMenu);
+    thumbsBox->setObjectName(QStringLiteral("thumbnail"));
     m_sidebar->addItem(thumbsBox, QIcon::fromTheme(QStringLiteral("view-preview")), i18n("Thumbnails"));
 
     m_sidebar->setCurrentItem(thumbsBox);
 
     // [left toolbox: Reviews] | []
     m_reviewsWidget = new Reviews(nullptr, m_document);
+    m_reviewsWidget->setObjectName(QStringLiteral("annotations"));
     m_sidebar->addItem(m_reviewsWidget, QIcon::fromTheme(QStringLiteral("draw-freehand")), i18n("Annotations"));
 
     // [left toolbox: Bookmarks] | []
     m_bookmarkList = new BookmarkList(m_document, nullptr);
+    m_bookmarkList->setObjectName(QStringLiteral("bookmarks"));
     m_sidebar->addItem(m_bookmarkList, QIcon::fromTheme(QStringLiteral("bookmarks")), i18n("Bookmarks"));
 
     // [left toolbox optional item: Signature Panel] | []
@@ -1768,6 +1773,17 @@ bool Part::openFile()
     } else if (m_cliPrintAndExit) {
         slotPrint();
     }
+    // reading sidebar tab when a document reopens
+    if (url().isLocalFile() && m_sidebar) {
+        KConfigGroup sidebarGroup = KSharedConfig::openConfig()->group(QStringLiteral("SidebarTab"));
+
+        const QString fileName = url().toDisplayString(QUrl::PreferLocalFile);
+        const QString savedTab = sidebarGroup.readEntry(fileName, QString());
+
+        if (!savedTab.isEmpty() && m_sidebar->currentItemName() != savedTab) {
+            m_sidebar->setCurrentItemByName(savedTab);
+        }
+    }
     return true;
 }
 
@@ -1977,6 +1993,17 @@ bool Part::closeUrl(bool promptToSave)
         factory()->removeClient(m_generatorGuiClient);
     }
     m_generatorGuiClient = nullptr;
+    // saving sidebar tab for restoration when document reopens
+    if (!m_swapInsteadOfOpening && m_document->pages() > 0 && m_sidebar) {
+        const QString tabName = m_sidebar->currentItemName();
+        if (!tabName.isEmpty()) {
+            KConfigGroup sidebarGroup = KSharedConfig::openConfig()->group(QStringLiteral("SidebarTab"));
+            QString fileName = url().toString(QUrl::PreferLocalFile);
+            sidebarGroup.writeEntry(fileName, tabName);
+            sidebarGroup.sync();
+        }
+    }
+
     m_document->closeDocument();
     m_fileLastModified = QDateTime();
     updateViewActions();
@@ -2300,7 +2327,7 @@ void Part::enableTOC(bool enable)
         m_tocEnabled = false;
         return;
     }
-
+    m_toc->setObjectName(QStringLiteral("contents"));
     m_sidebar->addItem(m_toc, QIcon::fromTheme(QApplication::isLeftToRight() ? QStringLiteral("format-justify-left") : QStringLiteral("format-justify-right")), i18n("Contents"));
     m_tocEnabled = true;
 
@@ -2321,6 +2348,7 @@ void Part::enableLayers(bool enable)
         return;
     }
 
+    m_layers->setObjectName(QStringLiteral("layers"));
     m_sidebar->addItem(m_layers, QIcon::fromTheme(QStringLiteral("format-list-unordered")), i18n("Layers"));
 }
 
@@ -2330,6 +2358,7 @@ void Part::enableSidebarSignaturesItem(bool enable)
         return;
     }
 
+    m_signaturePanel->setObjectName(QStringLiteral("signatures"));
     m_sidebar->addItem(m_signaturePanel, QIcon::fromTheme(QStringLiteral("application-pkcs7-signature")), i18n("Signatures"));
 }
 
