@@ -385,6 +385,8 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
         }
     });
 
+    connect(Okular::Settings::self(), &Okular::Settings::rowSpacingChanged, this, &PageView::slotRelayoutPages);
+
     d->delayResizeEventTimer = new QTimer(this);
     d->delayResizeEventTimer->setSingleShot(true);
     d->delayResizeEventTimer->setObjectName(QStringLiteral("delayResizeEventTimer"));
@@ -3691,7 +3693,7 @@ void PageView::drawDocumentOnPainter(const QRect contentsRect, QPainter *p)
         p->translate(itemGeometry.left(), itemGeometry.top());
 
         // draw the page outline (black border and bottom-right shadow)
-        if (!itemGeometry.contains(contentsRect)) {
+        if (!itemGeometry.contains(contentsRect) && Okular::Settings::rowSpacing() > 0) {
             const int itemWidth = itemGeometry.width();
             const int itemHeight = itemGeometry.height();
             // draw simple outline
@@ -4025,7 +4027,6 @@ void PageView::selectionClear(const ClearMode mode)
 
 // const to be used for both zoomFactorFitMode function and slotRelayoutPages.
 static const int kcolWidthMargin = 6;
-static const int krowHeightMargin = 12;
 
 double PageView::zoomFactorFitMode(ZoomMode mode)
 {
@@ -4036,8 +4037,9 @@ double PageView::zoomFactorFitMode(ZoomMode mode)
     const bool facingCentered = Okular::Settings::viewMode() == Okular::Settings::EnumViewMode::FacingFirstCentered || (Okular::Settings::viewMode() == Okular::Settings::EnumViewMode::Facing && pageCount == 1);
     const bool overrideCentering = facingCentered && pageCount < 3;
     const int nCols = overrideCentering ? 1 : viewColumns();
+    const int rowHeightMargin = Okular::Settings::rowSpacing();
     const int colWidth = viewport()->width() / nCols - kcolWidthMargin;
-    const double rowHeight = viewport()->height() - krowHeightMargin;
+    const double rowHeight = viewport()->height() - rowHeightMargin;
     const PageViewItem *currentItem = d->items[qMax(0, (int)d->document->currentPage())];
     // prevent segmentation fault when opening a new document;
     if (!currentItem) {
@@ -4775,6 +4777,7 @@ void PageView::slotRelayoutPages()
     const bool continuousView = getContinuousMode();
     const int nCols = overrideCentering ? 1 : viewColumns();
     const bool singlePageViewMode = Okular::Settings::viewMode() == Okular::Settings::EnumViewMode::Single;
+    const int rowHeightMargin = Okular::Settings::rowSpacing();
 
     if (d->aFitWindowToPage) {
         d->aFitWindowToPage->setEnabled(!continuousView && singlePageViewMode);
@@ -4804,13 +4807,13 @@ void PageView::slotRelayoutPages()
     // which each page must well-fit inside a cell
     for (PageViewItem *item : std::as_const(d->items)) {
         // update internal page size (leaving a little margin in case of Fit* modes)
-        updateItemSize(item, colWidth[cIdx] - kcolWidthMargin, viewportHeight - krowHeightMargin);
+        updateItemSize(item, colWidth[cIdx] - kcolWidthMargin, viewportHeight - rowHeightMargin);
         // find row's maximum height and column's max width
         if (item->croppedWidth() + kcolWidthMargin > colWidth[cIdx]) {
             colWidth[cIdx] = item->croppedWidth() + kcolWidthMargin;
         }
-        if (item->croppedHeight() + krowHeightMargin > rowHeight[rIdx]) {
-            rowHeight[rIdx] = item->croppedHeight() + krowHeightMargin;
+        if (item->croppedHeight() + rowHeightMargin > rowHeight[rIdx]) {
+            rowHeight[rIdx] = item->croppedHeight() + rowHeightMargin;
         }
         // handle the 'centering on first row' stuff
         // update col/row indices
@@ -5882,7 +5885,8 @@ void PageView::slotFitWindowToPage()
         return;
     }
 
-    const QSize pageSize = QSize(currentPageItem->uncroppedWidth() + kcolWidthMargin, currentPageItem->uncroppedHeight() + krowHeightMargin);
+    const int rowHeightMargin = Okular::Settings::rowSpacing();
+    const QSize pageSize = QSize(currentPageItem->uncroppedWidth() + kcolWidthMargin, currentPageItem->uncroppedHeight() + rowHeightMargin);
     if (verticalScrollBar()->isVisible()) {
         viewportSize.setWidth(viewportSize.width() + verticalScrollBar()->width());
     }
