@@ -177,7 +177,7 @@ public Q_SLOTS:
     void embedPostScript();
 
     virtual void drawPage(RenderedDocumentPagePixmap *page); // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
-    virtual void getText(RenderedDocumentPagePixmap *page); // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
+    virtual void getText(RenderedDocumentPagePixmap *page);  // clazy:exclude=fully-qualified-moc-types https://invent.kde.org/sdk/clazy/-/issues/35
 
     SimplePageSize sizeOfPage(const PageNumber page);
 
