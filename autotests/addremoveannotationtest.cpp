@@ -111,7 +111,7 @@ void AddRemoveAnnotationTest::testAddAnnotations()
     QVERIFY(!annot2Name.isEmpty());
     QVERIFY(annot1Name != annot2Name);
     QVERIFY(m_document->page(0)->annotations().size() == 1);
-    QCOMPARE(annot2, m_document->page(0)->annotations().first());
+    QCOMPARE(annot2, m_document->page(0)->annotations().constFirst());
 
     // Check that adding annot2 while annot1 was in the unadded state triggered the deletion of annot1
     QVERIFY(TestingUtils::AnnotationDisposeWatcher::disposedAnnotationName() == annot1Name);
