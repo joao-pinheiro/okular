@@ -148,19 +148,15 @@ find_package(PkgConfig)
 # Uses IMPORTED_TARGET for modern CMake linking
 option(WITH_TESSERACT "Build with Tesseract OCR support for text recognition in image selections" ON)
 if(WITH_TESSERACT)
-    pkg_check_modules(Tesseract IMPORTED_TARGET tesseract lept)
-    if(Tesseract_FOUND)
-        set(HAVE_TESSERACT TRUE)
-        # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
-        find_package(OpenMP COMPONENTS CXX)
-    else()
-        set(HAVE_TESSERACT FALSE)
-    endif()
+    pkg_check_modules(Tesseract REQUIRED IMPORTED_TARGET tesseract)
+    set(HAVE_TESSERACT TRUE)
+    # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
+    find_package(OpenMP COMPONENTS CXX)
     set_package_properties(Tesseract PROPERTIES
         DESCRIPTION "Open Source OCR Engine"
         URL "https://github.com/tesseract-ocr/tesseract"
-        PURPOSE "Required for OCR support in selection tool. Disable with -DWITH_TESSERACT=OFF"
-        TYPE OPTIONAL
+        PURPOSE "Required for OCR support in image selections. Disable with -DWITH_TESSERACT=OFF"
+        TYPE REQUIRED
     )
 else()
     set(HAVE_TESSERACT FALSE)

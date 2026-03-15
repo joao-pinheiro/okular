@@ -40,7 +40,7 @@ public:
         : QListWidget(parent)
     {
         setSelectionMode(QAbstractItemView::NoSelection);
-        setToolTip(i18nc("@info:tooltip Config dialog, general page", "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
+        setToolTip(i18nc("@info:tooltip Config dialog, general page. Keep \"English\" untranslated.", "Select extra languages for OCR. Your system language is used by default, and English is used if no other language is available."));
 
         const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
         for (const QString &languageCode : availableLanguages) {
@@ -49,7 +49,7 @@ public:
             if (localeLanguage != QLocale::AnyLanguage && localeLanguage != QLocale::C) {
                 const QString languageName = QLocale::languageToString(localeLanguage);
                 if (!languageName.isEmpty()) {
-                    languageLabel = i18nc("@item:inlistbox Config dialog, general page", "%1 (%2)", languageName, languageCode);
+                    languageLabel = i18nc("@item:inlistbox Config dialog, general page. %1 is the localized language name, %2 is the OCR language code.", "%1 (%2)", languageName, languageCode);
                 }
             }
 
@@ -60,7 +60,7 @@ public:
         }
 
         if (availableLanguages.isEmpty()) {
-            auto *item = new QListWidgetItem(i18nc("@item:inlistbox Config dialog, general page", "No OCR language data found"), this);
+            auto *item = new QListWidgetItem(i18nc("@item:inlistbox Config dialog, general page", "No OCR language data found. Install Tesseract language data from your package manager."), this);
             item->setFlags(Qt::NoItemFlags);
             setEnabled(false);
         }
@@ -79,8 +79,8 @@ public:
         for (int row = 0; row < count(); ++row) {
             const QListWidgetItem *item = this->item(row);
             if (item->checkState() == Qt::Checked) {
-                const QString languageCode = item->data(Qt::UserRole).toString();
-                if (!languageCode.isEmpty()) {
+                const QString languageCode = item->data(Qt::UserRole).toString().trimmed().toLower();
+                if (!languageCode.isEmpty() && !selectedLanguages.contains(languageCode)) {
                     selectedLanguages.append(languageCode);
                 }
             }
@@ -280,11 +280,6 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
 
     setOpenInContinuousModeByDefaultText();
     connect(useFileInfoForContinuousMode, &QCheckBox::toggled, this, setOpenInContinuousModeByDefaultText);
-
-    QCheckBox *continueFromLastViewedPage = new QCheckBox(this);
-    continueFromLastViewedPage->setText(i18nc("@option:check Config dialog, general page", "Continue from last viewed page"));
-    continueFromLastViewedPage->setObjectName(QStringLiteral("kcfg_ContinueFromLastViewedPage"));
-    layout->addRow(programFeaturesLabel(), continueFromLastViewedPage);
 
     // Under Wayland the cursor wrap feature is unavailable
     if (QGuiApplication::platformName() != QLatin1String("wayland")) {

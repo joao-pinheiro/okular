@@ -39,8 +39,10 @@
 #include <QScroller>
 #include <QScrollerProperties>
 #include <QSet>
+#if HAVE_TESSERACT
 #include <QSharedPointer>
 #include <QThread>
+#endif
 #include <QTimer>
 #include <QToolTip>
 
@@ -67,9 +69,7 @@
 // system includes
 #include <array>
 #include <math.h>
-#include <memory>
 #include <stdlib.h>
-#include <vector>
 // local includes
 #include "annotationpopup.h"
 #include "annotwindow.h"
@@ -84,7 +84,9 @@
 #include "okmenutitle.h"
 #include "pageviewannotator.h"
 #include "pageviewmouseannotation.h"
+#if HAVE_TESSERACT
 #include "pageviewocr.h"
+#endif
 #include "pageviewutils.h"
 #include "toggleactionmenu.h"
 #if HAVE_SPEECH
@@ -108,8 +110,6 @@
 #include "signaturepartutils.h"
 #include "url_utils.h"
 #include "videowidget.h"
-
-#include "config-okular.h"
 
 // Without this the code in DocumentPrivate::setDefaultViewMode
 // that casts Okular::Generator::PageLayout to View::ViewModeModality data won't work
@@ -2333,9 +2333,9 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
     bool leftButton = (e->buttons() == Qt::LeftButton);
     bool rightButton = (e->buttons() == Qt::RightButton);
 
-    PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
     switch (d->mouseMode) {
     case Okular::Settings::EnumMouseMode::Browse: {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         if (leftButton) {
             d->leftClickTimer.stop();
             if (d->mouseAnnotation->isActive()) {
@@ -2396,7 +2396,6 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
             updateSelection(eventPos);
             d->mouseOverLinkObject = nullptr;
         }
-        d->mouseAnnotation->routeMouseMoveEvent(pageItem, eventPos, leftButton);
         updateCursor();
         break;
 
@@ -2413,7 +2412,6 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
         if (!d->mouseTextSelecting && !d->mousePressPos.isNull() && d->document->supportsSearching() && ((eventPos - d->mouseSelectPos).manhattanLength() > 5)) {
             d->mouseTextSelecting = true;
         }
-        d->mouseAnnotation->routeMouseMoveEvent(pageItem, eventPos, leftButton);
         updateSelection(eventPos);
         updateCursor();
         break;
@@ -2968,21 +2966,19 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 addWebShortcutsMenu(&menu, selectedText);
             }
         }
+
+        menu.addAction(new OKMenuTitle(&menu, i18n("Image (%1 × %2 pixels)", selectionRect.width(), selectionRect.height())));
+        imageToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18n("Copy to Clipboard"));
+        imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
+
 #if HAVE_TESSERACT
         QAction *ocrToClipboard = new QAction(QIcon::fromTheme(QStringLiteral("edit-select-text")), i18n("OCR to Clipboard"), &menu);
         if (!copyAllowed) {
             ocrToClipboard->setEnabled(false);
             ocrToClipboard->setText(i18n("Copy forbidden by DRM"));
         }
-#endif
-        menu.addAction(new OKMenuTitle(&menu, i18n("Image (%1 × %2 pixels)", selectionRect.width(), selectionRect.height())));
-        imageToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18n("Copy to Clipboard"));
-        imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
-
-#if HAVE_TESSERACT
         menu.addAction(ocrToClipboard);
 #endif
-
         const QAction *choice = menu.exec(e->globalPosition().toPoint());
 
         if (choice) {
@@ -3013,15 +3009,17 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                         d->messageWindow->display(i18n("File not saved."), QString(), PageViewMessage::Warning);
                     } else {
                         QMimeDatabase db;
-                        QMimeType mime = db.mimeTypeForUrl(QUrl::fromLocalFile(fileName));
-                        QString type;
-                        if (!mime.isDefault()) {
-                            type = QStringLiteral("PNG");
-                        } else {
+                        const QMimeType mime = db.mimeTypeForFile(fileName, QMimeDatabase::MatchExtension);
+                        QString type = QStringLiteral("PNG");
+                        if (!mime.isDefault() && mime.name().startsWith(QLatin1String("image/"))) {
                             type = mime.name().section(QLatin1Char('/'), -1).toUpper();
                         }
-                        copyPix.save(fileName, qPrintable(type));
-                        d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
+
+                        if (copyPix.save(fileName, qPrintable(type))) {
+                            d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
+                        } else {
+                            d->messageWindow->display(i18n("Could not save the image to file."), QString(), PageViewMessage::Error);
+                        }
                     }
                 }
 #if HAVE_TESSERACT
@@ -3032,9 +3030,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
                     auto ocrResult = QSharedPointer<Okular::PageViewOcr::TaskResult>::create();
                     QThread *ocrThread = QThread::create([sourceImage, ocrLanguages, ocrResult]() { *ocrResult = Okular::PageViewOcr::runTask(sourceImage, ocrLanguages); });
-                    PageViewMessage *messageWindow = d->messageWindow;
-
-                    connect(ocrThread, &QThread::finished, this, [messageWindow, ocrResult]() {
+                    connect(ocrThread, &QThread::finished, this, [this, ocrResult]() {
                         const Okular::PageViewOcr::TaskResultMessage message = Okular::PageViewOcr::messageForTaskResult(*ocrResult);
 
                         if (message.copyRecognizedText) {
@@ -3054,7 +3050,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                             break;
                         }
 
-                        messageWindow->display(message.message, message.details, icon);
+                        d->messageWindow->display(message.message, message.details, icon);
                     });
                     connect(ocrThread, &QThread::finished, ocrThread, &QObject::deleteLater);
                     ocrThread->start();

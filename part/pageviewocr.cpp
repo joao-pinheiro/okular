@@ -13,11 +13,14 @@
 
 namespace
 {
-// Upscaling improves OCR accuracy on small selections while keeping runtime reasonable.
+// Screen DPI is typically ~96; Tesseract is optimised for ~300 DPI. A 3× upscale
+// bridges most of that gap without being excessively slow on large selections.
 constexpr int kOcrUpscaleFactor = 3;
-// Prevent very large temporary images from causing excessive memory usage.
-constexpr qint64 kMaxOcrPixelCount = 30000000;
-constexpr const char *kFallbackTesseractLanguage = "eng";
+// At 3× upscale a 30 MP cap corresponds to about a 3.3 MP source selection.
+// This keeps peak memory of the temporary grayscale image under ~30 MB.
+constexpr qint64 kMaxOcrPixelCount = 30'000'000;
+// Tesseract language code used when no system language data can be found.
+constexpr QLatin1StringView kFallbackTesseractLanguage("eng");
 
 struct ImagePreparationResult {
     Okular::PageViewOcr::TaskStatus status = Okular::PageViewOcr::TaskStatus::PreparationFailed;
@@ -56,8 +59,8 @@ QStringList effectiveLanguageList(const QStringList &configuredLanguages)
 
     if (available.contains(systemDefault)) {
         languages.append(systemDefault);
-    } else if (available.contains(QString::fromLatin1(kFallbackTesseractLanguage))) {
-        languages.append(QString::fromLatin1(kFallbackTesseractLanguage));
+    } else if (available.contains(kFallbackTesseractLanguage)) {
+        languages.append(kFallbackTesseractLanguage);
     } else if (!available.isEmpty()) {
         languages.append(available.constFirst());
     } else {
@@ -67,19 +70,29 @@ QStringList effectiveLanguageList(const QStringList &configuredLanguages)
     return languages;
 }
 
+QString displayLanguageList(const QString &languageSpec)
+{
+    const QStringList languages = languageSpec.split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    if (languages.isEmpty()) {
+        return languageSpec;
+    }
+
+    return QLocale().createSeparatedList(languages);
+}
+
 bool initTesseractWithLanguages(tesseract::TessBaseAPI &api, const QString &languageSpec)
 {
     const QByteArray languagesUtf8 = languageSpec.toUtf8();
     return api.Init(nullptr, languagesUtf8.constData()) == 0;
 }
 
+// Otsu's thresholding method:
+// N. Otsu, "A Threshold Selection Method from Gray-Level Histograms,"
+// IEEE Transactions on Systems, Man, and Cybernetics, 1979.
+// DOI: 10.1109/TSMC.1979.4310076
 int getOtsuThreshold(const QImage &image)
 {
-    // Otsu's thresholding method:
-    // N. Otsu, "A Threshold Selection Method from Gray-Level Histograms,"
-    // IEEE Transactions on Systems, Man, and Cybernetics, 1979.
-    // DOI: 10.1109/TSMC.1979.4310076
-    if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
+    if (image.isNull()) {
         return 0;
     }
 
@@ -100,7 +113,7 @@ int getOtsuThreshold(const QImage &image)
 
     double sum = 0.0;
     for (int i = 0; i < 256; ++i) {
-        sum += static_cast<double>(i * histogram[i]);
+        sum += static_cast<double>(i) * histogram[i];
     }
 
     double sumB = 0.0;
@@ -121,7 +134,7 @@ int getOtsuThreshold(const QImage &image)
             break;
         }
 
-        sumB += static_cast<double>(t * histogram[t]);
+        sumB += static_cast<double>(t) * histogram[t];
 
         const double mB = sumB / static_cast<double>(wB);
         const double mF = (sum - sumB) / static_cast<double>(wF);
@@ -164,7 +177,7 @@ ImagePreparationResult prepareImageForTask(const QImage &input)
 {
     ImagePreparationResult result;
 
-    if (input.isNull() || input.width() <= 0 || input.height() <= 0) {
+    if (input.isNull()) {
         result.status = Okular::PageViewOcr::TaskStatus::EmptyImage;
         return result;
     }
@@ -211,7 +224,7 @@ QString defaultLanguageCode()
         languageCode = QLocale::languageToCode(systemLanguage, QLocale::ISO639Part2T).toLower();
     }
     if (languageCode.isEmpty() || languageCode == QStringLiteral("und")) {
-        languageCode = QString::fromLatin1(kFallbackTesseractLanguage);
+        languageCode = kFallbackTesseractLanguage;
     }
     return languageCode;
 }
@@ -257,24 +270,27 @@ TaskResultMessage messageForTaskResult(const TaskResult &result)
         message.type = MessageType::Warning;
         return message;
     case TaskStatus::EmptyImage:
-        message.message = i18n("OCR Error: Selected image is empty.");
+        message.message = i18n("The selection is empty.");
         message.type = MessageType::Error;
         return message;
     case TaskStatus::ImageTooLarge:
-        message.message = i18n("OCR Error: Selected area is too large. Try a smaller selection.");
+        message.message = i18n("The selected area is too large. Try a smaller selection.");
         message.type = MessageType::Error;
         return message;
     case TaskStatus::PreparationFailed:
-        message.message = i18n("OCR Error: Failed to prepare image for OCR.");
+        message.message = i18n("Failed to prepare the image for text recognition.");
         message.type = MessageType::Error;
         return message;
     case TaskStatus::InitFailed:
-        message.message = i18n("OCR Error: Failed to initialize Tesseract.");
-        message.details = result.dataPath.isEmpty() ? i18n("Check that Tesseract language data is installed (language: %1).", result.languages) : i18n("Tesseract data path: %1", result.dataPath);
+        message.message = i18n("Failed to initialize Tesseract.");
+        message.details = i18n("Check that Tesseract language data is installed for: %1.", displayLanguageList(result.languages));
+        if (!result.dataPath.isEmpty()) {
+            message.details += QLatin1Char('\n') + i18n("Tesseract data path: %1", result.dataPath);
+        }
         message.type = MessageType::Error;
         return message;
     case TaskStatus::ExtractionFailed:
-        message.message = i18n("OCR Error: Failed to extract text.");
+        message.message = i18n("Failed to extract text from the image.");
         message.type = MessageType::Error;
         return message;
     }
@@ -299,11 +315,8 @@ TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages)
     case TaskStatus::PreparationFailed:
         result.status = preparation.status;
         return result;
-    case TaskStatus::NoText:
-    case TaskStatus::InitFailed:
-    case TaskStatus::ExtractionFailed:
-        result.status = TaskStatus::PreparationFailed;
-        return result;
+    default:
+        Q_UNREACHABLE_RETURN(result);
     }
 
     tesseract::TessBaseAPI api;
