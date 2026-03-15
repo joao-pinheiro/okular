@@ -273,8 +273,7 @@ TaskResultMessage messageForTaskResult(const TaskResult &result)
         return message;
     case TaskStatus::InitFailed:
         message.message = i18n("OCR Error: Failed to initialize Tesseract.");
-        message.details = result.dataPath.isEmpty() ? i18n("Check that Tesseract language data is installed (language: %1).", result.languages)
-                                                     : i18n("Tesseract data path: %1", result.dataPath);
+        message.details = result.dataPath.isEmpty() ? i18n("Check that Tesseract language data is installed (language: %1).", result.languages) : i18n("Tesseract data path: %1", result.dataPath);
         message.type = MessageType::Error;
         return message;
     case TaskStatus::ExtractionFailed:

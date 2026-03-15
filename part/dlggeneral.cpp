@@ -171,8 +171,7 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
 
     QListWidget *ocrLanguages = new QListWidget(this);
     ocrLanguages->setSelectionMode(QAbstractItemView::NoSelection);
-    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page",
-                                   "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
+    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page", "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
 
     const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
     for (const QString &languageCode : availableLanguages) {
@@ -239,12 +238,8 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
         ocrLanguagesStorage->setText(settingsValue);
     };
 
-    connect(ocrLanguagesStorage, &QLineEdit::textChanged, this, [syncListFromStorage](const QString &settingsValue) {
-        syncListFromStorage(settingsValue);
-    });
-    connect(ocrLanguages, &QListWidget::itemChanged, this, [syncStorageFromList](QListWidgetItem *) {
-        syncStorageFromList();
-    });
+    connect(ocrLanguagesStorage, &QLineEdit::textChanged, this, [syncListFromStorage](const QString &settingsValue) { syncListFromStorage(settingsValue); });
+    connect(ocrLanguages, &QListWidget::itemChanged, this, [syncStorageFromList](QListWidgetItem *) { syncStorageFromList(); });
 
     syncListFromStorage(Okular::Settings::ocrLanguages());
 #endif

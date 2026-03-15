@@ -38,8 +38,8 @@
 #include <QScrollBar>
 #include <QScroller>
 #include <QScrollerProperties>
-#include <QSharedPointer>
 #include <QSet>
+#include <QSharedPointer>
 #include <QThread>
 #include <QTimer>
 #include <QToolTip>
