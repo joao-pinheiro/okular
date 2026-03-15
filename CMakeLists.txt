@@ -142,8 +142,33 @@ else()
 endif()
 
 
-find_package(Tesseract) 
-find_package(Leptonica)
+find_package(PkgConfig)
+
+# Tesseract
+
+pkg_check_modules(PC_TESSERACT tesseract)
+find_path(Tesseract_INCLUDE_DIRS NAMES tesseract/baseapi.h HINTS ${PC_TESSERACT_INCLUDEDIR} ${PC_TESSERACT_INCLUDE_DIRS})
+find_library(Tesseract_LIBRARIES NAMES tesseract tesseract54 libtesseract HINTS ${PC_TESSERACT_LIBDIR} ${PC_TESSERACT_LIBRARY_DIRS})
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(Tesseract DEFAULT_MSG Tesseract_LIBRARIES Tesseract_INCLUDE_DIRS)
+
+set_package_properties(Tesseract PROPERTIES
+    PURPOSE "Required for OCR support in selection tool"
+    TYPE OPTIONAL
+)
+
+# Leptonica
+pkg_check_modules(PC_LEPTONICA lept leptonica)
+find_path(Leptonica_INCLUDE_DIRS NAMES leptonica/allheaders.h HINTS ${PC_LEPTONICA_INCLUDEDIR} ${PC_LEPTONICA_INCLUDE_DIRS})
+find_library(Leptonica_LIBRARIES NAMES leptonica lept libleptonica-1.84.1 libleptonica HINTS ${PC_LEPTONICA_LIBDIR} ${PC_LEPTONICA_LIBRARY_DIRS})
+
+find_package_handle_standard_args(Leptonica DEFAULT_MSG Leptonica_LIBRARIES Leptonica_INCLUDE_DIRS)
+
+set_package_properties(Leptonica PROPERTIES
+    PURPOSE "Required for OCR support in selection tool"
+    TYPE OPTIONAL
+)
 
 if (BUILD_DESKTOP)
     # shall we use DBus?
@@ -606,8 +631,8 @@ target_link_libraries(okularpart okularcore
 )
 
 if(Tesseract_FOUND AND Leptonica_FOUND)
-    target_link_libraries(okularpart PRIVATE ${Tesseract_LIBRARIES})
-    target_link_libraries(okularpart PRIVATE ${Leptonica_LIBRARIES})
+    target_link_libraries(okularpart ${Tesseract_LIBRARIES})
+    target_link_libraries(okularpart ${Leptonica_LIBRARIES})
 endif()
 
 if (TARGET Qt6::DBus)
