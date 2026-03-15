@@ -603,9 +603,12 @@ target_link_libraries(okularpart okularcore
     KF6::WindowSystem
     KF6::TextWidgets
     KF6::ColorScheme
-    $<$<BOOL:${Tesseract_FOUND}>:${Tesseract_LIBRARIES}>
-    $<$<BOOL:${Leptonica_FOUND}>:${Leptonica_LIBRARIES}>
 )
+
+if(Tesseract_FOUND AND Leptonica_FOUND)
+    target_link_libraries(okularpart PRIVATE ${Tesseract_LIBRARIES})
+    target_link_libraries(okularpart PRIVATE ${Leptonica_LIBRARIES})
+endif()
 
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
