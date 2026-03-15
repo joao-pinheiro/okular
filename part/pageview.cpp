@@ -109,6 +109,10 @@
 // Include OCR libs.
 #include <leptonica/allheaders.h>
 #include <tesseract/baseapi.h>
+
+// for OTSU
+#include <cmath>
+#include <vector>
 #endif
 
 // Without this the code in DocumentPrivate::setDefaultViewMode
@@ -133,6 +137,12 @@ static inline double normClamp(double value, double def)
 {
     return (value < 0.0 || value > 1.0) ? def : value;
 }
+
+#ifdef HAVE_TESSERACT
+// we use otsu algorithm for ocr if we have tesseract
+int getOtsuThreshold(const QImage &sourceImage);
+QImage applyOtsu(const QImage &input);
+#endif
 
 struct TableSelectionPart {
     PageViewItem *item;
@@ -3024,10 +3034,15 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 #ifdef HAVE_TESSERACT
                 if (choice == ocrToClipboard) {
                     // Screen images are generally 72-96 DPI. OCR prefers 300 DPI.
-                    // Therefore, enlarging the image by 2-3 times (Scale) makes the letters clearer.
-                    // We also convert it to Grayscale to eliminate color noise.
-                    QImage image = copyPix.toImage().convertToFormat(QImage::Format_Grayscale8).scaled(copyPix.width() * 3, copyPix.height() * 3, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
+                    // get image
+                    QImage rawImage = copyPix.toImage();
+
+                    // 2. apply otsu (before, we only used black and white.)
+                    QImage binarizedImage = applyOtsu(rawImage);
+
+                    // 3. upscale
+                    QImage image = binarizedImage.scaled(copyPix.width() * 3, copyPix.height() * 3, Qt::KeepAspectRatio, Qt::SmoothTransformation);
                     auto api = std::make_unique<tesseract::TessBaseAPI>();
 
                     if (api->Init(NULL, "eng")) {
@@ -5970,6 +5985,80 @@ void PageView::highlightSignatureFormWidget(const Okular::FormFieldSignature *fo
     }
 }
 
+#ifdef HAVE_TESSERACT
+// threshold calculating
+int getOtsuThreshold(const QImage &sourceImage)
+{
+    QImage image = sourceImage.convertToFormat(QImage::Format_Grayscale8);
+
+    // 1. Step: Calculation  Histogram
+    std::vector<int> histogram(256, 0);
+    int totalPixelCount = image.width() * image.height();
+
+    for (int y = 0; y < image.height(); ++y) {
+        const uchar *line = image.scanLine(y);
+        for (int x = 0; x < image.width(); ++x) {
+            int pixelValue = line[x];
+            histogram[pixelValue]++;
+        }
+    }
+
+    // Otsu Algorithm loop
+    // Here we are looking for the t value that maximizes the variance we call “Between Class Variance”.
+
+    float sum = 0;
+    for (int i = 0; i < 256; ++i)
+        sum += i * histogram[i];
+
+    float sumB = 0;
+    int wB = 0;
+    int wF = 0;
+
+    float varMax = 0;
+    int threshold = 0;
+
+    for (int t = 0; t < 256; ++t) {
+        wB += histogram[t]; // Background piksel
+        if (wB == 0)
+            continue;
+
+        wF = totalPixelCount - wB; // Foreground pixel
+        if (wF == 0)
+            break;
+
+        sumB += (float)(t * histogram[t]);
+
+        float mB = sumB / wB;         //  (Mean Background)
+        float mF = (sum - sumB) / wF; //  (Mean Foreground)
+
+        // Formula for calculating between-class variance
+        float varBetween = (float)wB * (float)wF * (mB - mF) * (mB - mF);
+
+        if (varBetween > varMax) {
+            varMax = varBetween;
+            threshold = t;
+        }
+    }
+
+    return threshold;
+}
+
+QImage applyOtsu(const QImage &input)
+{
+    int threshold = getOtsuThreshold(input);
+
+    // We convert it to official gray and make it black and white according to that threshold value.
+    QImage gray = input.convertToFormat(QImage::Format_Grayscale8);
+
+    for (int y = 0; y < gray.height(); ++y) {
+        uchar *line = gray.scanLine(y);
+        for (int x = 0; x < gray.width(); ++x) {
+            line[x] = (line[x] > threshold) ? 255 : 0;
+        }
+    }
+    return gray;
+}
+#endif
 // END private SLOTS
 
 /* kate: replace-tabs on; indent-width 4; */
