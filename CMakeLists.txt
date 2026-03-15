@@ -601,6 +601,11 @@ if (Qt6TextToSpeech_FOUND)
       part/tts.cpp)
 endif()
 
+if (HAVE_TESSERACT)
+   set(okularpart_SRCS ${okularpart_SRCS}
+      part/pageviewocr.cpp)
+endif()
+
 kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
