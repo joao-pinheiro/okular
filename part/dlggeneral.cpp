@@ -17,6 +17,7 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QSpinBox>
 
 #include <config-okular.h>
@@ -155,6 +156,14 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     showBackendSelectionDialog->setText(i18nc("@option:check Config dialog, general page", "Show backend selection dialog"));
     showBackendSelectionDialog->setObjectName(QStringLiteral("kcfg_ChooseGenerators"));
     layout->addRow(programFeaturesLabel(), showBackendSelectionDialog);
+
+#if HAVE_TESSERACT
+    QLineEdit *ocrLanguages = new QLineEdit(this);
+    ocrLanguages->setObjectName(QStringLiteral("kcfg_OcrLanguages"));
+    ocrLanguages->setPlaceholderText(QStringLiteral("eng"));
+    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page", "Language codes used for OCR (for example: eng, tur, or eng+tur)."));
+    layout->addRow(i18nc("@label:lineedit Config dialog, general page", "OCR languages:"), ocrLanguages);
+#endif
 
     if (embedMode != Okular::ViewerWidgetMode) { // TODO Makes sense?
         // Checkbox: RTL document layout
