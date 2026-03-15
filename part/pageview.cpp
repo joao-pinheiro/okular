@@ -3026,7 +3026,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 }
 #if HAVE_TESSERACT
                 if (choice == ocrToClipboard) {
-                    const QStringList ocrLanguages = Okular::PageViewOcr::languageListFromSettings(Okular::Settings::ocrLanguages());
+                    const QStringList ocrLanguages = Okular::Settings::ocrLanguages();
                     const QImage sourceImage = copyPix.toImage();
                     d->messageWindow->display(i18n("Recognizing text…"), QString(), PageViewMessage::Info, -1);
 

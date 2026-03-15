@@ -39,8 +39,6 @@ struct TaskResultMessage {
 
 QString defaultLanguageCode();
 QStringList availableLanguageCodes();
-QStringList languageListFromSettings(const QString &settingsValue);
-QString settingsValueFromLanguageList(const QStringList &languages);
 TaskResultMessage messageForTaskResult(const TaskResult &result);
 TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages);
 }

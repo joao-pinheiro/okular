@@ -44,6 +44,29 @@ QString languageSpecFromList(const QStringList &languageList)
     return languageList.join(QLatin1Char('+'));
 }
 
+QStringList effectiveLanguageList(const QStringList &configuredLanguages)
+{
+    QStringList languages = normalizeLanguageList(configuredLanguages);
+    if (!languages.isEmpty()) {
+        return languages;
+    }
+
+    const QStringList available = Okular::PageViewOcr::availableLanguageCodes();
+    const QString systemDefault = Okular::PageViewOcr::defaultLanguageCode();
+
+    if (available.contains(systemDefault)) {
+        languages.append(systemDefault);
+    } else if (available.contains(QString::fromLatin1(kFallbackTesseractLanguage))) {
+        languages.append(QString::fromLatin1(kFallbackTesseractLanguage));
+    } else if (!available.isEmpty()) {
+        languages.append(available.constFirst());
+    } else {
+        languages.append(systemDefault);
+    }
+
+    return languages;
+}
+
 bool initTesseractWithLanguages(tesseract::TessBaseAPI &api, const QString &languageSpec)
 {
     const QByteArray languagesUtf8 = languageSpec.toUtf8();
@@ -219,32 +242,6 @@ QStringList availableLanguageCodes()
     return codes;
 }
 
-QStringList languageListFromSettings(const QString &settingsValue)
-{
-    QStringList languages = normalizeLanguageList(settingsValue.split(QLatin1Char('+'), Qt::SkipEmptyParts));
-    if (languages.isEmpty()) {
-        const QStringList available = availableLanguageCodes();
-        const QString systemDefault = defaultLanguageCode();
-
-        if (available.contains(systemDefault)) {
-            languages.append(systemDefault);
-        } else if (available.contains(QString::fromLatin1(kFallbackTesseractLanguage))) {
-            languages.append(QString::fromLatin1(kFallbackTesseractLanguage));
-        } else if (!available.isEmpty()) {
-            languages.append(available.constFirst());
-        } else {
-            languages.append(systemDefault);
-        }
-    }
-
-    return languages;
-}
-
-QString settingsValueFromLanguageList(const QStringList &languages)
-{
-    return languageSpecFromList(normalizeLanguageList(languages));
-}
-
 TaskResultMessage messageForTaskResult(const TaskResult &result)
 {
     TaskResultMessage message;
@@ -289,10 +286,7 @@ TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages)
 {
     TaskResult result;
 
-    QStringList normalizedLanguages = normalizeLanguageList(ocrLanguages);
-    if (normalizedLanguages.isEmpty()) {
-        normalizedLanguages.append(defaultLanguageCode());
-    }
+    const QStringList normalizedLanguages = effectiveLanguageList(ocrLanguages);
 
     result.languages = languageSpecFromList(normalizedLanguages);
 

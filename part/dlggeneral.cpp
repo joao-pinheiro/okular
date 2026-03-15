@@ -17,7 +17,6 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
 #include <QListWidget>
 #include <QLocale>
 #include <QSignalBlocker>
@@ -29,6 +28,91 @@
 #include "settings.h"
 #if HAVE_TESSERACT
 #include "pageviewocr.h"
+
+class OcrLanguageSelector : public QListWidget
+{
+    Q_OBJECT
+
+    Q_PROPERTY(QStringList languages READ languages WRITE setLanguages NOTIFY languagesChanged USER true)
+
+public:
+    explicit OcrLanguageSelector(QWidget *parent = nullptr)
+        : QListWidget(parent)
+    {
+        setSelectionMode(QAbstractItemView::NoSelection);
+        setToolTip(i18nc("@info:tooltip Config dialog, general page", "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
+
+        const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
+        for (const QString &languageCode : availableLanguages) {
+            QString languageLabel = languageCode;
+            const QLocale::Language localeLanguage = QLocale::codeToLanguage(languageCode, QLocale::ISO639Part2);
+            if (localeLanguage != QLocale::AnyLanguage && localeLanguage != QLocale::C) {
+                const QString languageName = QLocale::languageToString(localeLanguage);
+                if (!languageName.isEmpty()) {
+                    languageLabel = i18nc("@item:inlistbox Config dialog, general page", "%1 (%2)", languageName, languageCode);
+                }
+            }
+
+            auto *item = new QListWidgetItem(languageLabel, this);
+            item->setData(Qt::UserRole, languageCode);
+            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+            item->setCheckState(Qt::Unchecked);
+        }
+
+        if (availableLanguages.isEmpty()) {
+            auto *item = new QListWidgetItem(i18nc("@item:inlistbox Config dialog, general page", "No OCR language data found"), this);
+            item->setFlags(Qt::NoItemFlags);
+            setEnabled(false);
+        }
+
+        const int rowHeight = qMax(sizeHintForRow(0), fontMetrics().height());
+        setMinimumHeight(rowHeight * 6);
+
+        connect(this, &QListWidget::itemChanged, this, [this](QListWidgetItem *) { Q_EMIT languagesChanged(); });
+    }
+
+    QStringList languages() const
+    {
+        QStringList selectedLanguages;
+        selectedLanguages.reserve(count());
+
+        for (int row = 0; row < count(); ++row) {
+            const QListWidgetItem *item = this->item(row);
+            if (item->checkState() == Qt::Checked) {
+                const QString languageCode = item->data(Qt::UserRole).toString();
+                if (!languageCode.isEmpty()) {
+                    selectedLanguages.append(languageCode);
+                }
+            }
+        }
+
+        return selectedLanguages;
+    }
+
+    void setLanguages(const QStringList &languages)
+    {
+        QStringList selectedLanguages;
+        selectedLanguages.reserve(languages.size());
+
+        for (const QString &language : languages) {
+            const QString normalizedLanguage = language.trimmed().toLower();
+            if (!normalizedLanguage.isEmpty() && !selectedLanguages.contains(normalizedLanguage)) {
+                selectedLanguages.append(normalizedLanguage);
+            }
+        }
+
+        const QSignalBlocker blocker(this);
+
+        for (int row = 0; row < count(); ++row) {
+            QListWidgetItem *item = this->item(row);
+            const QString languageCode = item->data(Qt::UserRole).toString();
+            item->setCheckState(selectedLanguages.contains(languageCode) ? Qt::Checked : Qt::Unchecked);
+        }
+    }
+
+Q_SIGNALS:
+    void languagesChanged();
+};
 #endif
 
 DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
@@ -164,84 +248,9 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     layout->addRow(programFeaturesLabel(), showBackendSelectionDialog);
 
 #if HAVE_TESSERACT
-    QLineEdit *ocrLanguagesStorage = new QLineEdit(this);
-    ocrLanguagesStorage->setObjectName(QStringLiteral("kcfg_OcrLanguages"));
-    ocrLanguagesStorage->setVisible(false);
-    layout->addRow(QString(), ocrLanguagesStorage);
-
-    QListWidget *ocrLanguages = new QListWidget(this);
-    ocrLanguages->setSelectionMode(QAbstractItemView::NoSelection);
-    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page", "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
-
-    const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
-    for (const QString &languageCode : availableLanguages) {
-        QString languageLabel = languageCode;
-        const QLocale::Language localeLanguage = QLocale::codeToLanguage(languageCode, QLocale::ISO639Part2);
-        if (localeLanguage != QLocale::AnyLanguage && localeLanguage != QLocale::C) {
-            const QString languageName = QLocale::languageToString(localeLanguage);
-            if (!languageName.isEmpty()) {
-                languageLabel = i18nc("@item:inlistbox Config dialog, general page", "%1 (%2)", languageName, languageCode);
-            }
-        }
-
-        auto *item = new QListWidgetItem(languageLabel, ocrLanguages);
-        item->setData(Qt::UserRole, languageCode);
-        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-        item->setCheckState(Qt::Unchecked);
-    }
-
-    if (availableLanguages.isEmpty()) {
-        auto *item = new QListWidgetItem(i18nc("@item:inlistbox Config dialog, general page", "No OCR language data found"), ocrLanguages);
-        item->setFlags(Qt::NoItemFlags);
-        ocrLanguages->setEnabled(false);
-    }
-
-    const int rowHeight = qMax(ocrLanguages->sizeHintForRow(0), ocrLanguages->fontMetrics().height());
-    ocrLanguages->setMinimumHeight(rowHeight * 6);
+    OcrLanguageSelector *ocrLanguages = new OcrLanguageSelector(this);
+    ocrLanguages->setObjectName(QStringLiteral("kcfg_OcrLanguages"));
     layout->addRow(i18nc("@label:listbox Config dialog, general page", "OCR languages:"), ocrLanguages);
-
-    auto selectedLanguageCodes = [ocrLanguages]() {
-        QStringList languages;
-        const int count = ocrLanguages->count();
-        languages.reserve(count);
-
-        for (int row = 0; row < count; ++row) {
-            QListWidgetItem *item = ocrLanguages->item(row);
-            if (item->checkState() == Qt::Checked) {
-                const QString languageCode = item->data(Qt::UserRole).toString();
-                if (!languageCode.isEmpty()) {
-                    languages.append(languageCode);
-                }
-            }
-        }
-
-        return languages;
-    };
-
-    auto syncListFromStorage = [ocrLanguages](const QString &settingsValue) {
-        QStringList languages;
-        if (!settingsValue.trimmed().isEmpty()) {
-            languages = Okular::PageViewOcr::languageListFromSettings(settingsValue);
-        }
-        const QSignalBlocker blocker(ocrLanguages);
-
-        for (int row = 0; row < ocrLanguages->count(); ++row) {
-            QListWidgetItem *item = ocrLanguages->item(row);
-            const QString languageCode = item->data(Qt::UserRole).toString();
-            item->setCheckState(languages.contains(languageCode) ? Qt::Checked : Qt::Unchecked);
-        }
-    };
-
-    auto syncStorageFromList = [ocrLanguagesStorage, selectedLanguageCodes]() {
-        const QString settingsValue = Okular::PageViewOcr::settingsValueFromLanguageList(selectedLanguageCodes());
-        const QSignalBlocker blocker(ocrLanguagesStorage);
-        ocrLanguagesStorage->setText(settingsValue);
-    };
-
-    connect(ocrLanguagesStorage, &QLineEdit::textChanged, this, [syncListFromStorage](const QString &settingsValue) { syncListFromStorage(settingsValue); });
-    connect(ocrLanguages, &QListWidget::itemChanged, this, [syncStorageFromList](QListWidgetItem *) { syncStorageFromList(); });
-
-    syncListFromStorage(Okular::Settings::ocrLanguages());
 #endif
 
     if (embedMode != Okular::ViewerWidgetMode) { // TODO Makes sense?
@@ -338,3 +347,7 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     });
     // END View options section
 }
+
+#if HAVE_TESSERACT
+#include "dlggeneral.moc"
+#endif
