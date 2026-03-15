@@ -65,8 +65,8 @@
 // system includes
 #include <array>
 #include <math.h>
+#include <memory>
 #include <stdlib.h>
-
 // local includes
 #include "annotationpopup.h"
 #include "annotwindow.h"
@@ -104,6 +104,12 @@
 #include "signaturepartutils.h"
 #include "url_utils.h"
 #include "videowidget.h"
+
+#ifdef HAVE_TESSERACT
+// Include OCR libs.
+#include <leptonica/allheaders.h>
+#include <tesseract/baseapi.h>
+#endif
 
 // Without this the code in DocumentPrivate::setDefaultViewMode
 // that casts Okular::Generator::PageLayout to View::ViewModeModality data won't work
@@ -2962,14 +2968,26 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 addWebShortcutsMenu(&menu, selectedText);
             }
         }
+#ifdef HAVE_TESSERACT
+        QAction *ocrToClipboard = new QAction(QIcon::fromTheme(QStringLiteral("edit-select-text")), i18n("OCR to Clipboard"), &menu);
+#endif
         menu.addAction(new OKMenuTitle(&menu, i18n("Image (%1 × %2 pixels)", selectionRect.width(), selectionRect.height())));
         imageToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18n("Copy to Clipboard"));
         imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
+
+#ifdef HAVE_TESSERACT
+        // add ocr action
+        menu.addAction(ocrToClipboard);
+#endif
+
         const QAction *choice = menu.exec(e->globalPosition().toPoint());
-        // check if the user really selected an action
+
         if (choice) {
-            // IMAGE operation chosen
-            if (choice == imageToClipboard || choice == imageToFile) {
+            if (choice == imageToClipboard || choice == imageToFile
+#ifdef HAVE_TESSERACT
+                || choice == ocrToClipboard
+#endif
+            ) {
                 // renders page into a pixmap
                 QPixmap copyPix(selectionRect.width(), selectionRect.height());
                 QPainter copyPainter(&copyPix);
@@ -3003,6 +3021,37 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                         d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
                     }
                 }
+#ifdef HAVE_TESSERACT
+                if (choice == ocrToClipboard) {
+                    // Screen images are generally 72-96 DPI. OCR prefers 300 DPI.
+                    // Therefore, enlarging the image by 2-3 times (Scale) makes the letters clearer.
+                    // We also convert it to Grayscale to eliminate color noise.
+                    QImage image = copyPix.toImage().convertToFormat(QImage::Format_Grayscale8).scaled(copyPix.width() * 3, copyPix.height() * 3, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+                    auto api = std::make_unique<tesseract::TessBaseAPI>();
+
+                    if (api->Init(NULL, "eng")) {
+                        d->messageWindow->display(i18n("OCR Error: Failed to initialize Tesseract."), QString(), PageViewMessage::Error);
+                        return;
+                    }
+
+                    api->SetPageSegMode(tesseract::PSM_SPARSE_TEXT);
+
+                    api->SetImage(image.bits(), image.width(), image.height(), 1, image.bytesPerLine());
+
+                    char *outText = api->GetUTF8Text();
+                    QString resultText = QString::fromUtf8(outText).trimmed();
+
+                    delete[] outText;
+
+                    if (!resultText.isEmpty()) {
+                        QApplication::clipboard()->setText(resultText);
+                        d->messageWindow->display(i18n("Text copied to clipboard."), QString(), PageViewMessage::Info);
+                    } else {
+                        d->messageWindow->display(i18n("The text could not be read."), QString(), PageViewMessage::Warning);
+                    }
+                }
+#endif
             }
             // TEXT operation chosen
             else {

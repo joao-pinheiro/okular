@@ -141,6 +141,10 @@ else()
     set(HAVE_JS 0)
 endif()
 
+
+find_package(Tesseract) 
+find_package(Leptonica)
+
 if (BUILD_DESKTOP)
     # shall we use DBus?
     # enabled per default on Linux & BSD systems
@@ -579,8 +583,13 @@ endif()
 kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
-generate_export_header(okularpart BASE_NAME okularpart)
 
+if(Tesseract_FOUND AND Leptonica_FOUND)
+    target_compile_definitions(okularpart PRIVATE HAVE_TESSERACT) 
+    target_include_directories(okularpart PRIVATE ${Tesseract_INCLUDE_DIRS} ${Leptonica_INCLUDE_DIRS})
+endif()
+
+generate_export_header(okularpart BASE_NAME okularpart)
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
     Qt6::Svg
@@ -594,7 +603,10 @@ target_link_libraries(okularpart okularcore
     KF6::WindowSystem
     KF6::TextWidgets
     KF6::ColorScheme
+    $<$<BOOL:${Tesseract_FOUND}>:${Tesseract_LIBRARIES}>
+    $<$<BOOL:${Leptonica_FOUND}>:${Leptonica_LIBRARIES}>
 )
+
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
 endif()
