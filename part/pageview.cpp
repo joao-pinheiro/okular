@@ -38,6 +38,7 @@
 #include <QScrollBar>
 #include <QScroller>
 #include <QScrollerProperties>
+#include <QSharedPointer>
 #include <QSet>
 #include <QThread>
 #include <QTimer>
@@ -2969,7 +2970,6 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         }
 #if HAVE_TESSERACT
         QAction *ocrToClipboard = new QAction(QIcon::fromTheme(QStringLiteral("edit-select-text")), i18n("OCR to Clipboard"), &menu);
-        ocrToClipboard->setObjectName(QStringLiteral("OcrToClipboard"));
         if (!copyAllowed) {
             ocrToClipboard->setEnabled(false);
             ocrToClipboard->setText(i18n("Copy forbidden by DRM"));
@@ -2980,7 +2980,6 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
         imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
 
 #if HAVE_TESSERACT
-        // Add OCR action to menu
         menu.addAction(ocrToClipboard);
 #endif
 
@@ -3027,47 +3026,35 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 }
 #if HAVE_TESSERACT
                 if (choice == ocrToClipboard) {
-                    const QString ocrLanguages = Okular::PageViewOcr::languageSpecFromSettings();
+                    const QStringList ocrLanguages = Okular::PageViewOcr::languageListFromSettings(Okular::Settings::ocrLanguages());
                     const QImage sourceImage = copyPix.toImage();
                     d->messageWindow->display(i18n("Recognizing text…"), QString(), PageViewMessage::Info, -1);
 
-                    auto ocrResult = std::make_shared<Okular::PageViewOcr::TaskResult>();
+                    auto ocrResult = QSharedPointer<Okular::PageViewOcr::TaskResult>::create();
                     QThread *ocrThread = QThread::create([sourceImage, ocrLanguages, ocrResult]() { *ocrResult = Okular::PageViewOcr::runTask(sourceImage, ocrLanguages); });
+                    PageViewMessage *messageWindow = d->messageWindow;
 
-                    connect(ocrThread, &QThread::finished, this, [this, ocrResult]() {
-                        const Okular::PageViewOcr::TaskResult &result = *ocrResult;
+                    connect(ocrThread, &QThread::finished, this, [messageWindow, ocrResult]() {
+                        const Okular::PageViewOcr::TaskResultMessage message = Okular::PageViewOcr::messageForTaskResult(*ocrResult);
 
-                        switch (result.status) {
-                        case Okular::PageViewOcr::TaskStatus::Success:
-                            QApplication::clipboard()->setText(result.text);
-                            d->messageWindow->display(i18n("Text copied to clipboard."), QString(), PageViewMessage::Info);
+                        if (message.copyRecognizedText) {
+                            QApplication::clipboard()->setText(ocrResult->text);
+                        }
+
+                        PageViewMessage::Icon icon = PageViewMessage::Info;
+                        switch (message.type) {
+                        case Okular::PageViewOcr::MessageType::Info:
+                            icon = PageViewMessage::Info;
                             break;
-                        case Okular::PageViewOcr::TaskStatus::NoText:
-                            d->messageWindow->display(i18n("No text could be recognized."), QString(), PageViewMessage::Warning);
+                        case Okular::PageViewOcr::MessageType::Warning:
+                            icon = PageViewMessage::Warning;
                             break;
-                        case Okular::PageViewOcr::TaskStatus::EmptyImage:
-                            d->messageWindow->display(i18n("OCR Error: Selected image is empty."), QString(), PageViewMessage::Error);
-                            qCWarning(OkularUiDebug) << "Failed to prepare selection image for OCR: empty selection image.";
-                            break;
-                        case Okular::PageViewOcr::TaskStatus::ImageTooLarge:
-                            d->messageWindow->display(i18n("OCR Error: Selected area is too large. Try a smaller selection."), QString(), PageViewMessage::Error);
-                            qCWarning(OkularUiDebug) << "Failed to prepare selection image for OCR: image too large.";
-                            break;
-                        case Okular::PageViewOcr::TaskStatus::PreparationFailed:
-                            d->messageWindow->display(i18n("OCR Error: Failed to prepare image for OCR."), QString(), PageViewMessage::Error);
-                            qCWarning(OkularUiDebug) << "Failed to prepare selection image for OCR.";
-                            break;
-                        case Okular::PageViewOcr::TaskStatus::InitFailed: {
-                            const QString details = result.dataPath.isEmpty() ? i18n("Check that Tesseract language data is installed (language: %1).", result.languages) : i18n("Tesseract data path: %1", result.dataPath);
-                            d->messageWindow->display(i18n("OCR Error: Failed to initialize Tesseract."), details, PageViewMessage::Error);
-                            qCWarning(OkularUiDebug) << "Tesseract initialization failed. language=" << result.languages << "dataPath=" << result.dataPath;
+                        case Okular::PageViewOcr::MessageType::Error:
+                            icon = PageViewMessage::Error;
                             break;
                         }
-                        case Okular::PageViewOcr::TaskStatus::ExtractionFailed:
-                            d->messageWindow->display(i18n("OCR Error: Failed to extract text."), QString(), PageViewMessage::Error);
-                            qCWarning(OkularUiDebug) << "Tesseract returned a null OCR result buffer.";
-                            break;
-                        }
+
+                        messageWindow->display(message.message, message.details, icon);
                     });
                     connect(ocrThread, &QThread::finished, ocrThread, &QObject::deleteLater);
                     ocrThread->start();

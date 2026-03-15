@@ -18,12 +18,18 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QLocale>
+#include <QSignalBlocker>
 #include <QSpinBox>
 
 #include <config-okular.h>
 #include <qspinbox.h>
 
 #include "settings.h"
+#if HAVE_TESSERACT
+#include "pageviewocr.h"
+#endif
 
 DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     : QWidget(parent)
@@ -158,11 +164,89 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     layout->addRow(programFeaturesLabel(), showBackendSelectionDialog);
 
 #if HAVE_TESSERACT
-    QLineEdit *ocrLanguages = new QLineEdit(this);
-    ocrLanguages->setObjectName(QStringLiteral("kcfg_OcrLanguages"));
-    ocrLanguages->setPlaceholderText(QStringLiteral("eng"));
-    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page", "Language codes used for OCR (for example: eng, tur, or eng+tur)."));
-    layout->addRow(i18nc("@label:lineedit Config dialog, general page", "OCR languages:"), ocrLanguages);
+    QLineEdit *ocrLanguagesStorage = new QLineEdit(this);
+    ocrLanguagesStorage->setObjectName(QStringLiteral("kcfg_OcrLanguages"));
+    ocrLanguagesStorage->setVisible(false);
+    layout->addRow(QString(), ocrLanguagesStorage);
+
+    QListWidget *ocrLanguages = new QListWidget(this);
+    ocrLanguages->setSelectionMode(QAbstractItemView::NoSelection);
+    ocrLanguages->setToolTip(i18nc("@info:tooltip Config dialog, general page",
+                                   "Select one or more OCR languages. If none are selected, the system language is used (with English fallback)."));
+
+    const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
+    for (const QString &languageCode : availableLanguages) {
+        QString languageLabel = languageCode;
+        const QLocale::Language localeLanguage = QLocale::codeToLanguage(languageCode, QLocale::ISO639Part2);
+        if (localeLanguage != QLocale::AnyLanguage && localeLanguage != QLocale::C) {
+            const QString languageName = QLocale::languageToString(localeLanguage);
+            if (!languageName.isEmpty()) {
+                languageLabel = i18nc("@item:inlistbox Config dialog, general page", "%1 (%2)", languageName, languageCode);
+            }
+        }
+
+        auto *item = new QListWidgetItem(languageLabel, ocrLanguages);
+        item->setData(Qt::UserRole, languageCode);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(Qt::Unchecked);
+    }
+
+    if (availableLanguages.isEmpty()) {
+        auto *item = new QListWidgetItem(i18nc("@item:inlistbox Config dialog, general page", "No OCR language data found"), ocrLanguages);
+        item->setFlags(Qt::NoItemFlags);
+        ocrLanguages->setEnabled(false);
+    }
+
+    const int rowHeight = qMax(ocrLanguages->sizeHintForRow(0), ocrLanguages->fontMetrics().height());
+    ocrLanguages->setMinimumHeight(rowHeight * 6);
+    layout->addRow(i18nc("@label:listbox Config dialog, general page", "OCR languages:"), ocrLanguages);
+
+    auto selectedLanguageCodes = [ocrLanguages]() {
+        QStringList languages;
+        const int count = ocrLanguages->count();
+        languages.reserve(count);
+
+        for (int row = 0; row < count; ++row) {
+            QListWidgetItem *item = ocrLanguages->item(row);
+            if (item->checkState() == Qt::Checked) {
+                const QString languageCode = item->data(Qt::UserRole).toString();
+                if (!languageCode.isEmpty()) {
+                    languages.append(languageCode);
+                }
+            }
+        }
+
+        return languages;
+    };
+
+    auto syncListFromStorage = [ocrLanguages](const QString &settingsValue) {
+        QStringList languages;
+        if (!settingsValue.trimmed().isEmpty()) {
+            languages = Okular::PageViewOcr::languageListFromSettings(settingsValue);
+        }
+        const QSignalBlocker blocker(ocrLanguages);
+
+        for (int row = 0; row < ocrLanguages->count(); ++row) {
+            QListWidgetItem *item = ocrLanguages->item(row);
+            const QString languageCode = item->data(Qt::UserRole).toString();
+            item->setCheckState(languages.contains(languageCode) ? Qt::Checked : Qt::Unchecked);
+        }
+    };
+
+    auto syncStorageFromList = [ocrLanguagesStorage, selectedLanguageCodes]() {
+        const QString settingsValue = Okular::PageViewOcr::settingsValueFromLanguageList(selectedLanguageCodes());
+        const QSignalBlocker blocker(ocrLanguagesStorage);
+        ocrLanguagesStorage->setText(settingsValue);
+    };
+
+    connect(ocrLanguagesStorage, &QLineEdit::textChanged, this, [syncListFromStorage](const QString &settingsValue) {
+        syncListFromStorage(settingsValue);
+    });
+    connect(ocrLanguages, &QListWidget::itemChanged, this, [syncStorageFromList](QListWidgetItem *) {
+        syncStorageFromList();
+    });
+
+    syncListFromStorage(Okular::Settings::ocrLanguages());
 #endif
 
     if (embedMode != Okular::ViewerWidgetMode) { // TODO Makes sense?

@@ -3,6 +3,7 @@
 
 #include <QImage>
 #include <QString>
+#include <QStringList>
 
 namespace Okular::PageViewOcr
 {
@@ -23,8 +24,25 @@ struct TaskResult {
     QString dataPath;
 };
 
-QString languageSpecFromSettings();
-TaskResult runTask(const QImage &sourceImage, const QString &ocrLanguages);
+enum class MessageType {
+    Info,
+    Warning,
+    Error,
+};
+
+struct TaskResultMessage {
+    QString message;
+    QString details;
+    MessageType type = MessageType::Info;
+    bool copyRecognizedText = false;
+};
+
+QString defaultLanguageCode();
+QStringList availableLanguageCodes();
+QStringList languageListFromSettings(const QString &settingsValue);
+QString settingsValueFromLanguageList(const QStringList &languages);
+TaskResultMessage messageForTaskResult(const TaskResult &result);
+TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages);
 }
 
 #endif

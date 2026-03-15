@@ -1,34 +1,67 @@
 #include "pageviewocr.h"
 
-#include "settings.h"
+#include <KLocalizedString>
 
 #include <QImage>
+#include <QLocale>
 
 #include <tesseract/baseapi.h>
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 namespace
 {
+// Upscaling improves OCR accuracy on small selections while keeping runtime reasonable.
 constexpr int kOcrUpscaleFactor = 3;
+// Prevent very large temporary images from causing excessive memory usage.
 constexpr qint64 kMaxOcrPixelCount = 30000000;
-constexpr const char *kDefaultTesseractLanguage = "eng";
-
-enum class ImagePreparationStatus {
-    Success,
-    EmptyImage,
-    ImageTooLarge,
-    PreparationFailed,
-};
+constexpr const char *kFallbackTesseractLanguage = "eng";
 
 struct ImagePreparationResult {
-    ImagePreparationStatus status = ImagePreparationStatus::PreparationFailed;
+    Okular::PageViewOcr::TaskStatus status = Okular::PageViewOcr::TaskStatus::PreparationFailed;
     QImage image;
 };
 
+QStringList normalizeLanguageList(const QStringList &languages)
+{
+    QStringList normalized;
+    normalized.reserve(languages.size());
+
+    for (const QString &language : languages) {
+        const QString normalizedLanguage = language.trimmed().toLower();
+        if (!normalizedLanguage.isEmpty() && !normalized.contains(normalizedLanguage)) {
+            normalized.append(normalizedLanguage);
+        }
+    }
+
+    return normalized;
+}
+
+QString languageSpecFromList(const QStringList &languageList)
+{
+    return languageList.join(QLatin1Char('+'));
+}
+
+bool initTesseractWithLanguages(tesseract::TessBaseAPI &api, const QString &languageSpec)
+{
+    const QByteArray languagesUtf8 = languageSpec.toUtf8();
+    return api.Init(nullptr, languagesUtf8.constData()) == 0;
+}
+
 int getOtsuThreshold(const QImage &image)
 {
+    // Otsu's thresholding method:
+    // N. Otsu, "A Threshold Selection Method from Gray-Level Histograms,"
+    // IEEE Transactions on Systems, Man, and Cybernetics, 1979.
+    // DOI: 10.1109/TSMC.1979.4310076
     if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
+        return 0;
+    }
+
+    // Raw scanline access below assumes one byte per pixel grayscale input.
+    if (image.format() != QImage::Format_Grayscale8) {
         return 0;
     }
 
@@ -109,36 +142,37 @@ ImagePreparationResult prepareImageForTask(const QImage &input)
     ImagePreparationResult result;
 
     if (input.isNull() || input.width() <= 0 || input.height() <= 0) {
-        result.status = ImagePreparationStatus::EmptyImage;
+        result.status = Okular::PageViewOcr::TaskStatus::EmptyImage;
         return result;
     }
 
     const qint64 scaledWidth = static_cast<qint64>(input.width()) * kOcrUpscaleFactor;
     const qint64 scaledHeight = static_cast<qint64>(input.height()) * kOcrUpscaleFactor;
 
+    // QImage dimensions are int-based, so check against int range before converting.
     if (scaledWidth > std::numeric_limits<int>::max() || scaledHeight > std::numeric_limits<int>::max()) {
-        result.status = ImagePreparationStatus::ImageTooLarge;
+        result.status = Okular::PageViewOcr::TaskStatus::ImageTooLarge;
         return result;
     }
 
     if (scaledWidth * scaledHeight > kMaxOcrPixelCount) {
-        result.status = ImagePreparationStatus::ImageTooLarge;
+        result.status = Okular::PageViewOcr::TaskStatus::ImageTooLarge;
         return result;
     }
 
     QImage image = input.scaled(static_cast<int>(scaledWidth), static_cast<int>(scaledHeight), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     if (image.isNull()) {
-        result.status = ImagePreparationStatus::PreparationFailed;
+        result.status = Okular::PageViewOcr::TaskStatus::PreparationFailed;
         return result;
     }
 
     image = applyOtsuBinarization(image);
     if (image.isNull()) {
-        result.status = ImagePreparationStatus::PreparationFailed;
+        result.status = Okular::PageViewOcr::TaskStatus::PreparationFailed;
         return result;
     }
 
-    result.status = ImagePreparationStatus::Success;
+    result.status = Okular::PageViewOcr::TaskStatus::Success;
     result.image = image;
     return result;
 }
@@ -146,61 +180,142 @@ ImagePreparationResult prepareImageForTask(const QImage &input)
 
 namespace Okular::PageViewOcr
 {
-QString languageSpecFromSettings()
+QString defaultLanguageCode()
 {
-    QString languages = Okular::Settings::ocrLanguages().trimmed();
+    const QLocale::Language systemLanguage = QLocale::system().language();
+    QString languageCode = QLocale::languageToCode(systemLanguage, QLocale::ISO639Part2B).toLower();
+    if (languageCode.isEmpty()) {
+        languageCode = QLocale::languageToCode(systemLanguage, QLocale::ISO639Part2T).toLower();
+    }
+    if (languageCode.isEmpty() || languageCode == QStringLiteral("und")) {
+        languageCode = QString::fromLatin1(kFallbackTesseractLanguage);
+    }
+    return languageCode;
+}
+
+QStringList availableLanguageCodes()
+{
+    tesseract::TessBaseAPI api;
+    if (api.Init(nullptr, nullptr) != 0) {
+        return {};
+    }
+
+    std::vector<std::string> availableLanguages;
+    api.GetAvailableLanguagesAsVector(&availableLanguages);
+    api.End();
+
+    QStringList codes;
+    codes.reserve(static_cast<int>(availableLanguages.size()));
+
+    for (const std::string &language : availableLanguages) {
+        const QString code = QString::fromStdString(language).trimmed().toLower();
+        if (code.isEmpty() || code == QStringLiteral("osd") || codes.contains(code)) {
+            continue;
+        }
+        codes.append(code);
+    }
+
+    std::sort(codes.begin(), codes.end());
+    return codes;
+}
+
+QStringList languageListFromSettings(const QString &settingsValue)
+{
+    QStringList languages = normalizeLanguageList(settingsValue.split(QLatin1Char('+'), Qt::SkipEmptyParts));
     if (languages.isEmpty()) {
-        return QString::fromLatin1(kDefaultTesseractLanguage);
-    }
+        const QStringList available = availableLanguageCodes();
+        const QString systemDefault = defaultLanguageCode();
 
-    languages = languages.simplified();
-    languages.replace(QLatin1Char(','), QLatin1Char('+'));
-    languages.replace(QLatin1Char(';'), QLatin1Char('+'));
-    languages.replace(QLatin1Char(' '), QLatin1Char('+'));
-
-    while (languages.contains(QStringLiteral("++"))) {
-        languages.replace(QStringLiteral("++"), QStringLiteral("+"));
-    }
-
-    while (languages.startsWith(QLatin1Char('+'))) {
-        languages.remove(0, 1);
-    }
-
-    while (languages.endsWith(QLatin1Char('+'))) {
-        languages.chop(1);
-    }
-
-    if (languages.isEmpty()) {
-        return QString::fromLatin1(kDefaultTesseractLanguage);
+        if (available.contains(systemDefault)) {
+            languages.append(systemDefault);
+        } else if (available.contains(QString::fromLatin1(kFallbackTesseractLanguage))) {
+            languages.append(QString::fromLatin1(kFallbackTesseractLanguage));
+        } else if (!available.isEmpty()) {
+            languages.append(available.constFirst());
+        } else {
+            languages.append(systemDefault);
+        }
     }
 
     return languages;
 }
 
-TaskResult runTask(const QImage &sourceImage, const QString &ocrLanguages)
+QString settingsValueFromLanguageList(const QStringList &languages)
+{
+    return languageSpecFromList(normalizeLanguageList(languages));
+}
+
+TaskResultMessage messageForTaskResult(const TaskResult &result)
+{
+    TaskResultMessage message;
+
+    switch (result.status) {
+    case TaskStatus::Success:
+        message.message = i18n("Text copied to clipboard.");
+        message.type = MessageType::Info;
+        message.copyRecognizedText = true;
+        return message;
+    case TaskStatus::NoText:
+        message.message = i18n("No text could be recognized.");
+        message.type = MessageType::Warning;
+        return message;
+    case TaskStatus::EmptyImage:
+        message.message = i18n("OCR Error: Selected image is empty.");
+        message.type = MessageType::Error;
+        return message;
+    case TaskStatus::ImageTooLarge:
+        message.message = i18n("OCR Error: Selected area is too large. Try a smaller selection.");
+        message.type = MessageType::Error;
+        return message;
+    case TaskStatus::PreparationFailed:
+        message.message = i18n("OCR Error: Failed to prepare image for OCR.");
+        message.type = MessageType::Error;
+        return message;
+    case TaskStatus::InitFailed:
+        message.message = i18n("OCR Error: Failed to initialize Tesseract.");
+        message.details = result.dataPath.isEmpty() ? i18n("Check that Tesseract language data is installed (language: %1).", result.languages)
+                                                     : i18n("Tesseract data path: %1", result.dataPath);
+        message.type = MessageType::Error;
+        return message;
+    case TaskStatus::ExtractionFailed:
+        message.message = i18n("OCR Error: Failed to extract text.");
+        message.type = MessageType::Error;
+        return message;
+    }
+
+    return message;
+}
+
+TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages)
 {
     TaskResult result;
-    result.languages = ocrLanguages;
+
+    QStringList normalizedLanguages = normalizeLanguageList(ocrLanguages);
+    if (normalizedLanguages.isEmpty()) {
+        normalizedLanguages.append(defaultLanguageCode());
+    }
+
+    result.languages = languageSpecFromList(normalizedLanguages);
 
     const ImagePreparationResult preparation = prepareImageForTask(sourceImage);
     switch (preparation.status) {
-    case ImagePreparationStatus::Success:
+    case TaskStatus::Success:
         break;
-    case ImagePreparationStatus::EmptyImage:
-        result.status = TaskStatus::EmptyImage;
+    case TaskStatus::EmptyImage:
+    case TaskStatus::ImageTooLarge:
+    case TaskStatus::PreparationFailed:
+        result.status = preparation.status;
         return result;
-    case ImagePreparationStatus::ImageTooLarge:
-        result.status = TaskStatus::ImageTooLarge;
-        return result;
-    case ImagePreparationStatus::PreparationFailed:
+    case TaskStatus::NoText:
+    case TaskStatus::InitFailed:
+    case TaskStatus::ExtractionFailed:
         result.status = TaskStatus::PreparationFailed;
         return result;
     }
 
     tesseract::TessBaseAPI api;
-    const QByteArray ocrLanguagesUtf8 = ocrLanguages.toUtf8();
 
-    if (api.Init(nullptr, ocrLanguagesUtf8.constData())) {
+    if (!initTesseractWithLanguages(api, result.languages)) {
         result.status = TaskStatus::InitFailed;
         result.dataPath = QString::fromUtf8(api.GetDatapath() ? api.GetDatapath() : "");
         return result;

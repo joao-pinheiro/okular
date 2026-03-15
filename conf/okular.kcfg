@@ -216,7 +216,7 @@
     <default></default>
   </entry>
   <entry key="OcrLanguages" type="String">
-    <default>eng</default>
+    <default></default>
   </entry>
   <entry key="WatchFile" type="Bool" >
    <default>true</default>
