@@ -105,20 +105,24 @@
 #include "url_utils.h"
 #include "videowidget.h"
 
-#ifdef HAVE_TESSERACT
-// Include OCR libs.
+#include "config-okular.h"
+
+#if HAVE_TESSERACT
+// Tesseract OCR support
+#include <cmath>
+#include <vector>
+
 #include <leptonica/allheaders.h>
 #include <tesseract/baseapi.h>
 
-#ifdef HAVE_TESSERACT
 namespace
 {
-// threshold calculating
+// Otsu's algorithm for calculating optimal threshold for binarization
 int getOtsuThreshold(const QImage &image)
 {
     // The image is already converted to Grayscale8 by the caller (applyOtsu)
 
-    // 1. Step: Calculation  Histogram
+    // Step 1: Calculate histogram
     std::vector<int> histogram(256, 0);
     int totalPixelCount = image.width() * image.height();
 
@@ -129,9 +133,7 @@ int getOtsuThreshold(const QImage &image)
         }
     }
 
-    // Otsu Algorithm loop
-    // Here we are looking for the t value that maximizes the variance we call “Between Class Variance”.
-
+    // Otsu Algorithm: Find threshold that maximizes between-class variance
     float sum = 0;
     for (int i = 0; i < 256; ++i) {
         sum += i * histogram[i];
@@ -145,22 +147,22 @@ int getOtsuThreshold(const QImage &image)
     int threshold = 0;
 
     for (int t = 0; t < 256; ++t) {
-        wB += histogram[t]; // Background pixel
+        wB += histogram[t]; // Background pixel count
         if (wB == 0) {
             continue;
         }
 
-        wF = totalPixelCount - wB; // Foreground pixel
+        wF = totalPixelCount - wB; // Foreground pixel count
         if (wF == 0) {
             break;
         }
 
         sumB += (float)(t * histogram[t]);
 
-        float mB = sumB / wB;         //  (Mean Background)
-        float mF = (sum - sumB) / wF; //  (Mean Foreground)
+        float mB = sumB / wB;         // Mean Background
+        float mF = (sum - sumB) / wF; // Mean Foreground
 
-        // Formula for calculating between-class variance
+        // Between-class variance formula
         float varBetween = (float)wB * (float)wF * (mB - mF) * (mB - mF);
 
         if (varBetween > varMax) {
@@ -174,7 +176,7 @@ int getOtsuThreshold(const QImage &image)
 
 QImage applyOtsu(const QImage &input)
 {
-    // We convert it to official gray and make it black and white according to that threshold value.
+    // Convert to grayscale and apply Otsu threshold for binarization
     QImage gray = input.convertToFormat(QImage::Format_Grayscale8);
     int threshold = getOtsuThreshold(gray);
 
@@ -186,13 +188,8 @@ QImage applyOtsu(const QImage &input)
     }
     return gray;
 }
-}
-#endif
-
-// for OTSU
-#include <cmath>
-#include <vector>
-#endif
+} // anonymous namespace
+#endif // HAVE_TESSERACT
 
 // Without this the code in DocumentPrivate::setDefaultViewMode
 // that casts Okular::Generator::PageLayout to View::ViewModeModality data won't work
@@ -3051,15 +3048,15 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 addWebShortcutsMenu(&menu, selectedText);
             }
         }
-#ifdef HAVE_TESSERACT
+#if HAVE_TESSERACT
         QAction *ocrToClipboard = new QAction(QIcon::fromTheme(QStringLiteral("edit-select-text")), i18n("OCR to Clipboard"), &menu);
 #endif
         menu.addAction(new OKMenuTitle(&menu, i18n("Image (%1 × %2 pixels)", selectionRect.width(), selectionRect.height())));
         imageToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18n("Copy to Clipboard"));
         imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
 
-#ifdef HAVE_TESSERACT
-        // add ocr action
+#if HAVE_TESSERACT
+        // Add OCR action to menu
         menu.addAction(ocrToClipboard);
 #endif
 
@@ -3067,7 +3064,7 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
         if (choice) {
             if (choice == imageToClipboard || choice == imageToFile
-#ifdef HAVE_TESSERACT
+#if HAVE_TESSERACT
                 || choice == ocrToClipboard
 #endif
             ) {
@@ -3104,40 +3101,37 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                         d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
                     }
                 }
-#ifdef HAVE_TESSERACT
+#if HAVE_TESSERACT
                 if (choice == ocrToClipboard) {
-                    // Screen images are generally 72-96 DPI. OCR prefers 300 DPI.
-
-                    // get image
+                    // Screen images are generally 72-96 DPI. OCR works best at ~300 DPI.
+                    // Upscale 3x to improve recognition accuracy.
                     QImage image = copyPix.toImage();
-
-                    // 2. upscale (before binarization to keep edges smooth for Otsu to work better)
                     image = image.scaled(copyPix.width() * 3, copyPix.height() * 3, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
-                    // 3. apply otsu
+                    // Apply Otsu binarization for better OCR results
                     image = applyOtsu(image);
 
                     auto api = std::make_unique<tesseract::TessBaseAPI>();
 
+                    // Initialize Tesseract with English language data.
+                    // Users can install additional tessdata packages for other languages.
                     if (api->Init(nullptr, "eng")) {
                         d->messageWindow->display(i18n("OCR Error: Failed to initialize Tesseract."), QString(), PageViewMessage::Error);
-                        return;
-                    }
-
-                    api->SetPageSegMode(tesseract::PSM_SPARSE_TEXT);
-
-                    api->SetImage(image.bits(), image.width(), image.height(), 1, image.bytesPerLine());
-
-                    char *outText = api->GetUTF8Text();
-                    QString resultText = QString::fromUtf8(outText).trimmed();
-
-                    delete[] outText;
-
-                    if (!resultText.isEmpty()) {
-                        QApplication::clipboard()->setText(resultText);
-                        d->messageWindow->display(i18n("Text copied to clipboard."), QString(), PageViewMessage::Info);
+                        // Don't return here - fall through to clean up selection state
                     } else {
-                        d->messageWindow->display(i18n("The text could not be read."), QString(), PageViewMessage::Warning);
+                        api->SetPageSegMode(tesseract::PSM_SPARSE_TEXT);
+                        api->SetImage(image.bits(), image.width(), image.height(), 1, image.bytesPerLine());
+
+                        char *outText = api->GetUTF8Text();
+                        QString resultText = QString::fromUtf8(outText).trimmed();
+                        delete[] outText;
+
+                        if (!resultText.isEmpty()) {
+                            QApplication::clipboard()->setText(resultText);
+                            d->messageWindow->display(i18n("Text copied to clipboard."), QString(), PageViewMessage::Info);
+                        } else {
+                            d->messageWindow->display(i18n("No text could be recognized."), QString(), PageViewMessage::Warning);
+                        }
                     }
                 }
 #endif

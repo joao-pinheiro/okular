@@ -144,31 +144,27 @@ endif()
 
 find_package(PkgConfig)
 
-# Tesseract
-
-pkg_check_modules(PC_TESSERACT tesseract)
-find_path(Tesseract_INCLUDE_DIRS NAMES tesseract/baseapi.h HINTS ${PC_TESSERACT_INCLUDEDIR} ${PC_TESSERACT_INCLUDE_DIRS})
-find_library(Tesseract_LIBRARIES NAMES tesseract tesseract54 libtesseract HINTS ${PC_TESSERACT_LIBDIR} ${PC_TESSERACT_LIBRARY_DIRS})
-
-include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(Tesseract DEFAULT_MSG Tesseract_LIBRARIES Tesseract_INCLUDE_DIRS)
-
-set_package_properties(Tesseract PROPERTIES
-    PURPOSE "Required for OCR support in selection tool"
-    TYPE OPTIONAL
-)
-
-# Leptonica
-pkg_check_modules(PC_LEPTONICA lept leptonica)
-find_path(Leptonica_INCLUDE_DIRS NAMES leptonica/allheaders.h HINTS ${PC_LEPTONICA_INCLUDEDIR} ${PC_LEPTONICA_INCLUDE_DIRS})
-find_library(Leptonica_LIBRARIES NAMES leptonica lept libleptonica-1.84.1 libleptonica HINTS ${PC_LEPTONICA_LIBDIR} ${PC_LEPTONICA_LIBRARY_DIRS})
-
-find_package_handle_standard_args(Leptonica DEFAULT_MSG Leptonica_LIBRARIES Leptonica_INCLUDE_DIRS)
-
-set_package_properties(Leptonica PROPERTIES
-    PURPOSE "Required for OCR support in selection tool"
-    TYPE OPTIONAL
-)
+# Tesseract OCR support
+# Uses IMPORTED_TARGET for modern CMake linking
+option(WITH_TESSERACT "Build with Tesseract OCR support for text recognition in image selections" ON)
+if(WITH_TESSERACT)
+    pkg_check_modules(Tesseract IMPORTED_TARGET tesseract lept)
+    if(Tesseract_FOUND)
+        set(HAVE_TESSERACT TRUE)
+        # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
+        find_package(OpenMP COMPONENTS CXX)
+    else()
+        set(HAVE_TESSERACT FALSE)
+    endif()
+    set_package_properties(Tesseract PROPERTIES
+        DESCRIPTION "Open Source OCR Engine"
+        URL "https://github.com/tesseract-ocr/tesseract"
+        PURPOSE "Required for OCR support in selection tool. Disable with -DWITH_TESSERACT=OFF"
+        TYPE OPTIONAL
+    )
+else()
+    set(HAVE_TESSERACT FALSE)
+endif()
 
 if (BUILD_DESKTOP)
     # shall we use DBus?
@@ -609,11 +605,6 @@ kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
 
-if(Tesseract_FOUND AND Leptonica_FOUND)
-    target_compile_definitions(okularpart PRIVATE HAVE_TESSERACT) 
-    target_include_directories(okularpart PRIVATE ${Tesseract_INCLUDE_DIRS} ${Leptonica_INCLUDE_DIRS})
-endif()
-
 generate_export_header(okularpart BASE_NAME okularpart)
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
@@ -630,9 +621,11 @@ target_link_libraries(okularpart okularcore
     KF6::ColorScheme
 )
 
-if(Tesseract_FOUND AND Leptonica_FOUND)
-    target_link_libraries(okularpart ${Tesseract_LIBRARIES})
-    target_link_libraries(okularpart ${Leptonica_LIBRARIES})
+if(HAVE_TESSERACT)
+    target_link_libraries(okularpart PkgConfig::Tesseract)
+    if(TARGET OpenMP::OpenMP_CXX)
+        target_link_libraries(okularpart OpenMP::OpenMP_CXX)
+    endif()
 endif()
 
 if (TARGET Qt6::DBus)
