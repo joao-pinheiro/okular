@@ -923,7 +923,7 @@ Document::OpenResult DocumentPrivate::openDocumentInternal(const KPluginMetaData
 {
     QString propName = offer.pluginId();
     QHash<QString, GeneratorInfo>::const_iterator genIt = m_loadedGenerators.constFind(propName);
-    m_walletGenerator = nullptr;
+    m_keychainGenerator = nullptr;
     if (genIt != m_loadedGenerators.constEnd()) {
         m_generator = genIt.value().generator;
     } else {
@@ -977,11 +977,11 @@ Document::OpenResult DocumentPrivate::openDocumentInternal(const KPluginMetaData
         QObject::disconnect(m_generator, nullptr, m_parent, nullptr);
 
         // TODO this is a bit of a hack, since basically means that
-        // you can only call walletDataForFile after calling openDocument
+        // you can only call keychainDataForFile after calling openDocument
         // but since in reality it's what happens I've decided not to refactor/break API
-        // One solution is just kill walletDataForFile and make OpenResult be an object
-        // where the wallet data is also returned when OpenNeedsPassword
-        m_walletGenerator = m_generator;
+        // One solution is just kill keychainDataForFile and make OpenResult be an object
+        // where the keychain data is also returned when OpenNeedsPassword
+        m_keychainGenerator = m_generator;
         m_generator = nullptr;
 
         qDeleteAll(m_pagesVector);
@@ -2683,7 +2683,7 @@ void Document::closeDocument()
     d->m_generator = nullptr;
     d->m_generatorName = QString();
     d->m_url = QUrl();
-    d->m_walletGenerator = nullptr;
+    d->m_keychainGenerator = nullptr;
     d->m_docFileName = QString();
     d->m_xmlFileName = QString();
     delete d->m_tempFile;
@@ -5454,12 +5454,12 @@ void Document::setAnnotationEditingEnabled(bool enable)
     foreachObserver(notifySetup(d->m_pagesVector, 0));
 }
 
-void Document::walletDataForFile(const QString &fileName, QString *walletName, QString *walletFolder, QString *walletKey) const
+void Document::keychainDataForFile(const QString &fileName, QString *serviceName, QString *key) const
 {
     if (d->m_generator) {
-        d->m_generator->walletDataForFile(fileName, walletName, walletFolder, walletKey);
-    } else if (d->m_walletGenerator) {
-        d->m_walletGenerator->walletDataForFile(fileName, walletName, walletFolder, walletKey);
+        d->m_generator->keychainDataForFile(fileName, serviceName, key);
+    } else if (d->m_keychainGenerator) {
+        d->m_keychainGenerator->keychainDataForFile(fileName, serviceName, key);
     }
 }
 

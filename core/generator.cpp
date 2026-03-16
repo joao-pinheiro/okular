@@ -24,8 +24,8 @@
 #include <QMimeDatabase>
 #include <QTimer>
 
-#if HAVE_KWALLET
-#include <KWallet>
+#if HAVE_QTKEYCHAIN
+#include <qt6keychain/keychain.h>
 #endif
 
 #include "document_p.h"
@@ -436,17 +436,15 @@ bool Generator::exportTo(const QString &, const ExportFormat &)
     return false;
 }
 
-void Generator::walletDataForFile(const QString &fileName, QString *walletName, QString *walletFolder, QString *walletKey) const
+void Generator::keychainDataForFile(const QString &fileName, QString *serviceName, QString *key) const
 {
-#if HAVE_KWALLET
-    *walletKey = fileName.section(QLatin1Char('/'), -1, -1);
-    *walletName = KWallet::Wallet::NetworkWallet();
-    *walletFolder = QStringLiteral("KPdf");
+#if HAVE_QTKEYCHAIN
+    *key = fileName.section(QLatin1Char('/'), -1, -1);
+    *serviceName = QStringLiteral("Okular");
 #else
     Q_UNUSED(fileName);
-    Q_UNUSED(walletName);
-    Q_UNUSED(walletFolder);
-    Q_UNUSED(walletKey);
+    Q_UNUSED(serviceName);
+    Q_UNUSED(key);
 #endif
 }
 

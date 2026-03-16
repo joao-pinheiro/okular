@@ -459,11 +459,11 @@ public:
     virtual bool exportTo(const QString &fileName, const ExportFormat &format);
 
     /**
-     * This method is called to know which wallet data should be used for the given file name.
-     * Unless you have very special requirements to where wallet data should be stored you
+     * This method is called to know which keychain data should be used for the given file name.
+     * Unless you have very special requirements for where passwords should be stored you
      * don't need to reimplement this method.
      */
-    virtual void walletDataForFile(const QString &fileName, QString *walletName, QString *walletFolder, QString *walletKey) const;
+    virtual void keychainDataForFile(const QString &fileName, QString *serviceName, QString *key) const;
 
     /**
      * Query for the specified @p feature.

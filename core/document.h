@@ -1070,11 +1070,11 @@ public:
     void setAnnotationEditingEnabled(bool enable);
 
     /**
-     * Returns which wallet data to use to read/write the password for the given fileName
+     * Returns which keychain data to use to read/write the password for the given fileName.
      *
      * @since 0.20 (KDE 4.14)
      */
-    void walletDataForFile(const QString &fileName, QString *walletName, QString *walletFolder, QString *walletKey) const;
+    void keychainDataForFile(const QString &fileName, QString *serviceName, QString *key) const;
 
     /**
      * Since version 0.21, okular does not allow editing annotations and

@@ -22,6 +22,7 @@ Dependencies:
       'frameworks/purpose': '@latest-kf6'
       'frameworks/breeze-icons': '@latest-kf6'
       'graphics/libkexiv2': '@same'
+      'third-party/qtkeychain': '@latest'
 
   - 'on': ['Android']
     'require':
