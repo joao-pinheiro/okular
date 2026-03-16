@@ -440,7 +440,7 @@ void Generator::keychainDataForFile(const QString &fileName, QString *serviceNam
 {
 #if HAVE_QTKEYCHAIN
     *key = fileName.section(QLatin1Char('/'), -1, -1);
-    *serviceName = QStringLiteral("Okular");
+    *serviceName = QStringLiteral("KPdf");
 #else
     Q_UNUSED(fileName);
     Q_UNUSED(serviceName);
