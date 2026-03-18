@@ -1777,6 +1777,7 @@ bool PDFGenerator::setDocumentRenderHints()
     const bool overprintPreviewWasEnabled = (oldhints & Poppler::Document::OverprintPreview) == Poppler::Document::OverprintPreview;
     const bool thinLineSolidWasEnabled = (oldhints & Poppler::Document::ThinLineSolid) == Poppler::Document::ThinLineSolid;
     const bool thinLineShapeWasEnabled = (oldhints & Poppler::Document::ThinLineShape) == Poppler::Document::ThinLineShape;
+    const bool ignorePaperColorWasEnabled = (oldhints & Poppler::Document::IgnorePaperColor) == Poppler::Document::IgnorePaperColor;
 
     if (enableOverprintPreview != overprintPreviewWasEnabled) {
         pdfdoc->setRenderHint(Poppler::Document::OverprintPreview, enableOverprintPreview);
@@ -1788,6 +1789,11 @@ bool PDFGenerator::setDocumentRenderHints()
     }
     if (enableShapeLineSolid != thinLineShapeWasEnabled) {
         pdfdoc->setRenderHint(Poppler::Document::ThinLineShape, enableShapeLineSolid);
+        changed = true;
+    }
+    const bool ignorePaperColor = pdfdoc->paperColor().alpha() == 0;
+    if (ignorePaperColor != ignorePaperColorWasEnabled) {
+        pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, ignorePaperColor);
         changed = true;
     }
     return changed;
