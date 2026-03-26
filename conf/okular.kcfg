@@ -195,6 +195,9 @@
   <entry key="ShowEmbeddedContentMessages" type="Bool" >
    <default>true</default>
   </entry>
+  <entry key="ShowJumpingHistory" type="Bool" >
+   <default>true</default>
+  </entry>
   <entry key="DisplayDocumentTitle" type="Bool" >
    <default>true</default>
  </entry>

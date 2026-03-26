@@ -7,14 +7,14 @@
 #include "tocmodel.h"
 
 #include <QApplication>
+#include <QFont>
 #include <QList>
 #include <QTreeView>
 #include <qdom.h>
 
-#include <QFont>
-
 #include "core/document.h"
 #include "core/page.h"
+#include "settings.h"
 
 Q_DECLARE_METATYPE(QModelIndex)
 
@@ -54,6 +54,11 @@ public:
     QList<TOCItem *> currentPage;
     TOCModel *m_oldModel;
     QList<QModelIndex> m_oldTocExpandedIndexes;
+
+    QQueue<QModelIndex> jumpingHistory;
+    QColor jumpingHistoryHighlightColor;
+    static constexpr int jumpingHistoryMaxItems = 5;
+
     Q_DISABLE_COPY(TOCModelPrivate)
 };
 
@@ -102,6 +107,8 @@ TOCModelPrivate::TOCModelPrivate(TOCModel *qq)
     , m_oldModel(nullptr)
 {
     root->model = this;
+    jumpingHistoryHighlightColor = qApp->palette().color(QPalette::Highlight);
+    jumpingHistoryHighlightColor.setAlpha(jumpingHistoryHighlightColor.alpha() / 6);
 }
 
 TOCModelPrivate::~TOCModelPrivate()
@@ -260,7 +267,22 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
             return d->document->page(item->viewport.pageNumber)->label();
         }
         break;
+    case Qt::BackgroundRole: {
+        if (Okular::Settings::showJumpingHistory()) {
+            QColor backgroundColor = d->jumpingHistory.contains(index) ? d->jumpingHistoryHighlightColor : qApp->palette().color(QPalette::Base);
+            // TODO see the mobile version comment above
+            QTreeView *view = dynamic_cast<QTreeView *>(QObject::parent());
+            if (!view) {
+                return backgroundColor;
+            }
+            if (!view->isExpanded(index)) {
+                return backgroundColor;
+            }
+        }
+        break;
     }
+    }
+
     return QVariant();
 }
 
@@ -374,6 +396,7 @@ void TOCModel::clear()
 
     beginResetModel();
     qDeleteAll(d->root->children);
+    d->jumpingHistory.clear();
     d->root->children.clear();
     d->currentPage.clear();
     endResetModel();
@@ -404,6 +427,7 @@ void TOCModel::setCurrentViewport(const Okular::DocumentViewport &viewport)
             continue;
         }
 
+        addJumpingHistory(idx);
         item->highlight = true;
         Q_EMIT dataChanged(idx, idx);
     }
@@ -493,4 +517,23 @@ bool TOCModel::checkequality(const TOCModel *model, const QModelIndex &parentA, 
     }
     return true;
 }
+
+void TOCModel::addJumpingHistory(const QModelIndex &index)
+{
+    if (!Okular::Settings::showJumpingHistory()) {
+        return;
+    }
+
+    // remove existing index if already exist
+    d->jumpingHistory.removeOne(index);
+    if (d->jumpingHistory.size() > d->jumpingHistoryMaxItems) {
+        auto old_index = d->jumpingHistory.dequeue();
+        Q_EMIT dataChanged(old_index, old_index, {Qt::BackgroundRole});
+    }
+    d->jumpingHistory.enqueue(index);
+    for (auto &index : d->jumpingHistory) {
+        Q_EMIT dataChanged(index, index, {Qt::BackgroundRole});
+    }
+};
+
 #include "moc_tocmodel.cpp"

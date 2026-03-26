@@ -173,6 +173,11 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     openInContinuousModeByDefault->setObjectName(QStringLiteral("kcfg_ViewContinuous"));
     layout->addRow(programFeaturesLabel(), openInContinuousModeByDefault);
 
+    QCheckBox *useJumpingHistoryInToC = new QCheckBox(this);
+    useJumpingHistoryInToC->setText(i18nc("@option:check Config dialog, general page", "Show jumping history in table of contents"));
+    useJumpingHistoryInToC->setObjectName(QStringLiteral("kcfg_ShowJumpingHistory"));
+    layout->addRow(programFeaturesLabel(), useJumpingHistoryInToC);
+
     auto setOpenInContinuousModeByDefaultText = [useFileInfoForContinuousMode, openInContinuousModeByDefault]() {
         if (useFileInfoForContinuousMode->isChecked()) {
             openInContinuousModeByDefault->setText(i18nc("@option:check Config dialog, general page", "For files without file information, open in continuous mode by default"));

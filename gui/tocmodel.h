@@ -8,7 +8,9 @@
 #define TOCMODEL_H
 
 #include <QAbstractItemModel>
+#include <QColor>
 #include <QList>
+#include <QQueue>
 
 namespace Okular
 {
@@ -56,6 +58,8 @@ public:
     QString externalFileNameForIndex(const QModelIndex &index) const;
     Okular::DocumentViewport viewportForIndex(const QModelIndex &index) const;
     QString urlForIndex(const QModelIndex &index) const;
+
+    void addJumpingHistory(const QModelIndex &index);
 
     int count() const
     {
