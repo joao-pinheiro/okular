@@ -291,6 +291,9 @@ public:
     // the rotation applied to the document
     Rotation m_rotation;
 
+    // the sidebar tab name
+    QString m_sidebarTab;
+
     // the current size of the pages (if available), and the cache of the
     // available page sizes
     PageSize m_pageSize;

@@ -27,8 +27,6 @@
 // qt/kde includes
 #include <QApplication>
 #include <QContextMenuEvent>
-#include <kconfiggroup.h>
-#include <qhashfunctions.h>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -1773,13 +1771,9 @@ bool Part::openFile()
     } else if (m_cliPrintAndExit) {
         slotPrint();
     }
-    // reading sidebar tab when a document reopens
-    if (url().isLocalFile() && m_sidebar) {
-        KConfigGroup sidebarGroup = KSharedConfig::openConfig()->group(QStringLiteral("SidebarTab"));
-
-        const QString fileName = url().toDisplayString(QUrl::PreferLocalFile);
-        const QString savedTab = sidebarGroup.readEntry(fileName, QString());
-
+    // restore sidebar tab from xml file
+    if (m_sidebar) {
+        const QString savedTab = m_document->sidebarTab();
         if (!savedTab.isEmpty() && m_sidebar->currentItemName() != savedTab) {
             m_sidebar->setCurrentItemByName(savedTab);
         }
@@ -1993,17 +1987,9 @@ bool Part::closeUrl(bool promptToSave)
         factory()->removeClient(m_generatorGuiClient);
     }
     m_generatorGuiClient = nullptr;
-    // saving sidebar tab for restoration when document reopens
     if (!m_swapInsteadOfOpening && m_document->pages() > 0 && m_sidebar) {
-        const QString tabName = m_sidebar->currentItemName();
-        if (!tabName.isEmpty()) {
-            KConfigGroup sidebarGroup = KSharedConfig::openConfig()->group(QStringLiteral("SidebarTab"));
-            QString fileName = url().toString(QUrl::PreferLocalFile);
-            sidebarGroup.writeEntry(fileName, tabName);
-            sidebarGroup.sync();
-        }
+        m_document->setSidebarTab(m_sidebar->currentItemName());
     }
-
     m_document->closeDocument();
     m_fileLastModified = QDateTime();
     updateViewActions();
