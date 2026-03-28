@@ -54,6 +54,7 @@ Document::Document()
 
 Document::~Document()
 {
+    close();
 }
 
 bool Document::open(const QString &fileName)
