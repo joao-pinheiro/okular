@@ -24,6 +24,7 @@ private Q_SLOTS:
     void testAddAnnotations();
     void testAddAnnotationUndoWithRotate_Bug318091();
     void testRemoveAnnotations();
+    void cleanupTestCase();
 
 private:
     Okular::Document *m_document;
@@ -182,6 +183,11 @@ void AddRemoveAnnotationTest::testRemoveAnnotations()
     QVERIFY(TestingUtils::AnnotationDisposeWatcher::disposedAnnotationName().isEmpty());
     m_document->closeDocument();
     QVERIFY(TestingUtils::AnnotationDisposeWatcher::disposedAnnotationName() == annot1Name);
+}
+
+void AddRemoveAnnotationTest::cleanupTestCase()
+{
+    delete m_document;
 }
 
 QTEST_MAIN(AddRemoveAnnotationTest)
