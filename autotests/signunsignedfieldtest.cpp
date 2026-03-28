@@ -51,6 +51,7 @@ private Q_SLOTS:
     void init();
     void cleanup();
     void testSignUnsignedField();
+    void cleanupTestCase();
 
 private:
     Okular::Document *m_document;
@@ -117,6 +118,11 @@ void SignUnsignedFieldTest::testSignUnsignedField()
     QCOMPARE(ffs->signatureType(), Okular::FormFieldSignature::AdbePkcs7detached);
     QCOMPARE(ffs->signatureInfo().signerName(), QStringLiteral("FakeOkular"));
 }
+
+void SignUnsignedFieldTest::cleanupTestCase(){
+    delete m_document;
+}
+
 
 QTEST_MAIN(SignUnsignedFieldTest)
 #include "signunsignedfieldtest.moc"
