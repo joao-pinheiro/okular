@@ -2225,6 +2225,8 @@ void PartTest::testTabletProximityBehavior()
     // Moving the mouse should bring the cursor back
     QTest::mouseMove(w, QPoint(150, 150));
     QVERIFY(w->cursor().shape() == Qt::CursorShape(Qt::ArrowCursor));
+
+    delete pointingDevice;
 }
 
 void PartTest::testOpenPrintPreview()
