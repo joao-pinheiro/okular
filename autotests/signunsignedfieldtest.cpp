@@ -119,10 +119,10 @@ void SignUnsignedFieldTest::testSignUnsignedField()
     QCOMPARE(ffs->signatureInfo().signerName(), QStringLiteral("FakeOkular"));
 }
 
-void SignUnsignedFieldTest::cleanupTestCase(){
+void SignUnsignedFieldTest::cleanupTestCase()
+{
     delete m_document;
 }
-
 
 QTEST_MAIN(SignUnsignedFieldTest)
 #include "signunsignedfieldtest.moc"
