@@ -41,25 +41,35 @@ void MarkdownTest::testFancyPantsEnabled()
 {
     Markdown::Converter converter;
     converter.setFancyPantsEnabled(true);
+    QList<Okular::Action *> actions;
+    connect(&converter, &Okular::TextDocumentConverter::addAction, [&actions](Okular::Action *action, int, int) { actions.append(action); });
     std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/imageSizes.md")));
 
     QTextFrame::iterator secondFrame = ++(document->rootFrame()->begin());
     QVERIFY(secondFrame.currentBlock().text().startsWith(QStringLiteral("©")));
+
+    qDeleteAll(actions);
 }
 
 void MarkdownTest::testFancyPantsDisabled()
 {
     Markdown::Converter converter;
     converter.setFancyPantsEnabled(false);
+    QList<Okular::Action *> actions;
+    connect(&converter, &Okular::TextDocumentConverter::addAction, [&actions](Okular::Action *action, int, int) { actions.append(action); });
     std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/imageSizes.md")));
 
     QTextFrame::iterator secondFrame = ++(document->rootFrame()->begin());
     QVERIFY(secondFrame.currentBlock().text().startsWith(QStringLiteral("(c)")));
+
+    qDeleteAll(actions);
 }
 
 void MarkdownTest::testImageSizes()
 {
     Markdown::Converter converter;
+    QList<Okular::Action *> actions;
+    connect(&converter, &Okular::TextDocumentConverter::addAction, [&actions](Okular::Action *action, int, int) { actions.append(action); });
     std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/imageSizes.md")));
 
     QTextFrame *parent = document->rootFrame();
@@ -95,6 +105,8 @@ void MarkdownTest::testImageSizes()
         QCOMPARE(images[i].width(), expectedSizes[i][0]);
         QCOMPARE(images[i].height(), expectedSizes[i][1]);
     }
+
+    qDeleteAll(actions);
 }
 
 void MarkdownTest::findImages(QTextFrame *parent, QList<QTextImageFormat> &images)
@@ -127,6 +139,8 @@ void MarkdownTest::findImages(const QTextBlock &parent, QList<QTextImageFormat> 
 void MarkdownTest::testSpecialCharsInImageFileName()
 {
     Markdown::Converter converter;
+    QList<Okular::Action *> actions;
+    connect(&converter, &Okular::TextDocumentConverter::addAction, [&actions](Okular::Action *action, int, int) { actions.append(action); });
     std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/imageUrlsWithSpecialChars.md")));
 
     QTextFrame *parent = document->rootFrame();
@@ -137,12 +151,16 @@ void MarkdownTest::testSpecialCharsInImageFileName()
     QCOMPARE(images.size(), 1);
     QVERIFY(images[0].name().endsWith(QStringLiteral("kartöffelchen.jpg")));
     QVERIFY(!images[0].name().contains(QStringLiteral("kart%C3%B6ffelchen.jpg")));
+
+    qDeleteAll(actions);
 }
 
 void MarkdownTest::testStrikeThrough()
 {
     Markdown::Converter converter;
     converter.setFancyPantsEnabled(true);
+    QList<Okular::Action *> actions;
+    connect(&converter, &Okular::TextDocumentConverter::addAction, [&actions](Okular::Action *action, int, int) { actions.append(action); });
     std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/strikethrough.md")));
 
     const QTextFrame *rootFrame = document->rootFrame();
@@ -188,6 +206,8 @@ void MarkdownTest::testStrikeThrough()
         auto block = frameIter.currentBlock();
         QCOMPARE(block.text(), QStringLiteral("~~Strikethrough~~ should be <del>ignored</del> in a <s>code block</s>"));
     }
+
+    qDeleteAll(actions);
 }
 
 void MarkdownTest::testHtmlTagFixup()
