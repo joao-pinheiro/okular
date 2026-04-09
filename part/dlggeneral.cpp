@@ -94,6 +94,12 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     useCustomColor->setChecked(false);
     customColor->setEnabled(false);
     connect(useCustomColor, &QCheckBox::toggled, customColor, &QWidget::setEnabled);
+
+    // Checkbox: show transparency grid
+    QCheckBox *showTransparencyGrid = new QCheckBox(this);
+    showTransparencyGrid->setText(i18nc("@option:check Config dialog, general page", "Show transparency grid"));
+    showTransparencyGrid->setObjectName(QStringLiteral("kcfg_ShowTransparencyGrid"));
+    layout->addRow(QString(), showTransparencyGrid);
     // END Appearance section
 
     layout->addRow(new QLabel(this));
