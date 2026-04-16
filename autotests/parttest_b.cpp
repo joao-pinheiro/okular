@@ -951,7 +951,6 @@ void PartTestB::test388288()
     QTRY_COMPARE(part.m_pageView->cursor().shape(), Qt::OpenHandCursor);
 }
 
-
 void PartTestB::testAnnotWindow()
 {
     Okular::Part part(nullptr, {});
