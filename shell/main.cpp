@@ -18,8 +18,6 @@
 #include <KCrash>
 #include <KIconTheme>
 #include <KLocalizedString>
-#include <KMessageBox>
-#include <KSharedConfig>
 #include <KWindowSystem>
 #include <QApplication>
 #include <QCommandLineOption>
@@ -30,7 +28,6 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QStringList>
-#include <QTextStream>
 #include <QtGlobal>
 
 #include "config-okular.h"
@@ -42,7 +39,6 @@
 
 #if defined(Q_OS_WIN) && !HAVE_DBUS
 #include "SingleApplication/SingleApplication"
-#include <windows.h>
 #endif
 
 /**
@@ -148,37 +144,6 @@ int main(int argc, char **argv)
     aboutData.processCommandLine(&parser);
 
 #if defined(Q_OS_WIN) && !HAVE_DBUS
-    // Secondary instance: forward URLs to the primary instance and exit.
-    if (app.isSecondary()) {
-        const QStringList paths = parser.positionalArguments();
-        const QString serializedOptions = ShellUtils::serializeOptions(parser);
-
-        const bool canReuse = !paths.isEmpty() && !ShellUtils::startInPresentation(serializedOptions) && !ShellUtils::showPrintDialogAndExit(serializedOptions);
-
-        if (canReuse) {
-#ifdef Q_OS_WIN
-            AllowSetForegroundWindow(static_cast<DWORD>(app.primaryPid()));
-#endif
-            QJsonObject message;
-            QJsonArray urlArray;
-            for (const QString &arg : paths) {
-                const QString page = ShellUtils::page(serializedOptions);
-                const QUrl url = ShellUtils::urlFromArg(arg, ShellUtils::qfileExistFunc(), page);
-                QJsonObject urlObj;
-                urlObj[QStringLiteral("url")] = url.toString();
-                urlArray.append(urlObj);
-            }
-            message[QStringLiteral("urls")] = urlArray;
-            message[QStringLiteral("serializedOptions")] = serializedOptions;
-
-            const QByteArray data = QJsonDocument(message).toJson(QJsonDocument::Compact);
-            app.sendMessage(data, 1000);
-
-            return 0;
-        }
-        // Fallback: continue and start an independent process.
-    }
-
     // Primary instance: listen for URLs from secondary instances.
     if (app.isPrimary()) {
         QObject::connect(&app, &SingleApplication::receivedMessage, &app, [](quint32 instanceId, QByteArray message) {
