@@ -1209,7 +1209,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<QUrl>(); /*as done by kapplication*/
     qRegisterMetaType<QList<QUrl>>();
 
-    Okular::PartTest test;
+    Okular::PartTestB test;
 
     return QTest::qExec(&test, argc, argv);
 }

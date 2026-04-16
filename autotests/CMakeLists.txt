@@ -27,8 +27,13 @@ ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
 
 if(Poppler_Qt6_FOUND)
     if (BUILD_DESKTOP)
-        ecm_add_test(parttest.cpp closedialoghelper.cpp
-            TEST_NAME "parttest"
+        ecm_add_test(parttest_a.cpp closedialoghelper.cpp
+            TEST_NAME "parttest_a"
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+        )
+
+        ecm_add_test(parttest_b.cpp closedialoghelper.cpp
+            TEST_NAME "parttest_b"
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
         )
     endif()

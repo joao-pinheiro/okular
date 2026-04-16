@@ -118,6 +118,8 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     Q_INTERFACES(Okular::ViewerInterface)
 
     friend class PartTest;
+    friend class PartTestA;
+    friend class PartTestB;
 
 public:
     // Default constructor

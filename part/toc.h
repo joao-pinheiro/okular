@@ -22,13 +22,16 @@ class TOCModel;
 namespace Okular
 {
 class Document;
-class PartTest;
+class PartTestA;
+class PartTestB;
+
 }
 
 class OKULARPART_EXPORT TOC : public QWidget, public Okular::DocumentObserver
 {
     Q_OBJECT
-    friend class Okular::PartTest;
+    friend class Okular::PartTestA;
+    friend class Okular::PartTestB;
 
 public:
     TOC(QWidget *parent, Okular::Document *document);

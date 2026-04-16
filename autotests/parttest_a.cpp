@@ -390,7 +390,7 @@ void PartTestA::testClickUrlLinkWhileInSelectionMode()
 
     // overwrite urlHandler for 'mailto' urls
     QDesktopServices::setUrlHandler(QStringLiteral("mailto"), this, "urlHandler");
-    QSignalSpy openUrlSignalSpy(this, &PartTest::urlHandler);
+    QSignalSpy openUrlSignalSpy(this, &PartTestA::urlHandler);
 
     // click on url
     QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * 0.250, height * 0.127));
@@ -492,7 +492,7 @@ void PartTestA::testClickUrlLinkWhileLinkTextIsSelected()
 
     // overwrite urlHandler for 'mailto' urls
     QDesktopServices::setUrlHandler(QStringLiteral("mailto"), this, "urlHandler");
-    QSignalSpy openUrlSignalSpy(this, &PartTest::urlHandler);
+    QSignalSpy openUrlSignalSpy(this, &PartTestA::urlHandler);
 
     // click on url
     const double mouseClickX = width * 0.2997;
@@ -1535,7 +1535,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<QUrl>(); /*as done by kapplication*/
     qRegisterMetaType<QList<QUrl>>();
 
-    Okular::PartTest test;
+    Okular::PartTestA test;
 
     return QTest::qExec(&test, argc, argv);
 }
