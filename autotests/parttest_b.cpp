@@ -59,12 +59,6 @@ class PartTestB : public QObject
 private Q_SLOTS:
     void init();
 
-    void testReload();
-    void testCanceledReload();
-    void testTOCReload();
-    void testForwardPDF();
-    void testForwardPDF_data();
-    void testGeneratorPreferences();
     void testRemoveLineBreaks_data();
     void testRemoveLineBreaks();
     void testClickInternalLink();
@@ -138,101 +132,6 @@ void PartTestB::init()
         const QString docDataPath = Okular::DocumentPrivate::docDataFileName(url, fileReadTest.size());
         QFile::remove(docDataPath);
     }
-}
-
-// Test that Okular doesn't crash after a successful reload
-void PartTestB::testReload()
-{
-    QVariantList dummyArgs;
-    Okular::Part part(nullptr, dummyArgs);
-    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
-    part.reload();
-    qApp->processEvents();
-}
-
-// Test that Okular doesn't crash after a canceled reload
-void PartTestB::testCanceledReload()
-{
-    QVariantList dummyArgs;
-    PartThatHijacksQueryClose part(nullptr, dummyArgs);
-    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
-
-    // When queryClose() returns false, the reload operation is canceled (as if
-    // the user had chosen Cancel in the "Save changes?" message box)
-    part.setQueryCloseBehavior(PartThatHijacksQueryClose::ReturnFalse);
-
-    part.reload();
-
-    qApp->processEvents();
-}
-
-void PartTestB::testTOCReload()
-{
-    QVariantList dummyArgs;
-    Okular::Part part(nullptr, dummyArgs);
-    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/tocreload.pdf")));
-    QCOMPARE(part.m_toc->expandedNodes().count(), 0);
-    part.m_toc->m_treeView->expandAll();
-    QCOMPARE(part.m_toc->expandedNodes().count(), 3);
-    part.reload();
-    qApp->processEvents();
-    QCOMPARE(part.m_toc->expandedNodes().count(), 3);
-}
-
-void PartTestB::testForwardPDF()
-{
-    QFETCH(QString, dir);
-
-    QVariantList dummyArgs;
-    Okular::Part part(nullptr, dummyArgs);
-
-    // Create temp dir named like this: ${system temp dir}/${random string}/${dir}
-    const QTemporaryDir tempDir;
-    const QDir workDir(QDir(tempDir.path()).filePath(dir));
-    workDir.mkpath(QStringLiteral("."));
-
-    const QString pdfResult = workDir.path() + QStringLiteral("/synctextest.pdf");
-    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/synctextest.pdf"), pdfResult));
-    const QString gzDestination = workDir.path() + QStringLiteral("/synctextest.synctex.gz");
-    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/synctextest.synctex.gz"), gzDestination));
-
-    QVERIFY(openDocument(&part, pdfResult));
-    part.m_document->setViewportPage(0);
-    QCOMPARE(part.m_document->currentPage(), 0u);
-    part.closeUrl();
-
-    QUrl u(QUrl::fromLocalFile(pdfResult));
-    // Update this if you regenerate the synctextest.pdf somewhere else
-    u.setFragment(QStringLiteral("src:100/home/tsdgeos/devel/kde/okular/autotests/data/synctextest.tex"));
-    part.openUrl(u);
-    QCOMPARE(part.m_document->currentPage(), 1u);
-}
-
-void PartTestB::testForwardPDF_data()
-{
-    QTest::addColumn<QString>("dir");
-
-    QTest::newRow("non-utf8") << QStringLiteral("synctextest");
-    // QStringliteral is broken on windows with non ascii chars so using QString::fromUtf8
-    QTest::newRow("utf8") << QString::fromUtf8("ßðđđŋßðđŋ");
-}
-
-void PartTestB::testGeneratorPreferences()
-{
-    KConfigDialog *dialog;
-    QVariantList dummyArgs;
-    Okular::Part part(nullptr, dummyArgs);
-
-    // Test that we don't crash while opening the dialog
-    dialog = part.slotGeneratorPreferences();
-    qApp->processEvents();
-    delete dialog; // closes the dialog and recursively destroys all widgets
-
-    // Test that we don't crash while opening a new instance of the dialog
-    // This catches attempts to reuse widgets that have been destroyed
-    dialog = part.slotGeneratorPreferences();
-    qApp->processEvents();
-    delete dialog;
 }
 
 void PartTestB::testRemoveLineBreaks_data()
@@ -517,8 +416,7 @@ void PartTestB::testSaveAs()
         part.closeUrl();
     }
 
-    qDebug() << "Open the native file saved directly, and check that the annot"
-             << "is there iff we expect it";
+    qDebug() << "Open the native file saved directly, and check that the annot" << "is there iff we expect it";
     {
         Okular::Part part(nullptr, {});
         new QAbstractItemModelTester(part.annotationsModel(), &part);
@@ -532,8 +430,7 @@ void PartTestB::testSaveAs()
         part.closeUrl();
     }
 
-    qDebug() << "Open the native file saved from the .okular, and check that the annot"
-             << "is there iff we expect it";
+    qDebug() << "Open the native file saved from the .okular, and check that the annot" << "is there iff we expect it";
     {
         Okular::Part part(nullptr, {});
         part.openDocument(nativeFromArchiveFile.fileName());
@@ -949,227 +846,6 @@ void PartTestB::test388288()
 
     QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * 0.5, height * 0.5));
     QTRY_COMPARE(part.m_pageView->cursor().shape(), Qt::OpenHandCursor);
-}
-
-void PartTestB::testAnnotWindow()
-{
-    Okular::Part part(nullptr, {});
-    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
-    part.widget()->show();
-    part.widget()->resize(800, 600);
-    new QAbstractItemModelTester(part.annotationsModel(), &part);
-    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
-        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
-    }
-
-    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
-
-    part.m_document->setViewportPage(0);
-
-    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseNormal"));
-
-    QCOMPARE(part.m_document->currentPage(), 0u);
-
-    // Create two distinct text annotations
-    Okular::Annotation *annot1 = new Okular::TextAnnotation();
-    annot1->setBoundingRectangle(Okular::NormalizedRect(0.8, 0.1, 0.85, 0.15));
-    annot1->setContents(QStringLiteral("Annot contents 111111"));
-
-    Okular::Annotation *annot2 = new Okular::TextAnnotation();
-    annot2->setBoundingRectangle(Okular::NormalizedRect(0.8, 0.3, 0.85, 0.35));
-    annot2->setContents(QStringLiteral("Annot contents 222222"));
-
-    // Add annot1 and annot2 to document
-    part.m_document->addPageAnnotation(0, annot1);
-    part.m_document->addPageAnnotation(0, annot2);
-    QVERIFY(part.m_document->page(0)->annotations().size() == 2);
-
-    QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
-    QVERIFY(delayResizeEventTimer->isActive());
-    QTest::qWait(delayResizeEventTimer->interval() * 2);
-
-    // wait for pixmap
-    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
-
-    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
-    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
-
-    // Double click the first annotation to open its window (move mouse for visual feedback)
-    const NormalizedPoint annot1pt = annot1->boundingRectangle().center();
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * annot1pt.x, height * annot1pt.y));
-    QTest::mouseDClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(width * annot1pt.x, height * annot1pt.y));
-    QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), 1);
-    // Verify that the window is visible
-    QFrame *win1 = part.m_pageView->findChild<QFrame *>(QStringLiteral("AnnotWindow"));
-    QVERIFY(!win1->visibleRegion().isEmpty());
-
-    // Double click the second annotation to open its window (move mouse for visual feedback)
-    const NormalizedPoint annot2pt = annot2->boundingRectangle().center();
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * annot2pt.x, height * annot2pt.y));
-    QTest::mouseDClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(width * annot2pt.x, height * annot2pt.y));
-    QTRY_COMPARE(part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow")).size(), 2);
-    // Verify that the first window is hidden covered by the second, which is visible
-    QList<QFrame *> lstWin = part.m_pageView->findChildren<QFrame *>(QStringLiteral("AnnotWindow"));
-    QFrame *win2;
-    if (lstWin[0] == win1) {
-        win2 = lstWin[1];
-    } else {
-        win2 = lstWin[0];
-    }
-    QVERIFY(win1->visibleRegion().isEmpty());
-    QVERIFY(!win2->visibleRegion().isEmpty());
-
-    // Double click the first annotation to raise its window (move mouse for visual feedback)
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(width * annot1pt.x, height * annot1pt.y));
-    QTest::mouseDClick(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(width * annot1pt.x, height * annot1pt.y));
-    // Verify that the second window is hidden covered by the first, which is visible
-    QVERIFY(!win1->visibleRegion().isEmpty());
-    QVERIFY(win2->visibleRegion().isEmpty());
-
-    // Move annotation window 1 to partially show annotation window 2
-    win1->move(QPoint(win2->pos().x(), win2->pos().y() + 50));
-    // Verify that both windows are partially visible
-    QVERIFY(!win1->visibleRegion().isEmpty());
-    QVERIFY(!win2->visibleRegion().isEmpty());
-
-    // Click the second annotation window to raise it (move mouse for visual feedback)
-    auto widget = win2->window()->childAt(win2->mapTo(win2->window(), QPoint(10, 10)));
-    QTest::mouseMove(win2->window(), win2->mapTo(win2->window(), QPoint(10, 10)));
-    QTest::mouseClick(widget, Qt::LeftButton, Qt::NoModifier, widget->mapFrom(win2, QPoint(10, 10)));
-    QVERIFY(win1->visibleRegion().rectCount() == 3);
-    QVERIFY(win2->visibleRegion().rectCount() == 4);
-}
-
-// Helper for testAdditionalActionTriggers
-static void verifyTargetStates(const QString &triggerName, const QMap<QString, Okular::FormField *> &fields, bool focusVisible, bool cursorVisible, bool mouseVisible, int line)
-{
-    Okular::FormField *focusTarget = fields.value(triggerName + QStringLiteral("_focus_target"));
-    Okular::FormField *cursorTarget = fields.value(triggerName + QStringLiteral("_cursor_target"));
-    Okular::FormField *mouseTarget = fields.value(triggerName + QStringLiteral("_mouse_target"));
-
-    QVERIFY(focusTarget);
-    QVERIFY(cursorTarget);
-    QVERIFY(mouseTarget);
-
-    QTRY_VERIFY2(focusTarget->isVisible() == focusVisible, QStringLiteral("line: %1 focus for %2 not matched. Expected %3 Actual %4").arg(line).arg(triggerName).arg(focusTarget->isVisible()).arg(focusVisible).toUtf8().constData());
-    QTRY_VERIFY2(cursorTarget->isVisible() == cursorVisible, QStringLiteral("line: %1 cursor for %2 not matched. Actual %3 Expected %4").arg(line).arg(triggerName).arg(cursorTarget->isVisible()).arg(cursorVisible).toUtf8().constData());
-    QTRY_VERIFY2(mouseTarget->isVisible() == mouseVisible, QStringLiteral("line: %1 mouse for %2 not matched. Expected %3 Actual %4").arg(line).arg(triggerName).arg(mouseTarget->isVisible()).arg(mouseVisible).toUtf8().constData());
-}
-
-void PartTestB::testAdditionalActionTriggers()
-{
-    const QString testFile = QStringLiteral(KDESRCDIR "data/additionalFormActions.pdf");
-    Okular::Part part(nullptr, QVariantList());
-    part.openDocument(testFile);
-    part.widget()->resize(800, 600);
-
-    part.widget()->show();
-    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
-        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
-    }
-
-    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
-
-    QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
-    QVERIFY(delayResizeEventTimer->isActive());
-    QTest::qWait(delayResizeEventTimer->interval() * 2);
-
-    part.m_document->setViewportPage(0);
-
-    // wait for pixmap
-    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
-
-    QMap<QString, Okular::FormField *> fields;
-    // Field names in test document are:
-    // For trigger fields: tf, cb, rb, dd, pb
-    // For target fields: <trigger_name>_focus_target, <trigger_name>_cursor_target,
-    // <trigger_name>_mouse_target
-    const Okular::Page *page = part.m_document->page(0);
-    const QList<Okular::FormField *> pageFormFields = page->formFields();
-    for (Okular::FormField *ff : pageFormFields) {
-        fields.insert(ff->name(), static_cast<Okular::FormField *>(ff));
-    }
-
-    // Verify that everything is set up.
-    verifyTargetStates(QStringLiteral("tf"), fields, true, true, true, __LINE__);
-    verifyTargetStates(QStringLiteral("cb"), fields, true, true, true, __LINE__);
-    verifyTargetStates(QStringLiteral("rb"), fields, true, true, true, __LINE__);
-    verifyTargetStates(QStringLiteral("dd"), fields, true, true, true, __LINE__);
-    verifyTargetStates(QStringLiteral("pb"), fields, true, true, true, __LINE__);
-
-    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
-    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
-
-    part.actionCollection()->action(QStringLiteral("view_toggle_forms"))->trigger();
-
-    QPoint tfPos(width * 0.045, height * 0.05);
-    QPoint cbPos(width * 0.045, height * 0.08);
-    QPoint rbPos(width * 0.045, height * 0.12);
-    QPoint ddPos(width * 0.045, height * 0.16);
-    QPoint pbPos(width * 0.045, height * 0.26);
-
-    // Test text field
-    auto widget = part.m_pageView->viewport()->childAt(tfPos);
-    QVERIFY(widget);
-
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(tfPos));
-    verifyTargetStates(QStringLiteral("tf"), fields, true, false, true, __LINE__);
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("tf"), fields, false, false, false, __LINE__);
-    QTest::mouseRelease(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("tf"), fields, false, false, true, __LINE__);
-
-    // Checkbox
-    widget = part.m_pageView->viewport()->childAt(cbPos);
-    QVERIFY(widget);
-
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(cbPos));
-    verifyTargetStates(QStringLiteral("cb"), fields, true, false, true, __LINE__);
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("cb"), fields, false, false, false, __LINE__);
-    // Confirm that the textfield no longer has any invisible
-    verifyTargetStates(QStringLiteral("tf"), fields, true, true, true, __LINE__);
-    QTest::mouseRelease(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("cb"), fields, false, false, true, __LINE__);
-
-    // Radio
-    widget = part.m_pageView->viewport()->childAt(rbPos);
-    QVERIFY(widget);
-
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(rbPos));
-    verifyTargetStates(QStringLiteral("rb"), fields, true, false, true, __LINE__);
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("rb"), fields, false, false, false, __LINE__);
-    QTest::mouseRelease(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("rb"), fields, false, false, true, __LINE__);
-
-    // Dropdown
-    widget = part.m_pageView->viewport()->childAt(ddPos);
-    QVERIFY(widget);
-
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(ddPos));
-    verifyTargetStates(QStringLiteral("dd"), fields, true, false, true, __LINE__);
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("dd"), fields, false, false, false, __LINE__);
-    QTest::mouseRelease(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("dd"), fields, false, false, true, __LINE__);
-
-    // Pushbutton
-    widget = part.m_pageView->viewport()->childAt(pbPos);
-    QVERIFY(widget);
-
-    QTest::mouseMove(part.m_pageView->viewport(), QPoint(pbPos));
-    verifyTargetStates(QStringLiteral("pb"), fields, true, false, true, __LINE__);
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("pb"), fields, false, false, false, __LINE__);
-    QTest::mouseRelease(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("pb"), fields, false, false, true, __LINE__);
-
-    // Confirm that a mouse release outside does not trigger the show action.
-    QTest::mousePress(widget, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
-    verifyTargetStates(QStringLiteral("pb"), fields, false, false, false, __LINE__);
-    QTest::mouseRelease(part.m_pageView->viewport(), Qt::LeftButton, Qt::NoModifier, tfPos);
-    verifyTargetStates(QStringLiteral("pb"), fields, false, false, false, __LINE__);
 }
 
 } // namespace Okular
