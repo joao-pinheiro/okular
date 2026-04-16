@@ -33,6 +33,7 @@ class ExportImageDocumentObserver : public QObject, public Okular::DocumentObser
 public:
     void notifyPageChanged(int page, int flags) override;
     void doExport(const QList<Okular::PixmapRequest *> &pixmapRequestList, Okular::Document *document, const QString &dirPath, QWidget *parent);
+    void insertIntoLocalPixmaps(int page);
 
 private Q_SLOTS:
     void progressDialogCanceled();
@@ -45,6 +46,8 @@ private:
     QProgressDialog *m_progressDialog;
     int m_progressValue;
     bool m_progressCanceled;
+
+    std::unordered_map<int, QPixmap> m_local_pixmaps{};
 };
 
 class ExportImageDialog : public QDialog
