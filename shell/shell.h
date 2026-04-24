@@ -48,7 +48,8 @@ class Shell : public KParts::MainWindow
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.okular")
 
-    friend class MainShellTest;
+    friend class MainShellTestA;
+    friend class MainShellTestB;
     friend class AnnotationToolBarTest;
 
 public:
