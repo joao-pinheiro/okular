@@ -1097,6 +1097,9 @@ void PartTestA::testAnnotWindow()
         QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
     }
 
+    QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
+    QVERIFY(delayResizeEventTimer->isActive());
+
     QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
 
     part.m_document->setViewportPage(0);
@@ -1119,8 +1122,6 @@ void PartTestA::testAnnotWindow()
     part.m_document->addPageAnnotation(0, annot2);
     QVERIFY(part.m_document->page(0)->annotations().size() == 2);
 
-    QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
-    QVERIFY(delayResizeEventTimer->isActive());
     QTest::qWait(delayResizeEventTimer->interval() * 2);
 
     // wait for pixmap
@@ -1203,10 +1204,11 @@ void PartTestA::testAdditionalActionTriggers()
         QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
     }
 
-    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
-
     QTimer *delayResizeEventTimer = part.m_pageView->findChildren<QTimer *>(QStringLiteral("delayResizeEventTimer")).at(0);
     QVERIFY(delayResizeEventTimer->isActive());
+
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
     QTest::qWait(delayResizeEventTimer->interval() * 2);
 
     part.m_document->setViewportPage(0);
