@@ -197,7 +197,7 @@ void ExportImageDialog::okClicked()
     done(Accepted);
 }
 
-void ExportImageDocumentObserver::insertIntoLocalPixmaps(int page) 
+void ExportImageDocumentObserver::insertIntoLocalPixmaps(int page)
 {
     m_localPixmaps[page] = *(m_document->page(page)->getPixmap(this));
 }
