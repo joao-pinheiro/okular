@@ -47,7 +47,7 @@ private:
     int m_progressValue;
     bool m_progressCanceled;
 
-    std::unordered_map<int, QPixmap> m_local_pixmaps{};
+    std::unordered_map<int, QPixmap> m_localPixmaps;
 };
 
 class ExportImageDialog : public QDialog

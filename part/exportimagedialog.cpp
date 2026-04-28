@@ -197,8 +197,9 @@ void ExportImageDialog::okClicked()
     done(Accepted);
 }
 
-void ExportImageDocumentObserver::insertIntoLocalPixmaps(int page) {
-    m_local_pixmaps[page] = *(m_document->page(page)->getPixmap(this));
+void ExportImageDocumentObserver::insertIntoLocalPixmaps(int page) 
+{
+    m_localPixmaps[page] = *(m_document->page(page)->getPixmap(this));
 }
 
 void ExportImageDocumentObserver::notifyPageChanged(int page, int flags)
@@ -215,7 +216,7 @@ void ExportImageDocumentObserver::getPixmapAndSave(int page)
     if (m_progressCanceled) {
         return;
     }
-    const QPixmap *pixmap = &m_local_pixmaps.at(page);
+    const QPixmap *pixmap = &m_localPixmaps.at(page);
     QString fileName = QString::number(page + 1) + QStringLiteral(".png");
     QDir dir(m_dirPath);
     QString filePath = dir.filePath(fileName);
