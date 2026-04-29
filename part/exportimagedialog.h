@@ -56,7 +56,7 @@ class ExportImageDialog : public QDialog
 public:
     enum DialogCloseCode { Accepted, Canceled, InvalidOptions };
 
-    ExportImageDialog(Okular::Document *document, QWidget *parent = nullptr);
+    explicit ExportImageDialog(Okular::Document *document, QWidget *parent = nullptr);
 
     QString dirPath() const
     {
