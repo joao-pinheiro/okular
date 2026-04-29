@@ -80,17 +80,17 @@ ExportImageDialog::ExportImageDialog(Okular::Document *document, QWidget *parent
     customPageRangeLayout->addWidget(m_customPageRadioButton);
     customPageRangeLayout->addWidget(m_customPageRangeLineEdit);
 
-    connect(m_allPagesRadioButton, &QRadioButton::toggled, this, [=]() {
+    connect(m_allPagesRadioButton, &QRadioButton::toggled, this, [=, this]() {
         m_pageStartSpinBox->setEnabled(false);
         m_pageEndSpinBox->setEnabled(false);
         m_customPageRangeLineEdit->setEnabled(false);
     });
-    connect(m_pageRangeRadioButton, &QRadioButton::toggled, this, [=]() {
+    connect(m_pageRangeRadioButton, &QRadioButton::toggled, this, [=, this]() {
         m_pageStartSpinBox->setEnabled(true);
         m_pageEndSpinBox->setEnabled(true);
         m_customPageRangeLineEdit->setEnabled(false);
     });
-    connect(m_customPageRadioButton, &QRadioButton::toggled, this, [=]() {
+    connect(m_customPageRadioButton, &QRadioButton::toggled, this, [=, this]() {
         m_pageStartSpinBox->setEnabled(false);
         m_pageEndSpinBox->setEnabled(false);
         m_customPageRangeLineEdit->setEnabled(true);
