@@ -86,14 +86,14 @@ QRect AccessiblePresentationWidget::characterRect(int offset) const
         return QRect();
     }
     // TODO: check this
-    PresentationFrame *frame = presentationFrame().m_frames[ presentationFrame().m_franeIndex ];
+    PresentationFrame *frame = presentationFrame().m_frames[presentationFrame().m_franeIndex];
     int scaleX = frame->geometry.width();
     int scaleY = frame->geometry.height();
     QRect r;
     std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->page(presentationWidget()->m_document->pageAtOffset(offset))->charBoxAtOffset(offset);
     if (nRect) {
         r = nRect->geometry(scaleX, scaleY);
-    r.translate( frame->geometry.left(), 0 );
+        r.translate(frame->geometry.left(), 0);
     }
     return r;
 }
@@ -105,7 +105,7 @@ int AccessiblePresentationWidget::offsetAtPoint(const QPoint &point) const
     }
     // we don't need to worry about crop, as this is full screen
     // but there may well be an x offset
-    PresentationFrame *frame = presentationWidget()->m_frames[ presentationWidget()->m_frameIndex ];
+    PresentationFrame *frame = presentationWidget()->m_frames[presentationWidget()->m_frameIndex];
     double scaleX = frame->geometry.width;
     double scaleY = frame->geometry.height;
     QPoint contentPos = presentationWidget()->mapFromGlobal(point) - frame->geometry.topLeft();

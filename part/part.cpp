@@ -135,8 +135,11 @@
 QAccessibleInterface *pageViewFactory(const QString &classname, QObject *object)
 {
     if (classname == QLatin1String("PageView") && object) {
-        // We only create an accessible interface for PageView widgets
+        // create an accessible interface for PageView widgets
         return new AccessiblePageView(qobject_cast<QWidget *>(object));
+    } else if (classname == QLatin1String("PresentationWidget") && object) {
+        // create an accessible interface for PresentationWidget
+        return new AccessiblePresentationWidget(qobject_cast<QWidget *>(object));
     }
     return nullptr;
 }
