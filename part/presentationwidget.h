@@ -77,6 +77,12 @@ protected:
     bool eventFilter(QObject *o, QEvent *ev) override;
 
 private:
+    friend class AccessiblePresentationWidget;
+    void caretKeyPressEvent( QKeyEvent *e );
+    void updateTextCursor( int page = -1, bool selecting = false );
+    void unsetTextSelection() const;
+    QRect fGeometry() const;
+
     const void *getObjectRect(Okular::ObjectRect::ObjectType type, QPointF point, QRect *geometry = nullptr) const;
     const Okular::Action *getLink(QPointF point, QRect *geometry = nullptr) const;
     const Okular::Annotation *getAnnotation(QPointF point, QRect *geometry = nullptr) const;

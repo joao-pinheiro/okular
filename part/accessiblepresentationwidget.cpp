@@ -5,6 +5,8 @@
 #include "core/page.h"
 #include "presentationwidget.h"
 #include <QDebug>
+#include "core/document.h" 
+
 
 /*!
   Constructs an AccessiblePresentationWidget object for \a w.
@@ -82,18 +84,22 @@ int AccessiblePresentationWidget::cursorPosition() const
 
 QRect AccessiblePresentationWidget::characterRect(int offset) const
 {
-    if (!presentationWidget()->m_document->isOpened() || (presentationFrame().m_frameIndex == -1)) {
+    if (!presentationWidget()->m_document->isOpened() || (presentationWidget()->m_frameIndex == -1)) {
         return QRect();
     }
-    // TODO: check this
-    PresentationFrame *frame = presentationFrame().m_frames[presentationFrame().m_franeIndex];
-    int scaleX = frame->geometry.width();
-    int scaleY = frame->geometry.height();
+    // scale normalized co-ordinates for the charBox and  adjust for any frame offsets.
+    const QRect fg = presentationWidget()->fGeometry();
+        double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
+    double topOffset = ( presentationWidget()->m_height - fg.height()) / 2; 
     QRect r;
-    std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->page(presentationWidget()->m_document->pageAtOffset(offset))->charBoxAtOffset(offset);
+    std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->cPage()->charBoxAtOffset( offset );
+    // This version doesn't check pageAtOffset, but assumes current page is in sync.
+    // if the offset is off the page, nothing happens 
     if (nRect) {
-        r = nRect->geometry(scaleX, scaleY);
-        r.translate(frame->geometry.left(), 0);
+        //scale
+        r = nRect->geometry(fg.width(), fg.height());
+        // adjust offsets
+        r.translate(leftOffset, topOffset );
     }
     return r;
 }
@@ -104,12 +110,12 @@ int AccessiblePresentationWidget::offsetAtPoint(const QPoint &point) const
         return -1;
     }
     // we don't need to worry about crop, as this is full screen
-    // but there may well be an x offset
-    PresentationFrame *frame = presentationWidget()->m_frames[presentationWidget()->m_frameIndex];
-    double scaleX = frame->geometry.width;
-    double scaleY = frame->geometry.height;
-    QPoint contentPos = presentationWidget()->mapFromGlobal(point) - frame->geometry.topLeft();
-    return presentationWidget()->m_document->cPage()->offsetAtPoint(Okular::NormalizedPoint(contentPos.x() / scaleX, contentPos.y() / scaleY));
+    // but there may well be an  or y x offset
+    const QRect fg = presentationWidget()->fGeometry();
+    double leftOffset = ( presentationWidget()->m_width - fg.width()) / 2;
+    double topOffset = ( presentationWidget()->m_height - fg.height()) / 2; 
+    QPoint contentPos = presentationWidget()->mapFromGlobal(point) -  QPoint( leftOffset, topOffset );
+    return presentationWidget()->m_document->cPage()->offsetAtPoint(Okular::NormalizedPoint(contentPos.x() / fg.width(), contentPos.y() / fg.height()));
 }
 
 QString AccessiblePresentationWidget::text(int startOffset, int endOffset) const

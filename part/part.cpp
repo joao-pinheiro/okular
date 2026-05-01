@@ -131,7 +131,7 @@
 #include <type_traits>
 
 #include "accessiblepageview.h"
-
+#include "accessiblepresentationwidget.h"
 QAccessibleInterface *pageViewFactory(const QString &classname, QObject *object)
 {
     if (classname == QLatin1String("PageView") && object) {

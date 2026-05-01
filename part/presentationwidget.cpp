@@ -21,6 +21,7 @@
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KSelectAction>
+#include <QAccessibleTextCursorEvent>
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -600,9 +601,168 @@ bool PresentationWidget::gestureEvent(QGestureEvent *event)
 
     return false;
 }
+
+
+
+void PresentationWidget::updateTextCursor(int p, bool withSelection)
+{
+    // checking for out-of-bounds page, or mismatch with current offset
+    if ((p < 0) || (p >= ((int) m_document->pages()))) {
+        // invalid page
+        return;
+    } else if ((m_document->offset() < m_document->page(p)->start()) || (m_document->offset() > m_document->page(p)->end())) {
+        // the cursor is lost - This might happen with some determined mangling of the configuration/viewoptions
+        m_document->syncCursorToPage();
+        p = m_document->cPageNum();
+    }
+
+    // now find the right position on the relevant page
+    // this is used for i) scrolling, ii) caret position on the screen
+    std::unique_ptr<Okular::NormalizedRect> cb = m_document->page(p)->charBoxAtOffset(m_document->offset());
+    double nX = cb->left;
+    double nY = (cb->top + cb->bottom) / 2;
+    PresentationFrame *presFrame = m_frames.at( m_frameIndex );
+    double scaleX = presFrame->geometry.width();
+    double scaleY = presFrame->geometry.height();
+    QPoint contentPos = QPoint(nX * scaleX, nY * scaleY) + presFrame->geometry.topLeft();
+    QPoint absPos = mapToGlobal(contentPos);
+
+    // clear selections that are now over through a cursor move
+    if (m_document->anchorTextCursor() == m_document->offset()) {
+        // This can happen when selecting reverses direction and leave artefacts on the screen
+        unsetTextSelection();
+    }
+    if ((m_document->anchorTextCursor() > -1) && !withSelection) {
+        unsetTextSelection();
+    }
+// TODO: check for flags in PresentationWidget
+//    } else if (!d->mouseSelecting && withSelection) {
+//        // clear any mouse selections
+//        selectionClear();
+//        textSelectionClear();
+//    }
+
+
+    // check if the caret browsing has gone into the next or previous page
+    // the code is simpler than in PageView, as no scrollArea is involved
+    // it might be an idea to disallow this sort of this sort of page change with caret keys maybe
+    if ( p == m_document->cPageNum()-1){
+        slotPrevPage();
+    } else if ( p == m_document->cPageNum()+1){
+        slotNextPage();
+    }
+
+    // set the cursor on the screen
+    setCursor(QCursor(Qt::IBeamCursor));
+    QCursor::setPos(absPos);
+
+    // Update the selection on screen
+    //retains PageView code, as we want to update that too
+    // but currently not working in PresentationWidget
+    // which also has no copy functionality
+    // Highlighting text in a presentation would be handy though
+    if ((m_document->anchorTextCursor() > -1) && (m_document->offset() > m_document->cPage()->start())) {
+        std::unique_ptr<Okular::RegularAreaRect> r = m_document->cPage()->selectArea(m_document->anchorTextCursor(), m_document->offset());
+        m_document->setPageTextSelection(p, std::move(r), palette().color(QPalette::Active, QPalette::Highlight));
+    } // end of selection
+    // let QAccessible know that the cursor has changed - it also checks for selection when nudged
+    QAccessibleTextCursorEvent e(this, m_document->offset());
+    QAccessible::updateAccessibility(&e);
+}
+
+void PresentationWidget::unsetTextSelection() const
+{
+    // remove any graphics
+    int pNum1;
+    int pNum2;
+    if (m_document->anchorTextCursor() < m_document->offset()) {
+        pNum1 = m_document->pageAtOffset(m_document->anchorTextCursor());
+        pNum2 = m_document->cPageNum();
+    } else {
+        pNum1 = m_document->cPageNum();
+        pNum2 = m_document->pageAtOffset(m_document->anchorTextCursor());
+    }
+    for (; pNum1 <= pNum2; pNum1++) {
+        m_document->setPageTextSelection(pNum1, nullptr, QColor());
+    }
+    // now unset the anchor
+    m_document->setAnchorTextCursor(-1);
+}
+
+
+
+void PresentationWidget::caretKeyPressEvent( QKeyEvent *e )
+{
+
+    // other key combinations, e.g. with Home/End
+    bool selecting = false;
+    bool skipping = false;
+    if ( e->modifiers() & Qt::ShiftModifier ){
+             selecting = true;
+        // if anchor not set, start it here
+        if ( m_document->anchorTextCursor() < 0 ){
+            m_document->setAnchorTextCursor( m_document->offset());
+        }
+    }
+    if ( e->modifiers() & Qt::ControlModifier ) {
+        skipping = true;
+    } 
+    switch (e->key()) {
+    case Qt::Key_Backspace:
+    case Qt::Key_PageUp:
+        slotPrevPage();
+        break;
+    case Qt::Key_Space:
+    case Qt::Key_PageDown:
+        slotNextPage();
+        break;
+    // caret keys
+    case Qt::Key_Left:
+        if ( skipping ) {
+            updateTextCursor( m_document->cursorToPrevWord(), selecting );
+        } else {
+            updateTextCursor(m_document->cursorBackward(), selecting );
+        }
+        break;
+    case Qt::Key_Up:
+        updateTextCursor( m_document->cursorLinesUp(1), selecting );
+        break;
+    case Qt::Key_Right:
+        if (skipping ) {
+            updateTextCursor( m_document->cursorToNextWord(), selecting );
+        } else {
+            updateTextCursor( m_document->cursorForward(), selecting );
+        }
+        break;
+    case Qt::Key_Down:
+        updateTextCursor( m_document->cursorLinesDown(1 ),selecting );
+        break;
+
+    case Qt::Key_Home:
+        slotFirstPage();
+        break;
+    case Qt::Key_End:
+        slotLastPage();
+        break;
+    case Qt::Key_Escape:
+        if (!m_topBar->isHidden()) {
+            showTopBar(false);
+        } else {
+            close();
+        }
+        break;
+    }
+
+} 
+
 void PresentationWidget::keyPressEvent(QKeyEvent *e)
 {
     if (!m_isSetup) {
+        return;
+    }
+
+    if ( Okular::Settings::caretMode() ) {
+        caretKeyPressEvent( e );
         return;
     }
 
@@ -2340,6 +2500,11 @@ void PresentationWidget::slotTogglePlayPause()
         m_advanceSlides = false;
         setPlayPauseIcon();
     }
+}
+
+QRect PresentationWidget::fGeometry() const
+{
+    return m_frames.at(m_frameIndex)->geometry;
 }
 
 #include "presentationwidget.moc"

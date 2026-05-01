@@ -1,7 +1,7 @@
 
 #ifndef _OKULAR_ACCESSIBLEPRESENTATIONWIDGET_H_
 #define _OKULAR_ACCESSIBLEPRESENTATIONWIDGET_H_
-#include "ppresentationwidget.h"
+#include "presentationwidget.h"
 #include <QAccessible>
 #include <QAccessibleTextInterface>
 #include <QAccessibleWidget>
