@@ -602,12 +602,10 @@ bool PresentationWidget::gestureEvent(QGestureEvent *event)
     return false;
 }
 
-
-
 void PresentationWidget::updateTextCursor(int p, bool withSelection)
 {
     // checking for out-of-bounds page, or mismatch with current offset
-    if ((p < 0) || (p >= ((int) m_document->pages()))) {
+    if ((p < 0) || (p >= ((int)m_document->pages()))) {
         // invalid page
         return;
     } else if ((m_document->offset() < m_document->page(p)->start()) || (m_document->offset() > m_document->page(p)->end())) {
@@ -621,7 +619,7 @@ void PresentationWidget::updateTextCursor(int p, bool withSelection)
     std::unique_ptr<Okular::NormalizedRect> cb = m_document->page(p)->charBoxAtOffset(m_document->offset());
     double nX = cb->left;
     double nY = (cb->top + cb->bottom) / 2;
-    PresentationFrame *presFrame = m_frames.at( m_frameIndex );
+    PresentationFrame *presFrame = m_frames.at(m_frameIndex);
     double scaleX = presFrame->geometry.width();
     double scaleY = presFrame->geometry.height();
     QPoint contentPos = QPoint(nX * scaleX, nY * scaleY) + presFrame->geometry.topLeft();
@@ -635,20 +633,19 @@ void PresentationWidget::updateTextCursor(int p, bool withSelection)
     if ((m_document->anchorTextCursor() > -1) && !withSelection) {
         unsetTextSelection();
     }
-// TODO: check for flags in PresentationWidget
-//    } else if (!d->mouseSelecting && withSelection) {
-//        // clear any mouse selections
-//        selectionClear();
-//        textSelectionClear();
-//    }
-
+    // TODO: check for flags in PresentationWidget
+    //    } else if (!d->mouseSelecting && withSelection) {
+    //        // clear any mouse selections
+    //        selectionClear();
+    //        textSelectionClear();
+    //    }
 
     // check if the caret browsing has gone into the next or previous page
     // the code is simpler than in PageView, as no scrollArea is involved
     // it might be an idea to disallow this sort of this sort of page change with caret keys maybe
-    if ( p == m_document->cPageNum()-1){
+    if (p == m_document->cPageNum() - 1) {
         slotPrevPage();
-    } else if ( p == m_document->cPageNum()+1){
+    } else if (p == m_document->cPageNum() + 1) {
         slotNextPage();
     }
 
@@ -657,7 +654,7 @@ void PresentationWidget::updateTextCursor(int p, bool withSelection)
     QCursor::setPos(absPos);
 
     // Update the selection on screen
-    //retains PageView code, as we want to update that too
+    // retains PageView code, as we want to update that too
     // but currently not working in PresentationWidget
     // which also has no copy functionality
     // Highlighting text in a presentation would be handy though
@@ -689,24 +686,21 @@ void PresentationWidget::unsetTextSelection() const
     m_document->setAnchorTextCursor(-1);
 }
 
-
-
-void PresentationWidget::caretKeyPressEvent( QKeyEvent *e )
+void PresentationWidget::caretKeyPressEvent(QKeyEvent *e)
 {
-
     // other key combinations, e.g. with Home/End
     bool selecting = false;
     bool skipping = false;
-    if ( e->modifiers() & Qt::ShiftModifier ){
-             selecting = true;
+    if (e->modifiers() & Qt::ShiftModifier) {
+        selecting = true;
         // if anchor not set, start it here
-        if ( m_document->anchorTextCursor() < 0 ){
-            m_document->setAnchorTextCursor( m_document->offset());
+        if (m_document->anchorTextCursor() < 0) {
+            m_document->setAnchorTextCursor(m_document->offset());
         }
     }
-    if ( e->modifiers() & Qt::ControlModifier ) {
+    if (e->modifiers() & Qt::ControlModifier) {
         skipping = true;
-    } 
+    }
     switch (e->key()) {
     case Qt::Key_Backspace:
     case Qt::Key_PageUp:
@@ -718,24 +712,24 @@ void PresentationWidget::caretKeyPressEvent( QKeyEvent *e )
         break;
     // caret keys
     case Qt::Key_Left:
-        if ( skipping ) {
-            updateTextCursor( m_document->cursorToPrevWord(), selecting );
+        if (skipping) {
+            updateTextCursor(m_document->cursorToPrevWord(), selecting);
         } else {
-            updateTextCursor(m_document->cursorBackward(), selecting );
+            updateTextCursor(m_document->cursorBackward(), selecting);
         }
         break;
     case Qt::Key_Up:
-        updateTextCursor( m_document->cursorLinesUp(1), selecting );
+        updateTextCursor(m_document->cursorLinesUp(1), selecting);
         break;
     case Qt::Key_Right:
-        if (skipping ) {
-            updateTextCursor( m_document->cursorToNextWord(), selecting );
+        if (skipping) {
+            updateTextCursor(m_document->cursorToNextWord(), selecting);
         } else {
-            updateTextCursor( m_document->cursorForward(), selecting );
+            updateTextCursor(m_document->cursorForward(), selecting);
         }
         break;
     case Qt::Key_Down:
-        updateTextCursor( m_document->cursorLinesDown(1 ),selecting );
+        updateTextCursor(m_document->cursorLinesDown(1), selecting);
         break;
 
     case Qt::Key_Home:
@@ -752,8 +746,7 @@ void PresentationWidget::caretKeyPressEvent( QKeyEvent *e )
         }
         break;
     }
-
-} 
+}
 
 void PresentationWidget::keyPressEvent(QKeyEvent *e)
 {
@@ -761,8 +754,8 @@ void PresentationWidget::keyPressEvent(QKeyEvent *e)
         return;
     }
 
-    if ( Okular::Settings::caretMode() ) {
-        caretKeyPressEvent( e );
+    if (Okular::Settings::caretMode()) {
+        caretKeyPressEvent(e);
         return;
     }
 

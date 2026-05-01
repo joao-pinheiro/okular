@@ -2,11 +2,10 @@
 #define ACCESSIBLE_PRESENTATION_WIDGET
 
 #include "accessiblepresentationwidget.h"
+#include "core/document.h"
 #include "core/page.h"
 #include "presentationwidget.h"
 #include <QDebug>
-#include "core/document.h" 
-
 
 /*!
   Constructs an AccessiblePresentationWidget object for \a w.
@@ -89,17 +88,17 @@ QRect AccessiblePresentationWidget::characterRect(int offset) const
     }
     // scale normalized co-ordinates for the charBox and  adjust for any frame offsets.
     const QRect fg = presentationWidget()->fGeometry();
-        double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
-    double topOffset = ( presentationWidget()->m_height - fg.height()) / 2; 
+    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
+    double topOffset = (presentationWidget()->m_height - fg.height()) / 2;
     QRect r;
-    std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->cPage()->charBoxAtOffset( offset );
+    std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->cPage()->charBoxAtOffset(offset);
     // This version doesn't check pageAtOffset, but assumes current page is in sync.
-    // if the offset is off the page, nothing happens 
+    // if the offset is off the page, nothing happens
     if (nRect) {
-        //scale
+        // scale
         r = nRect->geometry(fg.width(), fg.height());
         // adjust offsets
-        r.translate(leftOffset, topOffset );
+        r.translate(leftOffset, topOffset);
     }
     return r;
 }
@@ -112,9 +111,9 @@ int AccessiblePresentationWidget::offsetAtPoint(const QPoint &point) const
     // we don't need to worry about crop, as this is full screen
     // but there may well be an  or y x offset
     const QRect fg = presentationWidget()->fGeometry();
-    double leftOffset = ( presentationWidget()->m_width - fg.width()) / 2;
-    double topOffset = ( presentationWidget()->m_height - fg.height()) / 2; 
-    QPoint contentPos = presentationWidget()->mapFromGlobal(point) -  QPoint( leftOffset, topOffset );
+    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
+    double topOffset = (presentationWidget()->m_height - fg.height()) / 2;
+    QPoint contentPos = presentationWidget()->mapFromGlobal(point) - QPoint(leftOffset, topOffset);
     return presentationWidget()->m_document->cPage()->offsetAtPoint(Okular::NormalizedPoint(contentPos.x() / fg.width(), contentPos.y() / fg.height()));
 }
 
