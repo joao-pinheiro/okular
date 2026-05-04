@@ -619,8 +619,6 @@ void Page::setTextPage(TextPage *textPage)
         // Correct/optimize text order for search and text selection
         d->m_text->d->correctTextOrder();
     }
-    // do the caret browsing offsets
-    // setOffsets();
 }
 
 void Page::setObjectRects(const QList<ObjectRect *> &rects)
@@ -1125,8 +1123,11 @@ FormField *PagePrivate::findEquivalentForm(const Page *p, FormField *oldField)
 
 std::unique_ptr<NormalizedRect> Page::charBoxAtOffset(const int docOffset, const bool rtl) const
 {
-    if ((docOffset < 0) || (docOffset > end())) {
+    if ((docOffset < start()) || (docOffset > end())) {
         return nullptr;
+    } else if (!hasTextPage()) {
+        // empty (non-text) page: put the cursor at top left
+        return  std::make_unique<NormalizedRect>( 0, 0, 0.005, 0.01 );
     } else {
         // convert doc offset to page offset and get the box
         return d->m_text->charBoxAtOffset(docOffset - d->m_start, rtl);
@@ -1217,6 +1218,7 @@ void Page::setOffsets(const int docOffset)
     }
     d->m_start = docOffset;
     d->m_end = docOffset + i - 1;
+    qDebug() << " page start " << d->m_start << " page end " << d->m_end;
 }
 
 QString Page::textBetween(int docOffset1, int docOffset2) const

@@ -913,6 +913,11 @@ QString TextPage::caretText() const
 
 std::unique_ptr<NormalizedRect> TextPage::charBoxAtOffset(const int offset, bool rtl) const
 {
+    if (d->m_words.empty()){
+    // it is apparently possible to have TextPages without text
+        // return a dummy box at top left
+        return std::make_unique<NormalizedRect>(0,0,0.005,0.01);
+    }
     TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
     int searchOffset = 0;
     for (; it != itEnd; ++it) {
@@ -951,6 +956,7 @@ std::unique_ptr<NormalizedRect> TextPage::charBoxAtOffset(const int offset, bool
             return std::make_unique<NormalizedRect>(it->area().left + 0.005, it->area().top, it->area().left + 0.01, it->area().bottom);
         }
     }
+    // the offset has not been found: this shouldn't happen: sanity checking in Page
     return nullptr;
 }
 
