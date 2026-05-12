@@ -4243,9 +4243,15 @@ void Document::processAction(const Action *action)
                 realUrl = url;
             }
             if (realUrl.isValid()) {
-                auto *job = new KIO::OpenUrlJob(realUrl);
-                job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, d->m_widget.data()));
-                job->start();
+                const QString scheme = realUrl.scheme();
+                const bool isHttpUrl = (scheme == QLatin1String("http") || scheme == QLatin1String("https"));
+                if (isHttpUrl && qEnvironmentVariableIsEmpty("KDE_FULL_SESSION")) {
+                    QDesktopServices::openUrl(realUrl);
+                } else {
+                    auto *job = new KIO::OpenUrlJob(realUrl);
+                    job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, d->m_widget.data()));
+                    job->start();
+                }
             }
         }
     } break;
