@@ -1127,7 +1127,7 @@ std::unique_ptr<NormalizedRect> Page::charBoxAtOffset(const int docOffset, const
         return nullptr;
     } else if (!hasTextPage()) {
         // empty (non-text) page: put the cursor at top left
-        return  std::make_unique<NormalizedRect>( 0, 0, 0.005, 0.01 );
+        return std::make_unique<NormalizedRect>(0, 0, 0.005, 0.01);
     } else {
         // convert doc offset to page offset and get the box
         return d->m_text->charBoxAtOffset(docOffset - d->m_start, rtl);
