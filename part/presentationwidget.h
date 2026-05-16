@@ -79,7 +79,7 @@ protected:
 private:
     friend class AccessiblePresentationWidget;
     void caretKeyPressEvent(QKeyEvent *e);
-    void updateTextCursor(int page = -1, bool selecting = false);
+    void updateTextCursor(int p = -1, bool withSelection = false);
     void unsetTextSelection() const;
     QRect fGeometry() const;
 
