@@ -32,10 +32,11 @@ QString AccessiblePresentationWidget::text(QAccessible::Text t) const
             str = presentationWidget()->m_document->text();
         }
     }
-    if (str.isEmpty())
+    if (str.isEmpty()) {
         str = QAccessibleWidget::text(t);
+    }
     // not sure if we need to do specific things for Name and Description
-    // or leave the accessibleName placeholder defined in the PageView class
+    // or leave the accessibleName placeholder defined in the PresentationWidget class
     return str;
 }
 
@@ -59,8 +60,9 @@ QAccessible::State AccessiblePresentationWidget::state() const
 
 void *AccessiblePresentationWidget::interface_cast(QAccessible::InterfaceType t)
 {
-    if (t == QAccessible::TextInterface)
+    if (t == QAccessible::TextInterface) {
         return static_cast<QAccessibleTextInterface *>(this);
+    }
     return QAccessibleWidget::interface_cast(t);
 }
 
@@ -88,8 +90,8 @@ QRect AccessiblePresentationWidget::characterRect(int offset) const
     }
     // scale normalized co-ordinates for the charBox and  adjust for any frame offsets.
     const QRect fg = presentationWidget()->fGeometry();
-    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
-    double topOffset = (presentationWidget()->m_height - fg.height()) / 2;
+    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2.0;
+    double topOffset = (presentationWidget()->m_height - fg.height()) / 2.0;
     QRect r;
     std::unique_ptr<Okular::NormalizedRect> nRect = presentationWidget()->m_document->cPage()->charBoxAtOffset(offset);
     // This version doesn't check pageAtOffset, but assumes current page is in sync.
@@ -111,10 +113,10 @@ int AccessiblePresentationWidget::offsetAtPoint(const QPoint &point) const
     // we don't need to worry about crop, as this is full screen
     // but there may well be an  or y x offset
     const QRect fg = presentationWidget()->fGeometry();
-    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2;
-    double topOffset = (presentationWidget()->m_height - fg.height()) / 2;
+    double leftOffset = (presentationWidget()->m_width - fg.width()) / 2.0;
+    double topOffset = (presentationWidget()->m_height - fg.height()) / 2.0;
     QPoint contentPos = presentationWidget()->mapFromGlobal(point) - QPoint(leftOffset, topOffset);
-    return presentationWidget()->m_document->cPage()->offsetAtPoint(Okular::NormalizedPoint(contentPos.x() / fg.width(), contentPos.y() / fg.height()));
+    return presentationWidget()->m_document->cPage()->offsetAtPoint(Okular::NormalizedPoint(contentPos.x() / (double)fg.width(), contentPos.y() / (double)fg.height()));
 }
 
 QString AccessiblePresentationWidget::text(int startOffset, int endOffset) const

@@ -9,7 +9,7 @@
 class AccessiblePresentationWidget : public QAccessibleWidget, public QAccessibleTextInterface
 {
 public:
-    AccessiblePresentationWidget(QWidget *o, const QString &name = QString());
+    explicit AccessiblePresentationWidget(QWidget *o, const QString &name = QString());
 
     QString text(QAccessible::Text t) const override;
     void setText(QAccessible::Text t, const QString &text) override;
