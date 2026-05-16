@@ -518,7 +518,6 @@ PageView::~PageView()
     delete d;
 }
 
-<<<<<<< HEAD
 Okular::Annotation *PageView::focusedAnnotation() const
 {
     return d->mouseAnnotation ? d->mouseAnnotation->annotation() : nullptr;
@@ -547,10 +546,7 @@ bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular
     return true;
 }
 
-void PageView::updateTextCursor( int p, bool withSelection)
-=======
 void PageView::updateTextCursor(int p, bool withSelection)
->>>>>>> 32cc4f370 (Removed the commenting out of autoscrolling shortcuts and updated the code to switch off autoscroll up/down actions when switching to caret mode.)
 {
     if (!d->caretMode) {
         return;
