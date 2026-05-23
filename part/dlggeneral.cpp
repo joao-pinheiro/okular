@@ -45,7 +45,7 @@ public:
         const QStringList availableLanguages = Okular::PageViewOcr::availableLanguageCodes();
         for (const QString &languageCode : availableLanguages) {
             QString languageLabel = languageCode;
-            const QLocale::Language localeLanguage = QLocale::codeToLanguage(languageCode, QLocale::ISO639Part2);
+            const QLocale::Language localeLanguage = QLocale::codeToLanguage(languageCode);
             if (localeLanguage != QLocale::AnyLanguage && localeLanguage != QLocale::C) {
                 const QString languageName = QLocale::languageToString(localeLanguage);
                 if (!languageName.isEmpty()) {
@@ -280,6 +280,11 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
 
     setOpenInContinuousModeByDefaultText();
     connect(useFileInfoForContinuousMode, &QCheckBox::toggled, this, setOpenInContinuousModeByDefaultText);
+
+    QCheckBox *continueFromLastViewedPage = new QCheckBox(this);
+    continueFromLastViewedPage->setText(i18nc("@option:check Config dialog, general page", "Continue from last viewed page"));
+    continueFromLastViewedPage->setObjectName(QStringLiteral("kcfg_ContinueFromLastViewedPage"));
+    layout->addRow(programFeaturesLabel(), continueFromLastViewedPage);
 
     // Under Wayland the cursor wrap feature is unavailable
     if (QGuiApplication::platformName() != QLatin1String("wayland")) {
