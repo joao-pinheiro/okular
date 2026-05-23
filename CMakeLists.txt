@@ -16,7 +16,7 @@ set(OKULAR_UI "" CACHE STRING "Which Okular user interface to build. Possible va
 set(FORCE_NOT_REQUIRED_DEPENDENCIES "" CACHE STRING "List (semicolon-separated) of dependencies that will be downgraded from REQUIRED to RECOMMENDED")
 
 find_package(ECM ${KF_REQUIRED_VERSION} CONFIG REQUIRED)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH})
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
 
 include(ECMInstallIcons)
 include(ECMSetupVersion)
@@ -149,15 +149,17 @@ find_package(PkgConfig)
 option(WITH_TESSERACT "Build with Tesseract OCR support for text recognition in image selections" ON)
 set(HAVE_TESSERACT FALSE)
 if(BUILD_DESKTOP AND WITH_TESSERACT)
-    pkg_check_modules(Tesseract REQUIRED IMPORTED_TARGET tesseract)
-    set(HAVE_TESSERACT TRUE)
-    # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
-    find_package(OpenMP COMPONENTS CXX)
+    find_package(Tesseract)
+    if(Tesseract_FOUND)
+        set(HAVE_TESSERACT TRUE)
+        # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
+        find_package(OpenMP COMPONENTS CXX)
+    endif()
     set_package_properties(Tesseract PROPERTIES
         DESCRIPTION "Open Source OCR Engine"
         URL "https://github.com/tesseract-ocr/tesseract"
         PURPOSE "Required for OCR support in image selections. Disable with -DWITH_TESSERACT=OFF"
-        TYPE REQUIRED
+        TYPE RECOMMENDED
     )
 endif()
 
@@ -233,7 +235,6 @@ else()
     set(HAVE_PHONON 0)
 endif()
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
 
 find_package(ZLIB REQUIRED)
 
@@ -622,7 +623,7 @@ target_link_libraries(okularpart okularcore
 )
 
 if(HAVE_TESSERACT)
-    target_link_libraries(okularpart PkgConfig::Tesseract)
+    target_link_libraries(okularpart Tesseract::Tesseract)
     if(TARGET OpenMP::OpenMP_CXX)
         target_link_libraries(okularpart OpenMP::OpenMP_CXX)
     endif()

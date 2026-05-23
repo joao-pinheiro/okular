@@ -2,8 +2,10 @@
 
 #include <KLocalizedString>
 
+#include <QDir>
 #include <QImage>
 #include <QLocale>
+#include <QThread>
 
 #include <tesseract/baseapi.h>
 
@@ -231,20 +233,51 @@ QString defaultLanguageCode()
 
 QStringList availableLanguageCodes()
 {
-    tesseract::TessBaseAPI api;
-    if (api.Init(nullptr, nullptr) != 0) {
+    QString tessdataPath;
+
+    if (qEnvironmentVariableIsSet("TESSDATA_PREFIX")) {
+        tessdataPath = QString::fromUtf8(qgetenv("TESSDATA_PREFIX"));
+    }
+
+    if (tessdataPath.isEmpty()) {
+        tesseract::TessBaseAPI api;
+        const char *path = api.GetDatapath();
+        if (path) {
+            tessdataPath = QString::fromUtf8(path);
+        }
+    }
+
+    if (tessdataPath.isEmpty()) {
+#if defined(Q_OS_WIN)
+        // Standard Windows installations rely on TESSDATA_PREFIX set by installer or Craft
+#elif defined(Q_OS_MAC)
+        tessdataPath = QStringLiteral("/opt/homebrew/share/tessdata");
+        if (!QDir(tessdataPath).exists()) {
+            tessdataPath = QStringLiteral("/opt/local/share/tessdata");
+        }
+#else
+        const QStringList paths = {QStringLiteral("/usr/share/tesseract-ocr/5/tessdata"), QStringLiteral("/usr/share/tesseract-ocr/4.00/tessdata"), QStringLiteral("/usr/share/tessdata"), QStringLiteral("/usr/local/share/tessdata")};
+        for (const QString &path : paths) {
+            if (QDir(path).exists()) {
+                tessdataPath = path;
+                break;
+            }
+        }
+#endif
+    }
+
+    if (tessdataPath.isEmpty() || !QDir(tessdataPath).exists()) {
         return {};
     }
 
-    std::vector<std::string> availableLanguages;
-    api.GetAvailableLanguagesAsVector(&availableLanguages);
-    api.End();
+    QDir dir(tessdataPath);
+    const QStringList files = dir.entryList({QStringLiteral("*.traineddata")}, QDir::Files);
 
     QStringList codes;
-    codes.reserve(static_cast<int>(availableLanguages.size()));
+    codes.reserve(files.size());
 
-    for (const std::string &language : availableLanguages) {
-        const QString code = QString::fromStdString(language).trimmed().toLower();
+    for (const QString &file : files) {
+        const QString code = file.section(QLatin1Char('.'), 0, 0).trimmed().toLower();
         if (code.isEmpty() || code == QStringLiteral("osd") || codes.contains(code)) {
             continue;
         }
@@ -316,7 +349,13 @@ TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages)
         result.status = preparation.status;
         return result;
     default:
-        Q_UNREACHABLE_RETURN(result);
+        Q_UNREACHABLE();
+        return result;
+    }
+
+    if (QThread::currentThread()->isInterruptionRequested()) {
+        result.status = TaskStatus::EmptyImage;
+        return result;
     }
 
     tesseract::TessBaseAPI api;
@@ -329,7 +368,7 @@ TaskResult runTask(const QImage &sourceImage, const QStringList &ocrLanguages)
 
     const QImage &image = preparation.image;
     api.SetPageSegMode(tesseract::PSM_SPARSE_TEXT);
-    api.SetImage(image.bits(), image.width(), image.height(), 1, image.bytesPerLine());
+    api.SetImage(image.constBits(), image.width(), image.height(), 1, image.bytesPerLine());
 
     char *outText = api.GetUTF8Text();
     if (!outText) {

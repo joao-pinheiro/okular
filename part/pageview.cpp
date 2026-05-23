@@ -40,8 +40,8 @@
 #include <QScrollerProperties>
 #include <QSet>
 #if HAVE_TESSERACT
-#include <QSharedPointer>
 #include <QThread>
+#include <memory>
 #endif
 #include <QTimer>
 #include <QToolTip>
@@ -298,6 +298,9 @@ public:
 #if HAVE_NEW_SIGNATURE_API
     Okular::SignatureAnnotation *signatureAnnotation = nullptr;
 #endif
+#if HAVE_TESSERACT
+    QSet<QThread *> m_ocrThreads;
+#endif
 };
 
 PageViewPrivate::PageViewPrivate(PageView *qq)
@@ -482,6 +485,15 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
 
 PageView::~PageView()
 {
+#if HAVE_TESSERACT
+    const QSet<QThread *> threads = d->m_ocrThreads;
+    for (QThread *thread : threads) {
+        thread->disconnect(this);
+        thread->requestInterruption();
+        thread->wait(50); // Wait at most 50ms to prevent freezing UI exit
+    }
+#endif
+
 #if HAVE_SPEECH
     if (d->m_tts) {
         d->m_tts->stopAllSpeechs();
@@ -3028,9 +3040,12 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                     const QImage sourceImage = copyPix.toImage();
                     d->messageWindow->display(i18n("Recognizing text…"), QString(), PageViewMessage::Info, -1);
 
-                    auto ocrResult = QSharedPointer<Okular::PageViewOcr::TaskResult>::create();
+                    const auto ocrResult = std::make_shared<Okular::PageViewOcr::TaskResult>();
                     QThread *ocrThread = QThread::create([sourceImage, ocrLanguages, ocrResult]() { *ocrResult = Okular::PageViewOcr::runTask(sourceImage, ocrLanguages); });
-                    connect(ocrThread, &QThread::finished, this, [this, ocrResult]() {
+                    d->m_ocrThreads.insert(ocrThread);
+                    connect(ocrThread, &QThread::finished, this, [this, ocrThread, ocrResult]() {
+                        d->m_ocrThreads.remove(ocrThread);
+
                         const Okular::PageViewOcr::TaskResultMessage message = Okular::PageViewOcr::messageForTaskResult(*ocrResult);
 
                         if (message.copyRecognizedText) {
