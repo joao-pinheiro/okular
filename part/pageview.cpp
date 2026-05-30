@@ -64,6 +64,7 @@
 
 // system includes
 #include <array>
+#include <cmath>
 #include <math.h>
 #include <stdlib.h>
 
@@ -3404,7 +3405,14 @@ void PageView::wheelEvent(QWheelEvent *e)
             d->scroller->handleInput(QScroller::InputRelease, e->position(), e->timestamp() - 1);
         }
 
-        float newZoom = d->zoomFactor * (1.0 + (delta / 500.0));
+        // Use an exponential (multiplicative) zoom step so that zooming in and out by
+        // the same angle delta are exact inverses. The previous linear factor
+        // (1 + delta / 500) was asymmetric and, for the large angle deltas that
+        // high-resolution mice and some compositors deliver in a single event
+        // (e.g. -480), drove the factor to (or below) zero and collapsed the zoom to
+        // the minimum in a single notch.
+        const double stepFactor = 1.0 + (double(QWheelEvent::DefaultDeltasPerStep) / 500.0);
+        float newZoom = d->zoomFactor * std::pow(stepFactor, delta / double(QWheelEvent::DefaultDeltasPerStep));
         zoomWithFixedCenter(ZoomRefreshCurrent, e->position(), newZoom);
 
         if (isDragging) {
