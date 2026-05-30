@@ -248,5 +248,13 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
         bool enabled = index == 4;
         customZoom->setVisible(enabled);
     });
+
+    // Checkbox: zoom the mouse wheel in discrete steps
+    QCheckBox *zoomWheelDiscreteSteps = new QCheckBox(this);
+    zoomWheelDiscreteSteps->setText(i18nc("@option:check Config dialog, general page", "Use discrete zoom steps with Ctrl + mouse wheel"));
+    zoomWheelDiscreteSteps->setToolTip(
+        i18nc("@info:tooltip Config dialog, general page", "When enabled, Ctrl + mouse wheel snaps to the preset zoom levels (like the keyboard zoom shortcuts) instead of zooming smoothly. Touchpad pinch zoom stays smooth."));
+    zoomWheelDiscreteSteps->setObjectName(QStringLiteral("kcfg_ZoomWheelDiscreteSteps"));
+    layout->addRow(QString(), zoomWheelDiscreteSteps);
     // END View options section
 }
