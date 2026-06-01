@@ -53,6 +53,7 @@ void AnnotationTest::cleanupTestCase()
             m_document->removePageAnnotation(0, annotation);
         }
     }
+    delete m_document;
 }
 
 void AnnotationTest::testDistance()

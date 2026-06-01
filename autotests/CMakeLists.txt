@@ -27,8 +27,13 @@ ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
 
 if(Poppler_Qt6_FOUND)
     if (BUILD_DESKTOP)
-        ecm_add_test(parttest.cpp closedialoghelper.cpp
-            TEST_NAME "parttest"
+        ecm_add_test(parttest_a.cpp closedialoghelper.cpp
+            TEST_NAME "parttest_a"
+            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+        )
+
+        ecm_add_test(parttest_b.cpp closedialoghelper.cpp
+            TEST_NAME "parttest_b"
             LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
         )
     endif()
@@ -126,14 +131,21 @@ ecm_add_test(check_distinguished_name_parser.cpp
     LINK_LIBRARIES Qt6::Test)
 
 if(BUILD_DESKTOP)
-    ecm_add_test(mainshelltest.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
-        TEST_NAME "mainshelltest"
+    ecm_add_test(mainshelltest_a.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
+        TEST_NAME "mainshelltest_a"
         LINK_LIBRARIES Qt6::Test okularpart okularcore
     )
-    target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
+    target_compile_definitions(mainshelltest_a PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
+
+    ecm_add_test(mainshelltest_b.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
+        TEST_NAME "mainshelltest_b"
+        LINK_LIBRARIES Qt6::Test okularpart okularcore
+    )
+    target_compile_definitions(mainshelltest_b PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
 
     if (HAVE_X11)
-        target_link_libraries(mainshelltest Qt6::GuiPrivate)
+        target_link_libraries(mainshelltest_a Qt6::GuiPrivate)
+        target_link_libraries(mainshelltest_b Qt6::GuiPrivate)
     endif()
 endif()
 

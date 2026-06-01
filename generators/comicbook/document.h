@@ -28,6 +28,9 @@ public:
     Document();
     ~Document();
 
+    Document(const Document &) = delete;
+    Document &operator=(const Document &) = delete;
+
     bool open(const QString &fileName);
     void close();
 

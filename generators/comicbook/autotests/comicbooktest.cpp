@@ -48,6 +48,8 @@ void ComicBookGeneratorTest::testRotatedImage()
 
     const QImage image = document.pageImage(0);
     QVERIFY(image.height() > image.width());
+
+    qDeleteAll(pagesVector);
 }
 
 QTEST_MAIN(ComicBookGeneratorTest)
