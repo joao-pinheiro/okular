@@ -24,6 +24,8 @@ public:
 private:
     bool m_isFancyPantsConfigEnabled = true;
     bool m_wasFancyPantsConfigEnabled = true;
+    bool m_isRenderLaTeXConfigEnabled = true;
+    bool m_wasRenderLaTeXConfigEnabled = true;
 };
 
 #endif
