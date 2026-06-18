@@ -42,6 +42,8 @@
     <Action name="view_auto_fit"/>
     <Separator/>
     <Action name="view_render_mode"/>
+    <Action name="view_split_view"/>
+    <Action name="view_toggle_split_orientation"/>
     <Separator/>
     <Menu name="view_orientation"><text>&amp;Orientation</text>
       <Action name="view_orientation_rotate_ccw"/>

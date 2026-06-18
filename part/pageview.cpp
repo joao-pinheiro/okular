@@ -292,6 +292,7 @@ public:
 #if HAVE_NEW_SIGNATURE_API
     Okular::SignatureAnnotation *signatureAnnotation = nullptr;
 #endif
+    bool independentMode = false;
 };
 
 PageViewPrivate::PageViewPrivate(PageView *qq)
@@ -940,6 +941,11 @@ void PageView::displayMessage(const QString &message, const QString &details, Pa
     d->messageWindow->display(message, details, icon, duration);
 }
 
+void PageView::setIndependentView(bool independent)
+{
+    d->independentMode = independent;
+}
+
 void PageView::reparseConfig()
 {
     // set smooth scrolling policies
@@ -1448,6 +1454,9 @@ void PageView::clearLastSourceLocationViewport()
 
 void PageView::notifyViewportChanged(bool smoothMove)
 {
+    if (d->independentMode) {
+        return;
+    }
     QMetaObject::invokeMethod(this, "slotRealNotifyViewportChanged", Qt::QueuedConnection, Q_ARG(bool, smoothMove));
 }
 
@@ -1578,6 +1587,9 @@ void PageView::notifyContentsCleared(int changedFlags)
 
 void PageView::notifyZoom(int factor)
 {
+    if (d->independentMode) {
+        return;
+    }
     if (factor > 0) {
         updateZoom(ZoomIn);
     } else {
@@ -2915,7 +2927,6 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 if (selectionRect.intersects(itemRect)) {
                     // request the textpage if there isn't one
                     okularPage = item->page();
-                    qCDebug(OkularUiDebug) << "checking if page" << item->pageNumber() << "has text:" << okularPage->hasTextPage();
                     if (!okularPage->hasTextPage()) {
                         d->document->requestTextPage(okularPage->number());
                     }
@@ -3085,7 +3096,6 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 if (selectionRect.intersects(itemRect)) {
                     // request the textpage if there isn't one
                     okularPage = item->page();
-                    qCDebug(OkularUiDebug) << "checking if page" << item->pageNumber() << "has text:" << okularPage->hasTextPage();
                     if (!okularPage->hasTextPage()) {
                         d->document->requestTextPage(okularPage->number());
                     }
@@ -3544,9 +3554,6 @@ std::vector<std::unique_ptr<Okular::RegularAreaRect>> PageView::textSelections(c
             affectedItemsSet.insert(item->pageNumber());
         }
     }
-#ifdef PAGEVIEW_DEBUG
-    qCDebug(OkularUiDebug) << ">>>> item selected by mouse:" << affectedItemsSet.count();
-#endif
 
     if (!affectedItemsSet.isEmpty()) {
         // is the mouse drag line the ne-sw diagonal of the selection rect?
@@ -3572,9 +3579,7 @@ std::vector<std::unique_ptr<Okular::RegularAreaRect>> PageView::textSelections(c
         for (int i = min; i <= max; ++i) {
             affectedItemsIds.append(i);
         }
-#ifdef PAGEVIEW_DEBUG
-        qCDebug(OkularUiDebug) << ">>>> pages:" << affectedItemsIds;
-#endif
+
         firstpage = affectedItemsIds.first();
 
         if (affectedItemsIds.count() == 1) {
@@ -5628,6 +5633,14 @@ void PageView::slotTrimToSelectionToggled(bool on)
 void PageView::slotToggleForms()
 {
     toggleFormWidgets(!d->m_formsVisible);
+}
+
+void PageView::slotSelectBuiltinAnnotation(int toolId)
+{
+    fprintf(stderr, "slotSelectBuiltinAnnotation called with tool %d\n", toolId);
+    if (d->annotator) {
+        d->annotator->selectBuiltinTool(toolId, PageViewAnnotator::ShowTip::Yes);
+    }
 }
 
 void PageView::slotFormChanged(int pageNumber)

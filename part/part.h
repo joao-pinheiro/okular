@@ -45,6 +45,7 @@ class QAction;
 class QWidget;
 class QPrinter;
 class QMenu;
+class QSplitter;
 
 class KConfigDialog;
 class KDirWatch;
@@ -244,7 +245,21 @@ protected Q_SLOTS:
     void slotShowBottomBar();
     void slotShowPresentation();
     void slotHidePresentation();
+    void slotSplitView();
+    void slotGlobalZoomIn();
+    void slotGlobalZoomOut();
+    void slotGlobalZoomActual();
+    void slotFocusChanged(QWidget *old, QWidget *now);
+    void slotGlobalSetMouseNormal();
+    void slotGlobalSetMouseZoom();
+    void slotGlobalSetMouseSelect();
+    void slotGlobalSetMouseTextSelect();
+    void slotGlobalSetMouseTableSelect();
+    void slotGlobalSetMouseMagnifier();
+    void slotToggleSplitOrientation();
+    void slotOpenAnnotationWindow(Okular::Annotation *annotation, int pageNumber);
 
+public Q_SLOTS:
     /**
      * Updates the menu that is by default at the right end of the toolbar.
      * In true "simple by default" fashion, the menu only contains the most important actions
@@ -359,6 +374,7 @@ private:
     bool m_warnedAboutModifyingUnsaveableDocument = false;
 
     // main widgets
+    QSplitter *m_splitter;
     Sidebar *m_sidebar;
     SearchWidget *m_searchWidget;
     FindBar *m_findBar;
@@ -372,6 +388,9 @@ private:
 #endif
     QPointer<ThumbnailList> m_thumbnailList;
     QPointer<PageView> m_pageView;
+    QList<PageView *> m_pageViews;
+    PageView *m_lastActiveView;
+    bool m_splitHorizontal = false;
     QPointer<TOC> m_toc;
     bool m_tocEnabled;
     QPointer<MiniBarLogic> m_miniBarLogic;
@@ -440,6 +459,7 @@ private:
     KToggleAction *m_showLeftPanel;
     KToggleAction *m_showBottomBar;
     QAction *m_showSignaturePanel;
+    QAction *m_splitView;
     KToggleFullScreenAction *m_showFullScreenAction;
     QAction *m_aboutBackend;
     QAction *m_reload;
