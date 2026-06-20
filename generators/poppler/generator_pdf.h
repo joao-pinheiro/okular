@@ -173,6 +173,31 @@ private:
     void setAdditionalDocumentAction(Okular::Document::DocumentAdditionalActionType type, Okular::Action *action);
 };
 
+class OCGOriginalVisibility
+{
+public:
+    OCGOriginalVisibility(Poppler::OptContentModel *model)
+        : m_model(model)
+    {}
+
+    ~OCGOriginalVisibility()
+    {
+        // Toggle OCG visibility using PrintState flags
+        for (const auto &[idx, vis] : std::as_const(m_states).asKeyValueRange()) {
+            m_model->setData(idx,vis,Qt::CheckStateRole);
+        }
+    }
+
+    void add(const QPersistentModelIndex &idx, QVariant state)
+    {
+        m_states[idx] = state;
+    }
+
+private:
+    Poppler::OptContentModel *m_model;
+    QHash<QPersistentModelIndex, QVariant> m_states;
+};
+
 #endif
 
 /* kate: replace-tabs on; indent-width 4; */
