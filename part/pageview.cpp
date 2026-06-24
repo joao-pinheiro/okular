@@ -232,6 +232,11 @@ public:
     // left click depress
     QTimer leftClickTimer;
 
+    // Triple-click detection for line selection
+    QElapsedTimer lastDoubleClickTime;
+    QPoint lastDoubleClickPos;
+    bool tripleClickDetectionEnabled = false;
+
     // actions
     QAction *aRotateClockwise = nullptr;
     QAction *aRotateCounterClockwise = nullptr;
@@ -492,6 +497,34 @@ PageView::~PageView()
     delete d->formsWidgetController;
     d->document->removeObserver(this);
     delete d;
+}
+
+Okular::Annotation *PageView::focusedAnnotation() const
+{
+    return d->mouseAnnotation ? d->mouseAnnotation->annotation() : nullptr;
+}
+
+int PageView::focusedAnnotationPageNumber() const
+{
+    return d->mouseAnnotation ? d->mouseAnnotation->pageNumber() : -1;
+}
+
+bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const
+{
+    const QPoint viewportPos = viewport()->mapFromGlobal(globalPos);
+    const QPoint contentPos = contentAreaPoint(viewportPos);
+    PageViewItem *pageItem = const_cast<PageView *>(this)->pickItemOnPoint(contentPos.x(), contentPos.y());
+    if (!pageItem) {
+        return false;
+    }
+
+    if (pageNumber) {
+        *pageNumber = pageItem->pageNumber();
+    }
+    if (point) {
+        *point = Okular::NormalizedPoint(pageItem->absToPageX(contentPos.x()), pageItem->absToPageY(contentPos.y()));
+    }
+    return true;
 }
 
 void PageView::setupViewport(QWidget *viewport)
@@ -2574,7 +2607,43 @@ void PageView::mousePressEvent(QMouseEvent *e)
         break;
     case Okular::Settings::EnumMouseMode::TextSelect:
         d->mouseSelectPos = eventPos;
-        if (!rightButton) {
+        if (leftButton) {
+            // Check for triple-click: single click shortly after double-click at same position
+            const bool isTripleClick = d->tripleClickDetectionEnabled && d->lastDoubleClickTime.isValid() && d->lastDoubleClickTime.elapsed() < QApplication::doubleClickInterval() &&
+                (eventPos - d->lastDoubleClickPos).manhattanLength() < QApplication::startDragDistance();
+
+            if (isTripleClick) {
+                // TRIPLE-CLICK: Select entire line
+                PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+                if (pageItem) {
+                    double nX = pageItem->absToPageX(eventPos.x());
+                    double nY = pageItem->absToPageY(eventPos.y());
+
+                    textSelectionClear();
+                    std::unique_ptr<Okular::RegularAreaRect> lineRect = pageItem->page()->lineAt(Okular::NormalizedPoint(nX, nY));
+                    if (lineRect) {
+                        d->document->setPageTextSelection(pageItem->pageNumber(), std::move(lineRect), palette().color(QPalette::Active, QPalette::Highlight));
+                        d->pagesWithTextSelection << pageItem->pageNumber();
+                        if (d->document->isAllowed(Okular::AllowCopy)) {
+                            const QString text = d->selectedText();
+                            if (!text.isEmpty()) {
+                                QClipboard *cb = QApplication::clipboard();
+                                if (cb->supportsSelection()) {
+                                    cb->setText(text, QClipboard::Selection);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Update timestamp for potential 4th click detection
+                d->lastDoubleClickTime.start();
+                d->lastDoubleClickPos = eventPos;
+            } else {
+                // Regular single click - clear selection and disable triple-click detection
+                textSelectionClear();
+                d->tripleClickDetectionEnabled = false;
+            }
+        } else if (!rightButton) {
             textSelectionClear();
         }
         break;
@@ -2674,25 +2743,9 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 const double nX = pageItem->absToPageX(eventPos.x());
                 const double nY = pageItem->absToPageY(eventPos.y());
 
-                const QList<const Okular::ObjectRect *> annotRects = pageItem->page()->objectRects(Okular::ObjectRect::OAnnotation, nX, nY, itemRect.width(), itemRect.height());
-
                 AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
                 // Do not move annotPopup inside the if, it needs to live until menu->exec()
-                if (!annotRects.isEmpty()) {
-                    for (const Okular::ObjectRect *annotRect : annotRects) {
-                        Okular::Annotation *ann = static_cast<const Okular::AnnotationObjectRect *>(annotRect)->annotation();
-                        if (ann && (ann->subType() != Okular::Annotation::AWidget)) {
-                            annotPopup.addAnnotation(ann, pageItem->pageNumber());
-                        }
-                    }
-
-                    connect(&annotPopup, &AnnotationPopup::openAnnotationWindow, this, &PageView::openAnnotationWindow);
-
-                    if (!menu) {
-                        menu = new QMenu(this);
-                    }
-                    annotPopup.addActionsToMenu(menu);
-                }
+                addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu);
 
                 if (menu) {
                     menu->exec(e->globalPosition().toPoint());
@@ -2819,7 +2872,16 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
         // if mouse is released and selection is null this is a rightClick
         if (rightButton && !d->mouseSelecting) {
-            const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (pageItem) {
+                QMenu *menu = nullptr;
+                AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
+                if (addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu)) {
+                    menu->exec(e->globalPosition().toPoint());
+                    menu->deleteLater();
+                    break;
+                }
+            }
             Q_EMIT rightClick(pageItem ? pageItem->page() : nullptr, e->globalPosition().toPoint());
             break;
         }
@@ -2986,7 +3048,16 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
         // if mouse is released and selection is null this is a rightClick
         if (rightButton && !d->mouseSelecting) {
-            const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+            if (pageItem) {
+                QMenu *menu = nullptr;
+                AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
+                if (addAnnotationActionsForPoint(annotPopup, pageItem, eventPos, &menu)) {
+                    menu->exec(e->globalPosition().toPoint());
+                    menu->deleteLater();
+                    break;
+                }
+            }
             Q_EMIT rightClick(pageItem ? pageItem->page() : nullptr, e->globalPosition().toPoint());
             break;
         }
@@ -3080,6 +3151,9 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
                 QMenu *menu = createProcessLinkMenu(item, eventPos);
                 const bool mouseClickOverLink = (menu != nullptr);
+                AnnotationPopup annotPopup(d->document, AnnotationPopup::MultiAnnotationMode, this);
+                // Do not move annotPopup inside a conditional, it needs to live until menu->exec()
+                addAnnotationActionsForPoint(annotPopup, item, eventPos, &menu);
 #if HAVE_SPEECH
                 const QAction *speakText = nullptr;
 #endif
@@ -3250,12 +3324,25 @@ void PageView::mouseDoubleClickEvent(QMouseEvent *e)
     if (e->button() == Qt::LeftButton) {
         const QPoint eventPos = contentAreaPoint(e->pos());
         const PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+
         if (pageItem) {
             // find out normalized mouse coords inside current item
             double nX = pageItem->absToPageX(eventPos.x());
             double nY = pageItem->absToPageY(eventPos.y());
 
             if (d->mouseMode == Okular::Settings::EnumMouseMode::TextSelect) {
+                // Check for quad-click: double-click shortly after triple-click at same position
+                const bool isQuadClick = d->tripleClickDetectionEnabled && d->lastDoubleClickTime.isValid() && d->lastDoubleClickTime.elapsed() < QApplication::doubleClickInterval() &&
+                    (eventPos - d->lastDoubleClickPos).manhattanLength() < QApplication::startDragDistance();
+
+                if (isQuadClick) {
+                    // QUAD-CLICK: Clear selection and reset
+                    textSelectionClear();
+                    d->tripleClickDetectionEnabled = false;
+                    return;
+                }
+
+                // DOUBLE-CLICK: Select word
                 textSelectionClear();
 
                 std::unique_ptr<Okular::RegularAreaRect> wordRect = pageItem->page()->wordAt(Okular::NormalizedPoint(nX, nY));
@@ -3272,6 +3359,11 @@ void PageView::mouseDoubleClickEvent(QMouseEvent *e)
                             }
                         }
                     }
+
+                    // Enable triple-click detection after successful word selection
+                    d->tripleClickDetectionEnabled = true;
+                    d->lastDoubleClickTime.start();
+                    d->lastDoubleClickPos = eventPos;
                     return;
                 }
             }
@@ -4327,7 +4419,7 @@ void PageView::moveMagnifier(const QPoint p) // non scaled point
         scrollPosIntoView(contentAreaPoint(p + scroll));
     }
 
-    d->magnifierView->move(x, y);
+    d->magnifierView->doMove(x, y);
 }
 
 void PageView::updateMagnifier(const QPoint p) // scaled point
@@ -4507,6 +4599,42 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         return menu;
     }
     return nullptr;
+}
+
+bool PageView::addAnnotationActionsForPoint(AnnotationPopup &annotPopup, PageViewItem *pageItem, const QPoint eventPos, QMenu **menu)
+{
+    if (!pageItem) {
+        return false;
+    }
+
+    const QRect &itemRect = pageItem->uncroppedGeometry();
+    const double nX = pageItem->absToPageX(eventPos.x());
+    const double nY = pageItem->absToPageY(eventPos.y());
+    const QList<const Okular::ObjectRect *> annotRects = pageItem->page()->objectRects(Okular::ObjectRect::OAnnotation, nX, nY, itemRect.width(), itemRect.height());
+    if (annotRects.isEmpty()) {
+        return false;
+    }
+
+    bool hasAnnotation = false;
+    for (const Okular::ObjectRect *annotRect : annotRects) {
+        Okular::Annotation *ann = static_cast<const Okular::AnnotationObjectRect *>(annotRect)->annotation();
+        if (ann && (ann->subType() != Okular::Annotation::AWidget)) {
+            annotPopup.addAnnotation(ann, pageItem->pageNumber());
+            hasAnnotation = true;
+        }
+    }
+
+    if (!hasAnnotation) {
+        return false;
+    }
+
+    connect(&annotPopup, &AnnotationPopup::openAnnotationWindow, this, &PageView::openAnnotationWindow);
+
+    if (!*menu) {
+        *menu = new QMenu(this);
+    }
+    annotPopup.addActionsToMenu(*menu);
+    return true;
 }
 
 void PageView::addSearchWithinDocumentAction(QMenu *menu, const QString &searchText)
@@ -5462,8 +5590,12 @@ void PageView::slotTrimToSelectionToggled(bool on)
     if (on) { // Turn off any other Trim modes
         updateTrimMode(d->aTrimToSelection->data().toInt());
 
+        if (!d->aPrevAction) {
+            d->aPrevAction = d->aMouseTextSelect->isChecked() ? d->aMouseTextSelect : d->aMouseNormal;
+        }
         // Change the mouse mode
         d->mouseMode = Okular::Settings::EnumMouseMode::TrimSelect;
+        d->aMouseTextSelect->setChecked(false);
         d->aMouseNormal->setChecked(false);
 
         // change the text in messageWindow (and show it if hidden)
@@ -5611,7 +5743,7 @@ PageView::FinishSigningResult PageView::finishSigning()
 
     Okular::NewSignatureData data;
     data.setCertNickname(d->signingInfo.certificate->nickName());
-    data.setCertSubjectCommonName(d->signingInfo.certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
+    data.setCertSubjectCommonName(d->signingInfo.certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
     data.setPassword(d->signingInfo.certificatePassword);
     data.setDocumentPassword(d->signingInfo.documentPassword);
     data.setReason(d->signingInfo.reason);

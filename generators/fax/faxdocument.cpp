@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 
+#include <QDebug>
 #include <QFile>
 
 #include "faxexpand.h"
@@ -55,7 +56,19 @@ static bool new_image(pagenode *pn, int width, int height)
     pn->image.setColor(1, qRgb(0, 0, 0));
     pn->bytes_per_line = pn->image.bytesPerLine();
     pn->dpi = FAX_DPI_FINE;
-    pn->imageData = new uchar[width * height];
+
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+    const size_t alloc_size = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (alloc_size / width != static_cast<size_t>(height)) {
+        return false;
+    }
+    if (alloc_size > 256 * 1024 * 1024) {
+        qWarning() << "Page memory exceeds 256M, baling out. If this is a legitimate document please file a bug at bugs.kde.org";
+        return false;
+    }
+    pn->imageData = new uchar[alloc_size];
 
     return !pn->image.isNull();
 }
@@ -88,6 +101,10 @@ static unsigned char *getstrip(pagenode *pn, int strip)
         return nullptr;
     }
 
+    if (pn->length == 0) {
+        return nullptr;
+    }
+
     /* round size to full boundary plus t32bits */
     roundup = (pn->length + 7) & ~3;
 
@@ -102,11 +119,14 @@ static unsigned char *getstrip(pagenode *pn, int strip)
         delete[] data;
         return nullptr;
     }
+    for (size_t i = pn->length; i < roundup; ++i) {
+        data[i] = 0;
+    }
     file.close();
 
     pn->data = reinterpret_cast<t16bits *>(data);
 
-    if (pn->strips == nullptr && memcmp(data, FAXMAGIC, sizeof(FAXMAGIC) - 1) == 0) {
+    if (pn->strips == nullptr && pn->length >= 64 && memcmp(data, FAXMAGIC, sizeof(FAXMAGIC) - 1) == 0) {
         /* handle ghostscript / PC Research fax file */
         pn->length -= 64;
         pn->vres = data[29];
@@ -116,7 +136,12 @@ static unsigned char *getstrip(pagenode *pn, int strip)
 
     normalize(pn, !pn->lsbfirst, ShortOrder, roundup);
     if (pn->size.height() == 0) {
-        pn->size.setHeight(G3count(pn, pn->expander == g32expand));
+        int h = G3count(pn, pn->expander == g32expand);
+        if (h > 65536) {
+            qWarning() << "page size exceeds 65536 lines. If this is a legitimate document please file a bug at bugs.kde.org";
+            h = 0;
+        }
+        pn->size.setHeight(h);
     }
 
     if (pn->size.height() == 0) {
@@ -270,7 +295,15 @@ bool FaxDocument::load()
     int height = d->mPageNode.size.height();
     int bytes_per_line = d->mPageNode.size.width() / 8;
 
-    QByteArray bytes(height * bytes_per_line, 0);
+    if (height <= 0 || bytes_per_line <= 0) {
+        return false;
+    }
+    const qint64 total = static_cast<qint64>(height) * static_cast<qint64>(bytes_per_line);
+    if (total > 256 * 1024 * 1024) {
+        qWarning() << "Needed memory exceeds 256M, baling out. If this is a legitimate document please file a bug at bugs.kde.org";
+        return false;
+    }
+    QByteArray bytes(static_cast<int>(total), 0);
     for (int y = height - 1; y >= 0; --y) {
         quint32 offset = y * bytes_per_line;
         quint32 *source = reinterpret_cast<quint32 *>(d->mPageNode.imageData + offset);

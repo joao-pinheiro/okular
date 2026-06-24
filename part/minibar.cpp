@@ -28,13 +28,15 @@
 #include "core/document.h"
 #include "core/page.h"
 
-// [private widget] a flat qpushbutton that enlights on hover
-class HoverButton : public QToolButton
+QToolButton *createHoverButton(QWidget *parent)
 {
-    Q_OBJECT
-public:
-    explicit HoverButton(QWidget *parent);
-};
+    auto button = new QToolButton(parent);
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    KAcceleratorManager::setNoAccel(button);
+    return button;
+}
 
 MiniBarLogic::MiniBarLogic(QObject *parent, Okular::Document *document)
     : QObject(parent)
@@ -169,7 +171,7 @@ MiniBar::MiniBar(QWidget *parent, MiniBarLogic *miniBarLogic)
 
     QSize buttonSize(KIconLoader::SizeSmallMedium, KIconLoader::SizeSmallMedium);
     // bottom: left prev_page button
-    m_prevButton = new HoverButton(this);
+    m_prevButton = createHoverButton(this);
     m_prevButton->setIcon(QIcon::fromTheme(QStringLiteral("arrow-up")));
     m_prevButton->setIconSize(buttonSize);
     horLayout->addWidget(m_prevButton);
@@ -189,10 +191,10 @@ MiniBar::MiniBar(QWidget *parent, MiniBarLogic *miniBarLogic)
     horLayout->addSpacing(5);
     horLayout->addWidget(new QLabel(i18nc("Layouted like: '5 [pages] of 10'", "of"), this));
     // bottom: right button
-    m_pagesButton = new HoverButton(this);
+    m_pagesButton = createHoverButton(this);
     horLayout->addWidget(m_pagesButton);
     // bottom: right next_page button
-    m_nextButton = new HoverButton(this);
+    m_nextButton = createHoverButton(this);
     m_nextButton->setIcon(QIcon::fromTheme(QStringLiteral("arrow-down")));
     m_nextButton->setIconSize(buttonSize);
     horLayout->addWidget(m_nextButton);
@@ -306,110 +308,6 @@ void MiniBar::resizeForPage(int pages, const QString &pagesOrLabelString)
     m_pageNumberLabel->setMaximumWidth(2 * numberWidth);
     m_pagesButton->setMinimumWidth(numberWidth);
     m_pagesButton->setMaximumWidth(2 * numberWidth);
-}
-
-/** ProgressWidget **/
-
-ProgressWidget::ProgressWidget(QWidget *parent, Okular::Document *document)
-    : QWidget(parent)
-    , m_document(document)
-    , m_progressPercentage(-1)
-{
-    setObjectName(QStringLiteral("progress"));
-    setAttribute(Qt::WA_OpaquePaintEvent, true);
-    setFixedHeight(4);
-    setMouseTracking(true);
-}
-
-ProgressWidget::~ProgressWidget()
-{
-    m_document->removeObserver(this);
-}
-
-void ProgressWidget::notifyCurrentPageChanged(int previousPage, int currentPage)
-{
-    Q_UNUSED(previousPage)
-
-    // get current page number
-    int pages = m_document->pages();
-
-    // if the document is opened and page is changed
-    if (pages > 0) {
-        // update percentage
-        const float percentage = pages < 2 ? 1.0 : (float)currentPage / (float)(pages - 1);
-        setProgress(percentage);
-    }
-}
-
-void ProgressWidget::setProgress(float percentage)
-{
-    m_progressPercentage = percentage;
-    update();
-}
-
-void ProgressWidget::slotGotoNormalizedPage(float index)
-{
-    // figure out page number and go to that page
-    int number = (int)(index * (float)m_document->pages());
-    if (number >= 0 && number < (int)m_document->pages() && number != (int)m_document->currentPage()) {
-        m_document->setViewportPage(number);
-    }
-}
-
-void ProgressWidget::mouseMoveEvent(QMouseEvent *e)
-{
-    if ((QApplication::mouseButtons() & Qt::LeftButton) && width() > 0) {
-        slotGotoNormalizedPage((float)(QApplication::isRightToLeft() ? width() - e->position().x() : e->position().x()) / (float)width());
-    }
-}
-
-void ProgressWidget::mousePressEvent(QMouseEvent *e)
-{
-    if (e->button() == Qt::LeftButton && width() > 0) {
-        slotGotoNormalizedPage((float)(QApplication::isRightToLeft() ? width() - e->position().x() : e->position().x()) / (float)width());
-    }
-}
-
-void ProgressWidget::wheelEvent(QWheelEvent *e)
-{
-    if (e->angleDelta().y() > 0) {
-        Q_EMIT nextPage();
-    } else {
-        Q_EMIT prevPage();
-    }
-}
-
-void ProgressWidget::paintEvent(QPaintEvent *e)
-{
-    QPainter p(this);
-
-    if (m_progressPercentage < 0.0) {
-        p.fillRect(rect(), palette().color(QPalette::Active, QPalette::HighlightedText));
-        return;
-    }
-
-    // find out the 'fill' and the 'clear' rectangles
-    int w = width(), h = height(), l = (int)((float)w * m_progressPercentage);
-    QRect cRect = (QApplication::isRightToLeft() ? QRect(0, 0, w - l, h) : QRect(l, 0, w - l, h)).intersected(e->rect());
-    QRect fRect = (QApplication::isRightToLeft() ? QRect(w - l, 0, l, h) : QRect(0, 0, l, h)).intersected(e->rect());
-
-    QPalette pal = palette();
-    // paint clear rect
-    if (cRect.isValid()) {
-        p.fillRect(cRect, pal.color(QPalette::Active, QPalette::HighlightedText));
-    }
-    // draw a frame-like outline
-    // p.setPen( palette().active().mid() );
-    // p.drawRect( 0,0, w, h );
-    // paint fill rect
-    if (fRect.isValid()) {
-        p.fillRect(fRect, pal.color(QPalette::Active, QPalette::Highlight));
-    }
-    if (l && l != w) {
-        p.setPen(pal.color(QPalette::Active, QPalette::Highlight).darker(120));
-        int delta = QApplication::isRightToLeft() ? w - l : l;
-        p.drawLine(delta, 0, delta, h);
-    }
 }
 
 /** PageLabelEdit **/
@@ -573,18 +471,5 @@ void PagesEdit::wheelEvent(QWheelEvent *e)
         m_miniBar->slotEmitPrevPage();
     }
 }
-
-/** HoverButton **/
-
-HoverButton::HoverButton(QWidget *parent)
-    : QToolButton(parent)
-{
-    setAutoRaise(true);
-    setFocusPolicy(Qt::NoFocus);
-    setToolButtonStyle(Qt::ToolButtonIconOnly);
-    KAcceleratorManager::setNoAccel(this);
-}
-
-#include "minibar.moc"
 
 /* kate: replace-tabs on; indent-width 4; */

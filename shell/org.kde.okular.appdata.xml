@@ -55,6 +55,7 @@
   <name xml:lang="sv">Okular</name>
   <name xml:lang="ta">ஆக்குலர்</name>
   <name xml:lang="tr">Okular</name>
+  <name xml:lang="ug">Okular پۈتۈك كۆرگۈچ</name>
   <name xml:lang="uk">Okular</name>
   <name xml:lang="vi">Okular</name>
   <name xml:lang="zh-CN">Okular 文档查看器</name>
@@ -95,7 +96,7 @@
   <summary xml:lang="sl">Oglejte si in označite dokumente</summary>
   <summary xml:lang="sv">Visa och kommentera dokument</summary>
   <summary xml:lang="ta">ஆவணங்களைப் பாரத்து குறிப்பிடலாம்</summary>
-  <summary xml:lang="tr">Belgeleri görüntüle ve not ekle</summary>
+  <summary xml:lang="tr">Belgeler görüntüleyin ve onlara not ekleyin</summary>
   <summary xml:lang="uk">Перегляд і анотування документів</summary>
   <summary xml:lang="zh-CN">查看和批注文档</summary>
   <summary xml:lang="zh-TW">檢視或註記文件</summary>
@@ -204,6 +205,7 @@
     <p xml:lang="sv">Funktioner:</p>
     <p xml:lang="ta">அம்சங்கள்:</p>
     <p xml:lang="tr">Özellikler:</p>
+    <p xml:lang="ug">ئىقتىدار:</p>
     <p xml:lang="uk">Можливості:</p>
     <p xml:lang="vi">Tính năng:</p>
     <p xml:lang="zh-CN">功能特性：</p>
@@ -402,7 +404,7 @@
       <caption xml:lang="sl">Branje priročnikov v Okularju</caption>
       <caption xml:lang="sv">Läsa handbok i Okular</caption>
       <caption xml:lang="ta">ஆக்குலரில் ஓர் கையேடை படித்தல்</caption>
-      <caption xml:lang="tr">Belgelendirmeyi Okular ile oku</caption>
+      <caption xml:lang="tr">Okular ile belgelendirme okuma</caption>
       <caption xml:lang="uk">Читання підручника в Okular</caption>
       <caption xml:lang="vi">Đọc sổ tay trong Okular</caption>
       <caption xml:lang="zh-CN">使用 Okular 阅读产品说明书</caption>
@@ -417,6 +419,10 @@
   <url type="bugtracker">https://bugs.kde.org/enter_bug.cgi?format=guided&amp;product=okular</url>
   <url type="help">https://docs.kde.org/?application=okular</url>
   <url type="donation">https://www.kde.org/community/donations/?app=okular&amp;source=appdata</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#4ba2ff</color>
+    <color type="primary" scheme_preference="dark">#1363b3</color>
+  </branding>
   <project_group>KDE</project_group>
   <provides>
     <binary>okular</binary>
@@ -430,6 +436,8 @@
   </custom>
   <launchable type="desktop-id">org.kde.okular.desktop</launchable>
   <releases>
+    <release version="26.04.2" date="2026-06-04"/>
+    <release version="26.04.1" date="2026-05-07"/>
     <release version="26.04.0" date="2026-04-16"/>
     <release version="25.12.3" date="2026-03-05"/>
     <release version="25.12.2" date="2026-02-05"/>

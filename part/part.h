@@ -65,7 +65,6 @@ class ThumbnailList;
 class PageSizeLabel;
 class PageView;
 class PresentationWidget;
-class ProgressWidget;
 class SearchWidget;
 class Sidebar;
 class TOC;
@@ -184,11 +183,14 @@ public Q_SLOTS: // dbus
     Q_SCRIPTABLE Q_NOREPLY void enableStartWithFind(const QString &text);
     Q_SCRIPTABLE Q_NOREPLY void setEditorCmd(const QString &editorCmd);
     Q_SCRIPTABLE void slotOpenContainingFolder();
+    Q_SCRIPTABLE void slotCopyAnnotation();
+    Q_SCRIPTABLE void slotCopyTextSelectionOrAnnotation();
+    Q_SCRIPTABLE void slotPasteAnnotation();
 
 Q_SIGNALS:
     void enablePrintAction(bool enable);
-    void openSourceReference(const QString &absFileName, int line, int column); /* cppcheck-suppress duplInheritedMember; see viewerinterface*/
-    void viewerMenuStateChange(bool enabled);                                   /* cppcheck-suppress duplInheritedMember */
+    void openSourceReference(const QString &absFileName, int line, int column); /* NOLINT(bugprone-derived-method-shadowing-base-method) cppcheck-suppress duplInheritedMember; see viewerinterface*/
+    void viewerMenuStateChange(bool enabled);                                   /* NOLINT(bugprone-derived-method-shadowing-base-method) cppcheck-suppress duplInheritedMember */
     void enableCloseAction(bool enable);
     void mimeTypeChanged(const QMimeType &mimeType);
     void urlsDropped(const QList<QUrl> &urls);
@@ -376,7 +378,6 @@ private:
     QPointer<MiniBar> m_pageNumberTool;
     QPointer<QWidget> m_bottomBar;
     QPointer<PresentationWidget> m_presentationWidget;
-    QPointer<ProgressWidget> m_progressWidget;
     QPointer<PageSizeLabel> m_pageSizeLabel;
     QPointer<Reviews> m_reviewsWidget;
     QPointer<BookmarkList> m_bookmarkList;
@@ -413,6 +414,7 @@ private:
     QAction *m_nextBookmark;
     QAction *m_copy;
     QAction *m_copyWithoutLineBreaks;
+    QAction *m_pasteAnnotation;
     QAction *m_selectAll;
     QAction *m_selectCurrentPage;
     QAction *m_find;

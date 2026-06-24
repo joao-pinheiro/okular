@@ -19,7 +19,6 @@ class Document;
 }
 
 class MiniBar;
-class HoverButton;
 class QIntValidator;
 class QLabel;
 class QToolBar;
@@ -140,42 +139,10 @@ private:
     PageNumberEdit *m_pageNumberEdit;
     PageLabelEdit *m_pageLabelEdit;
     QLabel *m_pageNumberLabel;
-    HoverButton *m_prevButton;
-    HoverButton *m_pagesButton;
-    HoverButton *m_nextButton;
+    QToolButton *m_prevButton;
+    QToolButton *m_pagesButton;
+    QToolButton *m_nextButton;
     QToolBar *m_oldToolbarParent;
-};
-
-/**
- * @short A small progress bar.
- */
-class ProgressWidget : public QWidget, public Okular::DocumentObserver
-{
-    Q_OBJECT
-public:
-    ProgressWidget(QWidget *parent, Okular::Document *document);
-    ~ProgressWidget() override;
-
-    // [INHERITED] from DocumentObserver
-    void notifyCurrentPageChanged(int previous, int current) override;
-
-    void slotGotoNormalizedPage(float index);
-
-Q_SIGNALS:
-    void prevPage();
-    void nextPage();
-
-protected:
-    void setProgress(float percentage);
-
-    void mouseMoveEvent(QMouseEvent *e) override;
-    void mousePressEvent(QMouseEvent *e) override;
-    void wheelEvent(QWheelEvent *e) override;
-    void paintEvent(QPaintEvent *e) override;
-
-private:
-    Okular::Document *m_document;
-    float m_progressPercentage;
 };
 
 #endif

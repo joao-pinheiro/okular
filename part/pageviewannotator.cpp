@@ -404,9 +404,9 @@ public:
         Okular::SignatureAnnotation *ann = new Okular::SignatureAnnotation();
         ann->setFlags(ann->flags() | Okular::Annotation::FixedRotation);
 
-        const QString certSubjectCommonName = m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable);
+        const QString nameToShow = m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable);
         const QString datetime = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss t"));
-        const QString signatureText = i18n("Signed by: %1\n\nDate: %2", certSubjectCommonName, datetime);
+        const QString signatureText = i18n("Signed by: %1\n\nDate: %2", nameToShow, datetime);
 
         m_creationCompleted = false;
         clicked = false;
@@ -415,7 +415,7 @@ public:
             return QList<Okular::Annotation *>();
         }
 
-        ann->setLeftText(certSubjectCommonName);
+        ann->setLeftText(nameToShow);
         ann->setText(signatureText);
         ann->setImagePath(m_signingInformation->backgroundImagePath);
 
@@ -522,7 +522,7 @@ public:
     {
         Okular::NewSignatureData data;
         data.setCertNickname(m_signingInformation->certificate->nickName());
-        data.setCertSubjectCommonName(m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonName, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
+        data.setCertSubjectCommonName(m_signingInformation->certificate->subjectInfo(Okular::CertificateInfo::CommonNameOrEmail, Okular::CertificateInfo::EmptyString::TranslatedNotAvailable));
         data.setPassword(m_signingInformation->certificatePassword);
         data.setDocumentPassword(m_signingInformation->documentPassword);
         data.setPage(m_page->number());
@@ -776,7 +776,7 @@ public:
                             newrect |= r;
                         }
                     }
-                    rect |= newrect;
+                    rect = newrect;
                     selection = std::move(newselection);
                 }
             }
@@ -832,6 +832,14 @@ public:
             Okular::HighlightAnnotation *ha = new Okular::HighlightAnnotation();
             ha->setHighlightType(type);
             ha->setBoundingRectangle(Okular::NormalizedRect(rect, item()->uncroppedWidth(), item()->uncroppedHeight()));
+
+            const Okular::Page *pg = item()->page();
+            QString selectedText = pg->text(selection.get(), Okular::TextPage::CentralPixelTextAreaInclusionBehaviour);
+            selectedText = selectedText.replace(QStringLiteral("-\n"), QString());
+            selectedText = selectedText.replace(QLatin1Char('\n'), QLatin1Char(' '));
+            selectedText = selectedText.simplified();
+            ha->setContents(selectedText);
+
             for (const Okular::NormalizedRect &r : std::as_const(*selection)) {
                 Okular::HighlightAnnotation::Quad q;
                 q.setCapStart(false);
