@@ -551,9 +551,14 @@ std::pair<Okular::SigningResult, QString> PopplerFormFieldSignature::sign(const 
     }
 
     // now copy over old file
-    QFile::remove(fileName);
+    if (QFile::exists(fileName)) {
+        if (!QFile::remove(fileName)) {
+            tf.setAutoRemove(true);
+            return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
+        }
+    }
     if (!tf.rename(fileName)) {
-        return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file")};
+        return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file A %1:", tf.errorString())};
     }
 
     return {Okular::SigningSuccess, {}};
