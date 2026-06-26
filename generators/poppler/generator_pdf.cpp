@@ -2233,7 +2233,7 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
         return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
     }
     if (!tf.rename(rFilename)) {
-        return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file")};
+        return {Okular::SignatureWriteFailed, i18n("Failed renaming temporary file: %1", tf.errorString())};
     }
 
     return {Okular::SigningSuccess, {}};
