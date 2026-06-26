@@ -600,7 +600,7 @@ static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnn
         if (QFile::exists(fileName)) {
             if (!QFile::remove(fileName)) {
                 tf.setAutoRemove(true);
-                return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
+                return {Okular::SignatureWriteFailed, i18n("Failed removing file K")};
             }
         }
         if (!tf.rename(fileName)) {

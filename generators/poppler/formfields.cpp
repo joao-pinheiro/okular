@@ -554,7 +554,7 @@ std::pair<Okular::SigningResult, QString> PopplerFormFieldSignature::sign(const 
     if (QFile::exists(fileName)) {
         if (!QFile::remove(fileName)) {
             tf.setAutoRemove(true);
-            return {Okular::SignatureWriteFailed, i18n("Failed removing file")};
+            return {Okular::SignatureWriteFailed, i18n("Failed removing file A")};
         }
     }
     if (!tf.rename(fileName)) {
