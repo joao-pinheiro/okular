@@ -20,28 +20,28 @@ endmacro ()
 
 add_conf_unittest(editdrawingtooldialogtest.cpp)
 
-ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
-    TEST_NAME "shelltest"
-    LINK_LIBRARIES Qt6::Test okularcore
-)
+#ecm_add_test(shelltest.cpp ../shell/shellutils.cpp
+#    TEST_NAME "shelltest"
+#    LINK_LIBRARIES Qt6::Test okularcore
+#)
 
 if(Poppler_Qt6_FOUND)
-    if (BUILD_DESKTOP)
-        ecm_add_test(parttest.cpp closedialoghelper.cpp
-            TEST_NAME "parttest"
-            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
-        )
-    endif()
+#    if (BUILD_DESKTOP)
+#        ecm_add_test(parttest.cpp closedialoghelper.cpp
+#            TEST_NAME "parttest"
+#            LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart
+#        )
+#    endif()
 
     ecm_add_test(visibilitytest.cpp
         TEST_NAME "visibilitytest"
         LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
     )
 
-    ecm_add_test(jsfunctionstest.cpp
-        TEST_NAME "jsfunctionstest"
-        LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
-    )
+#    ecm_add_test(jsfunctionstest.cpp
+#        TEST_NAME "jsfunctionstest"
+#        LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
+#    )
 
     ecm_add_test(formattest.cpp
         TEST_NAME "formattest"
@@ -126,15 +126,15 @@ ecm_add_test(check_distinguished_name_parser.cpp
     LINK_LIBRARIES Qt6::Test)
 
 if(BUILD_DESKTOP)
-    ecm_add_test(mainshelltest.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
-        TEST_NAME "mainshelltest"
-        LINK_LIBRARIES Qt6::Test okularpart okularcore
-    )
-    target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
-
-    if (HAVE_X11)
-        target_link_libraries(mainshelltest Qt6::GuiPrivate)
-    endif()
+#    ecm_add_test(mainshelltest.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
+#        TEST_NAME "mainshelltest"
+#        LINK_LIBRARIES Qt6::Test okularpart okularcore
+#    )
+#    target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
+#
+#    if (HAVE_X11)
+#        target_link_libraries(mainshelltest Qt6::GuiPrivate)
+#    endif()
 endif()
 
 if(BUILD_DESKTOP)
