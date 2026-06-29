@@ -51,7 +51,7 @@ private Q_SLOTS:
     void init();
     void cleanup();
     void testSignUnsignedField();
-    void testSignUnsignedFieldOnTop();
+    void testSignUnsignedFieldWriteCurrentFile();
 
 private:
     Okular::Document *m_document;
@@ -110,7 +110,6 @@ void SignUnsignedFieldTest::testSignUnsignedField()
     data.setCertNickname(QStringLiteral("fake-okular"));
     auto signedFileName = m_workdir->filePath(QStringLiteral("signedDoc.pdf"));
     auto signResult = ffs->sign(data, signedFileName);
-    qDebug() << signResult.second << signedFileName << m_document->currentDocument();
     QCOMPARE(signResult.first, Okular::SigningResult::SigningSuccess);
 
     m_document->closeDocument();
@@ -125,7 +124,7 @@ void SignUnsignedFieldTest::testSignUnsignedField()
     QCOMPARE(ffs->signatureInfo().signerName(), QStringLiteral("FakeOkular"));
 }
 
-void SignUnsignedFieldTest::testSignUnsignedFieldOnTop()
+void SignUnsignedFieldTest::testSignUnsignedFieldWriteCurrentFile()
 {
     const QList<Okular::FormField *> forms = m_document->page(0)->formFields();
     QCOMPARE(forms.count(), 1);
@@ -144,7 +143,9 @@ void SignUnsignedFieldTest::testSignUnsignedFieldOnTop()
     Okular::NewSignatureData data;
     data.setCertNickname(QStringLiteral("fake-okular"));
     auto signResult = ffs->sign(data, m_targetFile);
-    qDebug() << signResult.second << m_targetFile << m_document->currentDocument();
+#if defined(Q_OS_WIN)
+    QSKIP("Writing to current document not supported");
+#endif
     QCOMPARE(signResult.first, Okular::SigningResult::SigningSuccess);
 
     m_document->closeDocument();
