@@ -108,18 +108,15 @@ void SignUnsignedFieldTest::testSignUnsignedField()
 
     Okular::NewSignatureData data;
     data.setCertNickname(QStringLiteral("fake-okular"));
-    QTemporaryFile f;
-    bool success = f.open();
-    QVERIFY(success);
-    f.close();
-    auto signResult = ffs->sign(data, f.fileName());
-    qDebug() << signResult.second << f.fileName() << m_document->currentDocument();
+    auto signedFileName = m_workdir->filePath("signedDoc.pdf");
+    auto signResult = ffs->sign(data, signedFileName);
+    qDebug() << signResult.second << signedFileName << m_document->currentDocument();
     QCOMPARE(signResult.first, Okular::SigningResult::SigningSuccess);
 
     m_document->closeDocument();
     QMimeDatabase db;
-    const QMimeType mime = db.mimeTypeForFile(f.fileName());
-    QCOMPARE(m_document->openDocument(f.fileName(), QUrl(), mime), Okular::Document::OpenSuccess);
+    const QMimeType mime = db.mimeTypeForFile(signedFileName);
+    QCOMPARE(m_document->openDocument(signedFileName, QUrl(), mime), Okular::Document::OpenSuccess);
 
     const QList<Okular::FormField *> newForms = m_document->page(0)->formFields();
     QCOMPARE(newForms.count(), 1);
