@@ -227,9 +227,6 @@ public:
     QPoint dragScrollVector;
     QTimer dragScrollTimer;
 
-    // left click depress
-    QTimer leftClickTimer;
-
     // Triple-click detection for line selection
     QElapsedTimer lastDoubleClickTime;
     QPoint lastDoubleClickPos;
@@ -446,9 +443,6 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
     connect(horizontalScrollBar(), &QAbstractSlider::actionTriggered, this, update_scroller, Qt::QueuedConnection);
 
     connect(&d->dragScrollTimer, &QTimer::timeout, this, &PageView::slotDragScroll);
-
-    d->leftClickTimer.setSingleShot(true);
-    connect(&d->leftClickTimer, &QTimer::timeout, this, &PageView::slotShowSizeAllCursor);
 
     // set a corner button to resize the view to the page size
     //    QPushButton * resizeButton = new QPushButton( viewport() );
@@ -2329,7 +2323,6 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
     switch (d->mouseMode) {
     case Okular::Settings::EnumMouseMode::Browse: {
         if (leftButton) {
-            d->leftClickTimer.stop();
             if (d->mouseAnnotation->isActive()) {
                 // if left button pressed and annotation is focused, forward move event
                 d->mouseAnnotation->routeMouseMoveEvent(pageItem, eventPos, leftButton);
@@ -2484,7 +2477,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
                 if (!d->pinchZoomActive) {
                     d->scroller->handleInput(QScroller::InputPress, e->pos(), e->timestamp());
                 }
-                d->leftClickTimer.start(QApplication::doubleClickInterval() + 10);
+                setCursor(Qt::ClosedHandCursor);
             }
         }
     } break;
@@ -2652,8 +2645,6 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 {
     // stop the drag scrolling
     d->dragScrollTimer.stop();
-
-    d->leftClickTimer.stop();
 
     const bool leftButton = e->button() == Qt::LeftButton;
     const bool rightButton = e->button() == Qt::RightButton;
@@ -3376,6 +3367,10 @@ void PageView::mouseDoubleClickEvent(QMouseEvent *e)
             if (ann && ann->subType() != Okular::Annotation::AWidget) {
                 openAnnotationWindow(ann, pageItem->pageNumber());
             }
+        }
+
+        if (d->mouseMode == Okular::Settings::EnumMouseMode::Browse && !d->mouseOnRect) {
+            setCursor(Qt::ClosedHandCursor);
         }
     }
 }
@@ -5171,11 +5166,6 @@ void PageView::slotShowWelcome()
 {
     // show initial welcome text
     d->messageWindow->display(i18n("Welcome"), QString(), PageViewMessage::Info, 2000);
-}
-
-void PageView::slotShowSizeAllCursor()
-{
-    setCursor(Qt::SizeAllCursor);
 }
 
 void PageView::slotHandleWebShortcutAction()
