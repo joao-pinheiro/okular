@@ -5455,6 +5455,8 @@ void PageView::slotSignature()
 
     d->annotator->startSigning(&d->signingInfo);
 
+    actionCollection()->action(QStringLiteral("add_digital_signature"))->setEnabled(false);
+
     // force an update of the cursor
     updateCursor();
     Okular::Settings::self()->save();
