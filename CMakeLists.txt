@@ -9,6 +9,7 @@ set (RELEASE_SERVICE_VERSION "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE
 project(okular VERSION ${RELEASE_SERVICE_VERSION})
 
 set(QT_REQUIRED_VERSION "6.6.0") # Remember to update the QT_DEPRECATED_WARNINGS_SINCE below
+set(QT_KEYCHAIN_REQUIRED_VERSION "0.15.0")
 set(KF_REQUIRED_VERSION "5.240.0") # Remember to update the KF_DEPRECATED_WARNINGS_SINCE below
 
 set(OKULAR_UI "" CACHE STRING "Which Okular user interface to build. Possible values: desktop, mobile, both. Default: desktop (except on Android, where it is 'mobile')")
@@ -34,7 +35,7 @@ include(ECMSetupQtPluginMacroNames)
 include(ECMAddAndroidApk)
 
 if (ANDROID AND (FORCE_NOT_REQUIRED_DEPENDENCIES STREQUAL ""))
-    set(FORCE_NOT_REQUIRED_DEPENDENCIES "KF6Wallet;KF6DocTools;Qt6Qml;TIFF;LibSpectre;KExiv2Qt6;DjVuLibre;EPub;Discount;")
+    set(FORCE_NOT_REQUIRED_DEPENDENCIES "Qt6Keychain;KF6DocTools;Qt6Qml;TIFF;LibSpectre;KExiv2Qt6;DjVuLibre;EPub;Discount;")
 endif()
 
 function(set_okular_optional_package_properties _name _props)
@@ -118,14 +119,14 @@ find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
 )
 
 if (NOT WIN32 AND NOT HAIKU)
-    find_package(KF6Wallet ${KF_REQUIRED_VERSION})
-    set_okular_optional_package_properties(KF6Wallet PROPERTIES
-    PURPOSE "Required for document storing passwords in secure wallets.")
+    find_package(Qt6Keychain ${QT_KEYCHAIN_REQUIRED_VERSION})
+    set_okular_optional_package_properties(Qt6Keychain PROPERTIES
+    PURPOSE "Required for storing document passwords in secure storage.")
 endif()
-if(KF6Wallet_FOUND)
-    set(HAVE_KWALLET 1)
+if(Qt6Keychain_FOUND)
+    set(HAVE_QTKEYCHAIN 1)
 else()
-    set(HAVE_KWALLET 0)
+    set(HAVE_QTKEYCHAIN 0)
 endif()
 
 find_package(KF6DocTools ${KF_REQUIRED_VERSION})
@@ -460,8 +461,8 @@ if (Phonon4Qt6_FOUND)
 endif()
 
 
-if (KF6Wallet_FOUND)
-    target_link_libraries(okularcore PRIVATE KF6::Wallet)
+if (Qt6Keychain_FOUND)
+    target_link_libraries(okularcore PRIVATE Qt6Keychain::Qt6Keychain)
 endif()
 if (TARGET Qt6::Qml)
     target_sources(okularcore PRIVATE
@@ -602,8 +603,8 @@ if (Phonon4Qt6_FOUND)
    target_link_libraries(okularpart Phonon::phonon4qt6)
 endif()
 
-if(KF6Wallet_FOUND)
-    target_link_libraries(okularpart KF6::Wallet)
+if(Qt6Keychain_FOUND)
+    target_link_libraries(okularpart Qt6Keychain::Qt6Keychain)
 endif()
 
 if (KF6Purpose_FOUND)

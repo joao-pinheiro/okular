@@ -7,8 +7,8 @@
 /* Defines if qtspeech is available */
 #cmakedefine01 HAVE_SPEECH
 
-/* Defines if kwallet is available */
-#cmakedefine01 HAVE_KWALLET
+/* Defines if QtKeychain is available */
+#cmakedefine01 HAVE_QTKEYCHAIN
 
 /* Defines if QJSEngine is available*/
 #cmakedefine01 HAVE_JS

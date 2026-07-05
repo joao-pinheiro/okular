@@ -82,8 +82,8 @@
 #include <KToggleAction>
 #include <KToggleFullScreenAction>
 #include <KToolBar>
-#if HAVE_KWALLET
-#include <KWallet>
+#if HAVE_QTKEYCHAIN
+#include <qt6keychain/keychain.h>
 #endif
 #include <KXMLGUIClient>
 #include <KXMLGUIFactory>
@@ -129,6 +129,17 @@
 
 #include <memory>
 #include <type_traits>
+
+#if HAVE_QTKEYCHAIN
+static void execQKeychainJobBlocking(QKeychain::Job &job)
+{
+    QEventLoop loop;
+    QObject::connect(&job, &QKeychain::Job::finished, &loop, &QEventLoop::quit);
+    job.setAutoDelete(false);
+    job.start();
+    loop.exec();
+}
+#endif
 
 #ifdef OKULAR_KEEP_FILE_OPEN
 class FileKeeper
@@ -1439,36 +1450,28 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
         m_documentOpenWithPassword = false;
 
         // if the file didn't open correctly it might be encrypted, so ask for a pass
-#if HAVE_KWALLET
-        QString walletName, walletFolder, walletKey;
-        m_document->walletDataForFile(fileNameToOpen, &walletName, &walletFolder, &walletKey);
-        bool triedWallet = false;
-        KWallet::Wallet *wallet = nullptr;
+#if HAVE_QTKEYCHAIN
+        QString keychainServiceName, keychainKey;
+        m_document->keychainDataForFile(fileNameToOpen, &keychainServiceName, &keychainKey);
+        bool triedKeychain = false;
         bool keep = true;
 #endif
         bool firstInput = true;
         while (openResult == Document::OpenNeedsPassword) {
             QString password;
 
-#if HAVE_KWALLET
-            // 1.A. try to retrieve the first password from the kde wallet system
-            if (!triedWallet && !walletKey.isNull()) {
-                const WId parentwid = widget()->effectiveWinId();
-                wallet = KWallet::Wallet::openWallet(walletName, parentwid);
-                if (wallet) {
-                    // use the KPdf folder (and create if missing)
-                    if (!wallet->hasFolder(walletFolder)) {
-                        wallet->createFolder(walletFolder);
-                    }
-                    wallet->setFolder(walletFolder);
-
-                    // look for the pass in that folder
-                    QString retrievedPass;
-                    if (!wallet->readPassword(walletKey, retrievedPass)) {
-                        password = retrievedPass;
-                    }
+#if HAVE_QTKEYCHAIN
+            // 1.A. try to retrieve the first password from secure storage
+            if (!triedKeychain && !keychainKey.isNull()) {
+                QKeychain::ReadPasswordJob job(keychainServiceName);
+                job.setKey(keychainKey);
+                execQKeychainJobBlocking(job);
+                if (job.error() == QKeychain::NoError) {
+                    password = job.textData();
+                } else if (job.error() != QKeychain::EntryNotFound) {
+                    qWarning() << "QtKeychain read error:" << job.errorString();
                 }
-                triedWallet = true;
+                triedKeychain = true;
             }
 #endif
 
@@ -1483,8 +1486,8 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
                 firstInput = false;
 
                 // if the user presses cancel, abort opening
-#if HAVE_KWALLET
-                const KPasswordDialog::KPasswordDialogFlags dlgFlags = wallet ? KPasswordDialog::ShowKeepPassword : KPasswordDialog::KPasswordDialogFlags();
+#if HAVE_QTKEYCHAIN
+                const KPasswordDialog::KPasswordDialogFlags dlgFlags = (!keychainKey.isNull() && QKeychain::isAvailable()) ? KPasswordDialog::ShowKeepPassword : KPasswordDialog::KPasswordDialogFlags();
 #else
                 const KPasswordDialog::KPasswordDialogFlags dlgFlags;
 #endif
@@ -1495,10 +1498,8 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
                     break;
                 }
                 password = dlg.password();
-#if HAVE_KWALLET
-                if (wallet) {
-                    keep = dlg.keepPassword();
-                }
+#if HAVE_QTKEYCHAIN
+                keep = dlg.keepPassword();
 #endif
             }
 
@@ -1513,10 +1514,16 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
             if (openResult == Document::OpenSuccess) {
                 m_documentOpenWithPassword = true;
 
-#if HAVE_KWALLET
-                // 3. if the password is correct and the user chose to remember it, store it to the wallet
-                if (wallet && /*safety check*/ wallet->isOpen() && keep) {
-                    wallet->writePassword(walletKey, password);
+#if HAVE_QTKEYCHAIN
+                // 3. if the password is correct and the user chose to remember it, store it in secure storage
+                if (!keychainKey.isNull() && keep) {
+                    QKeychain::WritePasswordJob job(keychainServiceName);
+                    job.setKey(keychainKey);
+                    job.setTextData(password);
+                    execQKeychainJobBlocking(job);
+                    if (job.error() != QKeychain::NoError) {
+                        qWarning() << "QtKeychain write error:" << job.errorString();
+                    }
                 }
 #endif
             }

@@ -118,7 +118,7 @@ public:
         , m_memCheckTimer(nullptr)
         , m_saveBookmarksTimer(nullptr)
         , m_generator(nullptr)
-        , m_walletGenerator(nullptr)
+        , m_keychainGenerator(nullptr)
         , m_generatorsLoaded(false)
         , m_pageController(nullptr)
         , m_closingLoop(nullptr)
@@ -311,7 +311,7 @@ public:
     QHash<QString, GeneratorInfo> m_loadedGenerators;
     Generator *m_generator;
     QString m_generatorName;
-    Generator *m_walletGenerator;
+    Generator *m_keychainGenerator;
     bool m_generatorsLoaded;
     QList<Page *> m_pagesVector;
     QList<VisiblePageRect *> m_pageRects;
