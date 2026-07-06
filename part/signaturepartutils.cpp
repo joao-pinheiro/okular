@@ -270,7 +270,7 @@ QString getFileNameForNewSignedFile(PageView *pageView, Okular::Document *doc)
         // is not possible
         auto fileName = QFileDialog::getSaveFileName(pageView, i18n("Save Signed File As"), newFileName, mimeTypeFilter);
         if (QUrl::fromLocalFile(fileName) == doc->currentDocument()) {
-            KMessageBox::error(pageView, i18nc("Error message", "The original file cannot be overwritten. Please choose a different filename"));
+            KMessageBox::error(pageView, i18nc("Error message", "The original file cannot be overwritten. Please choose a different filename."));
             if (retries == 2) {
                 return QString {};
             }
