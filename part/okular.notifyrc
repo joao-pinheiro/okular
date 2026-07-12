@@ -1,0 +1,18 @@
+[Global]
+IconName=okular
+Name=Okular
+
+[Event/printStarted]
+Name=Print Started
+Comment=A document has been sent to the printer
+Action=Popup
+
+[Event/printFinished]
+Name=Print Finished
+Comment=A document has finished printing
+Action=Popup
+
+[Event/printError]
+Name=Print Error
+Comment=A document could not be printed
+Action=Popup|Sound

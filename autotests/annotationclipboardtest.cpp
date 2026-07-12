@@ -1,8 +1,8 @@
 /*
-    SPDX-FileCopyrightText: 2013 Peter Grasch <me@bedahr.org>
+     SPDX-FileCopyrightText: 2013 Peter Grasch <me@bedahr.org>
 
-    SPDX-License-Identifier: GPL-2.0-or-later
-*/
+     SPDX-License-Identifier: GPL-2.0-or-later
+ */
 
 #include <QClipboard>
 #include <QDomDocument>

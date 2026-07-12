@@ -45,6 +45,7 @@ class QAction;
 class QWidget;
 class QPrinter;
 class QMenu;
+class QThread;
 
 class KConfigDialog;
 class KDirWatch;
@@ -310,7 +311,7 @@ private:
     void setupActions();
 
     void setupPrint(QPrinter &printer);
-    bool doPrint(QPrinter &printer);
+    bool doPrint(QPrinter *printer, bool async = true);
     bool handleCompressed(QString &destpath, const QString &path, KCompressionDevice::CompressionType compressionType);
     void rebuildBookmarkMenu(bool unplugActions = true);
     void updateAboutBackendAction();
@@ -481,10 +482,15 @@ private:
     // Current value of maxRecentItems to detect value change, and inform shell
     int m_maxRecentItems;
 
+    // Async print state
+    QThread *m_printThread = nullptr;
+    QString m_printTempFilePath; // path to a temp PDF written for printing (if doc had unsaved changes)
+
 private Q_SLOTS:
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();
     void slotHandleActivatedSourceReference(const QString &absFileName, int line, int col, bool *handled);
+    void onPrintFinished(Okular::Document::PrintError error);
 };
 
 }
