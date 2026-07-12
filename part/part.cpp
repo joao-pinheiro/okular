@@ -311,6 +311,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     : KParts::ReadWritePart(parent)
     , m_tempfile(nullptr)
     , m_documentOpenWithPassword(false)
+    , m_documentPassword()
     , m_swapInsteadOfOpening(false)
     , m_tocEnabled(false)
     , m_isReloading(false)
@@ -1415,6 +1416,7 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
             openResult = m_document->openDocument(fileNameToOpen, url(), mime);
         }
         m_documentOpenWithPassword = false;
+        m_documentPassword.clear();
 
         // if the file didn't open correctly it might be encrypted, so ask for a pass
 #if HAVE_KWALLET
@@ -1490,6 +1492,12 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
 
             if (openResult == Document::OpenSuccess) {
                 m_documentOpenWithPassword = true;
+                // Keep the password in memory so the async print worker can
+                // open an independent document instance for password-protected
+                // files. This is safe: the password is already in RAM (Poppler
+                // needs it for every page decode). It is never written to disk
+                // by this code — KWallet is handled separately below.
+                m_documentPassword = password;
 
 #if HAVE_KWALLET
                 // 3. if the password is correct and the user chose to remember it, store it to the wallet
@@ -3632,12 +3640,18 @@ class PrintWorker : public QObject
 {
     Q_OBJECT
 public:
-    explicit PrintWorker(const QString &filePath, const QUrl &fileUrl, const QMimeType &mimeType, QPrinter *printer, QObject *parent = nullptr)
+    explicit PrintWorker(const QString &filePath,
+                         const QUrl &fileUrl,
+                         const QMimeType &mimeType,
+                         QPrinter *printer,
+                         const QString &password,
+                         QObject *parent = nullptr)
         : QObject(parent)
         , m_filePath(filePath)
         , m_fileUrl(fileUrl)
         , m_mimeType(mimeType)
         , m_printer(printer)
+        , m_password(password)
     {
     }
 
@@ -3656,7 +3670,16 @@ public Q_SLOTS:
         // This is the key: no shared Poppler::Document with the UI thread, so no
         // userMutex contention and no freeze.
         Okular::Document printDoc(nullptr /* no widget needed for print */);
-        const Okular::Document::OpenResult result = printDoc.openDocument(m_filePath, m_fileUrl, m_mimeType);
+        Okular::Document::OpenResult result = printDoc.openDocument(m_filePath, m_fileUrl, m_mimeType);
+
+        // If the document is password-protected, supply the in-memory password
+        // that was already entered by the user when opening the document.
+        // The password is already present in the main process's RAM (Poppler
+        // needs it for every page decode), so passing it here introduces no
+        // new security surface — it simply avoids prompting the user again.
+        if (result == Okular::Document::OpenNeedsPassword && !m_password.isEmpty()) {
+            result = printDoc.openDocument(m_filePath, m_fileUrl, m_mimeType, m_password);
+        }
 
         if (result != Okular::Document::OpenSuccess) {
             Q_EMIT done(Okular::Document::UnknownPrintError);
@@ -3674,6 +3697,7 @@ private:
     QUrl m_fileUrl;
     QMimeType m_mimeType;
     QPrinter *m_printer;
+    QString m_password; // ephemeral copy; lives only for the duration of run()
 };
 
 bool Part::doPrint(QPrinter *printer, bool async)
@@ -3755,7 +3779,13 @@ bool Part::doPrint(QPrinter *printer, bool async)
 
     // Spin up thread + worker.
     m_printThread = new QThread(this);
-    PrintWorker *worker = new PrintWorker(printFilePath, printFileUrl, mimeType, printer);
+    // m_documentPassword is the password the user already typed when opening
+    // the document. It lives in RAM anyway (Poppler keeps it for page decoding).
+    // We pass a copy to the worker so it can open its own document handle for
+    // password-protected files without prompting the user a second time.
+    // For the temp-file path (canSaveChanges), the saved PDF is unencrypted,
+    // so the worker will open it without a password on the first attempt.
+    PrintWorker *worker = new PrintWorker(printFilePath, printFileUrl, mimeType, printer, m_documentPassword);
     worker->moveToThread(m_printThread);
 
     connect(m_printThread, &QThread::started, worker, &PrintWorker::run);

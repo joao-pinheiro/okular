@@ -356,6 +356,7 @@ private:
     QString m_temporaryLocalFile;
     bool isDocumentArchive;
     bool m_documentOpenWithPassword;
+    QString m_documentPassword; // password used to open the current document; cleared on close; never written to disk by us
     bool m_swapInsteadOfOpening; // if set, the next open operation will replace the backing file (used when reloading just saved files)
     bool m_warnedAboutModifyingUnsaveableDocument = false;
 

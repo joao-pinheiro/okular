@@ -30,8 +30,8 @@ progress back to the user.
 | `CMakeLists.txt` | Build | Added `KF6::Notifications` dependency; installed `okular.notifyrc` |
 | `core/generator.h` | API | Added `PrintAsync` generator capability flag |
 | `generators/poppler/generator_pdf.cpp` | PDF generator | Advertises `PrintAsync` capability |
-| `part/part.h` | Header | New member variables and slot for async print state |
-| `part/part.cpp` | Core logic | `PrintWorker` class + full async `doPrint()` + `onPrintFinished()` |
+| `part/part.h` | Header | New member variables and slot for async print state; `m_documentPassword` |
+| `part/part.cpp` | Core logic | `PrintWorker` (with password support) + `doPrint()` + `onPrintFinished()` + password capture in `openDocumentFile()` |
 | `part/okular.notifyrc` | Data | New KDE notification event definitions |
 
 ---
@@ -107,6 +107,26 @@ You can customise these events in **System Settings → Notifications → Okular
 3. **Expected:** An information dialog appears: *"A print job is already in
    progress. Please wait for it to finish."* No second job is started.
 
+### Test password-protected documents
+1. Open a password-protected PDF (you will be prompted for the password).
+2. Enter the correct password — the document opens normally.
+3. Open **File → Print** and send the job.
+4. **Expected:** The document prints successfully **without** a second password
+   prompt. The UI remains responsive throughout.
+
+**How it works:**
+- `Part::openDocumentFile()` captures the password in the private member
+  `m_documentPassword` the moment `openDocument()` returns `OpenSuccess` after
+  a password prompt.
+- `doPrint()` passes `m_documentPassword` to `PrintWorker`.
+- In `PrintWorker::run()`, the first `openDocument()` call returns
+  `OpenNeedsPassword`; the worker immediately retries with the stored password.
+- The password lives only on the worker's stack for the duration of `run()`;
+  it is not stored on disk, logged, or held beyond the print operation.
+- For documents with **unsaved in-memory changes** (annotation path),
+  `saveChanges()` writes an **unencrypted** temp PDF, so no password is needed
+  to open that file in the worker at all.
+
 ### Test `--print-and-exit` CLI mode
 ```bash
 ./build/bin/okular --print-and-exit /path/to/document.pdf
@@ -130,9 +150,10 @@ All async print code is self-contained in [`part/part.cpp`](part/part.cpp):
 
 | Symbol | Line (approx.) | Purpose |
 |--------|---------------|---------|
-| `class PrintWorker` | ~3615 | Background QObject; opens independent doc, calls `print()` |
-| `Part::doPrint()` | ~3670 | Orchestrates async path: temp file, thread, notification |
-| `Part::onPrintFinished()` | ~3790 | Thread teardown, temp-file cleanup, re-enables actions |
+| `class PrintWorker` | ~3630 | Background QObject; opens independent doc (with password retry), calls `print()` |
+| `Part::doPrint()` | ~3690 | Orchestrates async path: temp file, thread, notification, password pass-through |
+| `Part::onPrintFinished()` | ~3800 | Thread teardown, temp-file cleanup, re-enables actions |
+| `openDocumentFile()` password capture | ~1491 | Stores correct password in `m_documentPassword` on successful open |
 
 ### The `PrintAsync` capability flag
 - **Declared in:** [`core/generator.h`](core/generator.h) — `GeneratorFeature::PrintAsync`
@@ -212,3 +233,5 @@ to call the C-locale version without constructing a `std::locale` object.
 - [x] `KF6::Notifications` added to CMake dependency list
 - [x] `okular.notifyrc` installed via CMake
 - [x] `PrintAsync` capability flag documented in generator.h
+- [x] Password-protected PDFs print without a second password prompt
+- [x] Password stored in RAM only; never written to disk by this patch

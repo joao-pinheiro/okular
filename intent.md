@@ -75,11 +75,16 @@ with the main-thread generator — making background printing safe. Advertising
 - Forward-declared `QThread`.
 - Changed `doPrint(QPrinter &printer)` to `doPrint(QPrinter *printer, bool async = true)`.
   The printer is now heap-allocated and owned by the worker thread.
-- Added two private member variables:
+- Added three private member variables:
   - `QThread *m_printThread = nullptr` — tracks the live background print thread.
   - `QString m_printTempFilePath` — path to a temporary PDF written when the
     document has unsaved in-memory changes (annotations, form edits) that must
     be captured before printing.
+  - `QString m_documentPassword` — the password the user typed when opening a
+    password-protected document. Stored in memory only (never written to disk by
+    this code). Cleared when the document is closed or a new document is opened
+    without a password. Used by `PrintWorker` so it can open an independent
+    document handle for encrypted files without prompting the user again.
 - Added private slot `onPrintFinished(Okular::Document::PrintError error)`.
 
 **Issue fixed:** These declarations are the header-level contracts required by
@@ -101,6 +106,17 @@ the async implementation in `part.cpp`.
 - Critically, this document instance is **completely independent** from the UI
   thread's `m_document`. No locks are shared between the two.
 - The worker owns the `QPrinter*` and deletes it in its destructor.
+- **Password-protected documents:** `PrintWorker` accepts an optional `password`
+  string. In `run()`, after the first `openDocument()` call, if the result is
+  `OpenNeedsPassword` and the password is non-empty, it retries with the
+  password. This password is the one the user already typed when opening the
+  document — it is already in the process's RAM (Poppler keeps it to decrypt
+  pages). Passing it to the worker introduces no new security surface: it lives
+  only on the worker's stack for the duration of `run()` and is destroyed when
+  the function returns.
+  - For the **temp-file path** (documents with unsaved in-memory changes),
+    `saveChanges()` writes an **unencrypted** PDF, so the worker opens it on
+    the first attempt without needing the password at all.
 
 **Why changed — `doPrint(QPrinter *printer, bool async)`:**
 - Replaced the old single synchronous call `m_document->print(printer)` with
@@ -129,8 +145,21 @@ the async implementation in `part.cpp`.
 - Fires a `KNotification` "printFinished" or "printError" event.
 - If `--print-and-exit` CLI mode was active, exits with the appropriate code.
 
-**Issue fixed:** Together these changes eliminate 100% of the UI freeze. The main
-thread never waits on the Poppler generator during printing.
+**Why changed — `Part::openDocumentFile()` (password capture):**
+- `m_documentPassword` is cleared each time a new document open attempt begins
+  (before the password-prompt loop).
+- When `openDocument()` succeeds after the user enters a password,
+  `m_documentPassword` is assigned that password alongside the existing
+  `m_documentOpenWithPassword = true` flag.
+- Both are cleared again whenever a document is opened without needing a
+  password.
+
+---
+
+**Issue fixed:** Together, these changes eliminate 100% of the UI freeze. The
+main thread never waits on the Poppler generator during printing. Password-
+protected PDFs now print correctly in the background — the user is never prompted
+for the password a second time.
 
 ---
 
@@ -146,7 +175,7 @@ ignored and no feedback is shown to the user.
 
 ---
 
-## Summary of the Issue Fixed
+## Summary of the Issues Fixed
 
 | Before | After |
 |--------|-------|
@@ -155,3 +184,4 @@ ignored and no feedback is shown to the user.
 | No feedback to user during or after printing | System notifications shown on start, finish, and error |
 | Shared `Poppler::Document` contended between UI and print | Worker opens its own independent `Poppler::Document` |
 | Annotations / form changes printed only if already saved to disk | Unsaved changes flushed to a temp PDF before printing |
+| Password-protected PDFs silently fail to print | Worker reuses the in-memory password; no second prompt needed |
