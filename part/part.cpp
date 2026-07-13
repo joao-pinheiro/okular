@@ -3783,15 +3783,8 @@ bool Part::doPrint(QPrinter *printer, bool async)
     worker->moveToThread(m_printThread);
 
     connect(m_printThread, &QThread::started, worker, &PrintWorker::run);
-    connect(
-        worker,
-        &PrintWorker::done,
-        this,
-        [this, worker](Okular::Document::PrintError err) {
-            worker->deleteLater();
-            onPrintFinished(err);
-        },
-        Qt::QueuedConnection);
+    connect(worker, &PrintWorker::done, worker, &QObject::deleteLater, Qt::QueuedConnection);
+    connect(worker, &PrintWorker::done, this, &Part::onPrintFinished, Qt::QueuedConnection);
 
     m_printThread->start();
     return true; // returns immediately; result arrives in onPrintFinished()
