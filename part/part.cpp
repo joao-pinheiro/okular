@@ -3594,7 +3594,6 @@ void Part::slotPrint()
         printDialog.setOption(QAbstractPrintDialog::PrintCurrentPage);
     }
 
-    bool success = true;
     if (printDialog.exec()) {
         // set option for margins if widget is of corresponding type that holds this information
         PrintOptionsWidget *optionWidget = dynamic_cast<PrintOptionsWidget *>(printConfigWidget);
@@ -3606,7 +3605,7 @@ void Part::slotPrint()
             qWarning() << "printConfigurationWidget() method did not return an Okular::PrintOptionsWidget. This is strongly discouraged!";
         }
 
-        success = doPrint(printer, true);
+        doPrint(printer, true);
     } else {
         delete printer;
         if (m_cliPrintAndExit) {
@@ -3640,12 +3639,7 @@ class PrintWorker : public QObject
 {
     Q_OBJECT
 public:
-    explicit PrintWorker(const QString &filePath,
-                         const QUrl &fileUrl,
-                         const QMimeType &mimeType,
-                         QPrinter *printer,
-                         const QString &password,
-                         QObject *parent = nullptr)
+    explicit PrintWorker(const QString &filePath, const QUrl &fileUrl, const QMimeType &mimeType, QPrinter *printer, const QString &password, QObject *parent = nullptr)
         : QObject(parent)
         , m_filePath(filePath)
         , m_fileUrl(fileUrl)
