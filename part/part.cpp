@@ -3655,8 +3655,7 @@ public:
     }
 
 Q_SIGNALS:
-    void done(Okular::Document::PrintError error);
-
+    void done(Okular::Document::PrintError);
 public Q_SLOTS:
     void run()
     {
@@ -3758,8 +3757,9 @@ bool Part::doPrint(QPrinter *printer, bool async)
 
     // Disable the print action while the job is running.
     QAction *printAction = findActionInKPartHierarchy(KStandardAction::name(KStandardAction::Print));
-    if (printAction)
+    if (printAction) {
         printAction->setEnabled(false);
+    }
     m_printPreview->setEnabled(false);
 
     // Determine MIME type for the file we'll open in the worker.
@@ -3809,8 +3809,9 @@ void Part::onPrintFinished(Okular::Document::PrintError error)
     // Re-enable print actions.
     QAction *printAction = findActionInKPartHierarchy(KStandardAction::name(KStandardAction::Print));
     const bool canPrint = m_document->printingSupport() != Okular::Document::NoPrinting;
-    if (printAction)
+    if (printAction) {
         printAction->setEnabled(canPrint);
+    }
     m_printPreview->setEnabled(canPrint);
 
     // KNotification feedback.
@@ -3821,8 +3822,9 @@ void Part::onPrintFinished(Okular::Document::PrintError error)
         KNotification::event(QStringLiteral("printError"), i18n("Print failed: %1", errStr.isEmpty() ? i18n("Unknown error") : errStr), QIcon::fromTheme(QStringLiteral("dialog-error")).pixmap(32), KNotification::Persistent);
     }
 
-    if (m_cliPrintAndExit)
+    if (m_cliPrintAndExit) {
         exit(error == Okular::Document::NoPrintError ? EXIT_SUCCESS : EXIT_FAILURE);
+    }
 }
 
 void Part::psTransformEnded(int exit, QProcess::ExitStatus status)
