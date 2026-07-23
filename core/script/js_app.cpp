@@ -381,7 +381,14 @@ QJSValue JSApp::okular_popUpMenuEx(const QJSValue &arguments)
         return {};
     }
 
+    // halt timeout until the user has responded
+    QMetaObject::invokeMethod(m_watchdogTimer, qOverload<>(&QTimer::stop));
+
     const QAction *result = m.exec(QCursor::pos());
+
+    // restart max allowed time
+    QMetaObject::invokeMethod(m_watchdogTimer, qOverload<>(&QTimer::start));
+
     return result ? result->property(kResultProperty).toString() : QString();
 }
 
