@@ -6,6 +6,7 @@ softwareVersion: 26.04.3
 releaseDate: 2026-07-02
 logo: icons/512-apps-okular.png
 platforms:
+  - android
   - windows
   - linux
   - mac
@@ -112,6 +113,7 @@ maintenance:
   type: community
   contacts:
     - name: Okular Developers
+      email: okular-devel@kde.org
 localisation:
   localisationReady: true
   availableLanguages:
