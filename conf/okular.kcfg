@@ -215,6 +215,9 @@
   <entry key="ttsVoice" type="String">
     <default></default>
   </entry>
+  <entry key="OcrLanguages" type="StringList">
+    <default code="true">QStringList()</default>
+  </entry>
   <entry key="WatchFile" type="Bool" >
    <default>true</default>
   </entry>

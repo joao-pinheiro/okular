@@ -39,6 +39,10 @@
 #include <QScroller>
 #include <QScrollerProperties>
 #include <QSet>
+#if HAVE_TESSERACT
+#include <QThread>
+#include <memory>
+#endif
 #include <QTimer>
 #include <QToolTip>
 
@@ -64,7 +68,6 @@
 #include <array>
 #include <math.h>
 #include <stdlib.h>
-
 // local includes
 #include "annotationpopup.h"
 #include "annotwindow.h"
@@ -79,6 +82,9 @@
 #include "okmenutitle.h"
 #include "pageviewannotator.h"
 #include "pageviewmouseannotation.h"
+#if HAVE_TESSERACT
+#include "pageviewocr.h"
+#endif
 #include "pageviewutils.h"
 #include "toggleactionmenu.h"
 #if HAVE_SPEECH
@@ -290,6 +296,9 @@ public:
 #if HAVE_NEW_SIGNATURE_API
     Okular::SignatureAnnotation *signatureAnnotation = nullptr;
 #endif
+#if HAVE_TESSERACT
+    QSet<QThread *> m_ocrThreads;
+#endif
 };
 
 PageViewPrivate::PageViewPrivate(PageView *qq)
@@ -474,6 +483,15 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
 
 PageView::~PageView()
 {
+#if HAVE_TESSERACT
+    const QSet<QThread *> threads = d->m_ocrThreads;
+    for (QThread *thread : threads) {
+        thread->disconnect(this);
+        thread->requestInterruption();
+        thread->wait(50); // Wait at most 50ms to prevent freezing UI exit
+    }
+#endif
+
 #if HAVE_SPEECH
     if (d->m_tts) {
         d->m_tts->stopAllSpeechs();
@@ -2928,13 +2946,13 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 #endif
         const QAction *imageToClipboard = nullptr;
         const QAction *imageToFile = nullptr;
+        const bool copyAllowed = d->document->isAllowed(Okular::AllowCopy);
         if (d->document->supportsSearching() && !selectedText.isEmpty()) {
             menu.addAction(new OKMenuTitle(&menu, i18np("Text (1 character)", "Text (%1 characters)", selectedText.length())));
             textToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), i18n("Copy to Clipboard"));
             textToClipboard->setObjectName(QStringLiteral("CopyTextToClipboard"));
             textWithoutLineBreaksToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("edit-copy-without-line-breaks")), i18n("Copy Text (Without line breaks)"));
             textWithoutLineBreaksToClipboard->setObjectName(QStringLiteral("CopyTextWithoutLineBreaksToClipboard"));
-            bool copyAllowed = d->document->isAllowed(Okular::AllowCopy);
             if (!copyAllowed) {
                 textToClipboard->setEnabled(false);
                 textToClipboard->setText(i18n("Copy forbidden by DRM"));
@@ -2951,14 +2969,27 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                 addWebShortcutsMenu(&menu, selectedText);
             }
         }
+
         menu.addAction(new OKMenuTitle(&menu, i18n("Image (%1 × %2 pixels)", selectionRect.width(), selectionRect.height())));
         imageToClipboard = menu.addAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18n("Copy to Clipboard"));
         imageToFile = menu.addAction(QIcon::fromTheme(QStringLiteral("document-save")), i18n("Save to File…"));
+
+#if HAVE_TESSERACT
+        QAction *ocrToClipboard = new QAction(QIcon::fromTheme(QStringLiteral("edit-select-text")), i18n("OCR to Clipboard"), &menu);
+        if (!copyAllowed) {
+            ocrToClipboard->setEnabled(false);
+            ocrToClipboard->setText(i18n("Copy forbidden by DRM"));
+        }
+        menu.addAction(ocrToClipboard);
+#endif
         const QAction *choice = menu.exec(e->globalPosition().toPoint());
-        // check if the user really selected an action
+
         if (choice) {
-            // IMAGE operation chosen
-            if (choice == imageToClipboard || choice == imageToFile) {
+            if (choice == imageToClipboard || choice == imageToFile
+#if HAVE_TESSERACT
+                || choice == ocrToClipboard
+#endif
+            ) {
                 // renders page into a pixmap
                 QPixmap copyPix(selectionRect.width(), selectionRect.height());
                 QPainter copyPainter(&copyPix);
@@ -2981,17 +3012,56 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                         d->messageWindow->display(i18n("File not saved."), QString(), PageViewMessage::Warning);
                     } else {
                         QMimeDatabase db;
-                        QMimeType mime = db.mimeTypeForUrl(QUrl::fromLocalFile(fileName));
-                        QString type;
-                        if (!mime.isDefault()) {
-                            type = QStringLiteral("PNG");
-                        } else {
+                        const QMimeType mime = db.mimeTypeForFile(fileName, QMimeDatabase::MatchExtension);
+                        QString type = QStringLiteral("PNG");
+                        if (!mime.isDefault() && mime.name().startsWith(QLatin1String("image/"))) {
                             type = mime.name().section(QLatin1Char('/'), -1).toUpper();
                         }
-                        copyPix.save(fileName, qPrintable(type));
-                        d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
+
+                        if (copyPix.save(fileName, qPrintable(type))) {
+                            d->messageWindow->display(i18n("Image [%1 × %2] saved to %3 file.", copyPix.width(), copyPix.height(), type));
+                        } else {
+                            d->messageWindow->display(i18n("Could not save the image to file."), QString(), PageViewMessage::Error);
+                        }
                     }
                 }
+#if HAVE_TESSERACT
+                if (choice == ocrToClipboard) {
+                    const QStringList ocrLanguages = Okular::Settings::ocrLanguages();
+                    const QImage sourceImage = copyPix.toImage();
+                    d->messageWindow->display(i18n("Recognizing text…"), QString(), PageViewMessage::Info, -1);
+
+                    const auto ocrResult = std::make_shared<Okular::PageViewOcr::TaskResult>();
+                    QThread *ocrThread = QThread::create([sourceImage, ocrLanguages, ocrResult]() { *ocrResult = Okular::PageViewOcr::runTask(sourceImage, ocrLanguages); });
+                    d->m_ocrThreads.insert(ocrThread);
+                    connect(ocrThread, &QThread::finished, this, [this, ocrThread, ocrResult]() {
+                        d->m_ocrThreads.remove(ocrThread);
+
+                        const Okular::PageViewOcr::TaskResultMessage message = Okular::PageViewOcr::messageForTaskResult(*ocrResult);
+
+                        if (message.copyRecognizedText) {
+                            QApplication::clipboard()->setText(ocrResult->text);
+                        }
+
+                        PageViewMessage::Icon icon = PageViewMessage::Info;
+                        switch (message.type) {
+                        case Okular::PageViewOcr::MessageType::Info:
+                            icon = PageViewMessage::Info;
+                            break;
+                        case Okular::PageViewOcr::MessageType::Warning:
+                            icon = PageViewMessage::Warning;
+                            break;
+                        case Okular::PageViewOcr::MessageType::Error:
+                            icon = PageViewMessage::Error;
+                            break;
+                        }
+
+                        d->messageWindow->display(message.message, message.details, icon);
+                    });
+                    connect(ocrThread, &QThread::finished, ocrThread, &QObject::deleteLater);
+                    ocrThread->start();
+                }
+#endif
             }
             // TEXT operation chosen
             else {

@@ -16,7 +16,7 @@ set(OKULAR_UI "" CACHE STRING "Which Okular user interface to build. Possible va
 set(FORCE_NOT_REQUIRED_DEPENDENCIES "" CACHE STRING "List (semicolon-separated) of dependencies that will be downgraded from REQUIRED to RECOMMENDED")
 
 find_package(ECM ${KF_REQUIRED_VERSION} CONFIG REQUIRED)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH})
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
 
 include(ECMInstallIcons)
 include(ECMSetupVersion)
@@ -141,6 +141,28 @@ else()
     set(HAVE_JS 0)
 endif()
 
+
+find_package(PkgConfig)
+
+# Tesseract OCR support
+# Uses IMPORTED_TARGET for modern CMake linking
+option(WITH_TESSERACT "Build with Tesseract OCR support for text recognition in image selections" ON)
+set(HAVE_TESSERACT FALSE)
+if(BUILD_DESKTOP AND WITH_TESSERACT)
+    find_package(Tesseract)
+    if(Tesseract_FOUND)
+        set(HAVE_TESSERACT TRUE)
+        # Tesseract may use OpenMP on some platforms (e.g., FreeBSD)
+        find_package(OpenMP COMPONENTS CXX)
+    endif()
+    set_package_properties(Tesseract PROPERTIES
+        DESCRIPTION "Open Source OCR Engine"
+        URL "https://github.com/tesseract-ocr/tesseract"
+        PURPOSE "Required for OCR support in image selections. Disable with -DWITH_TESSERACT=OFF"
+        TYPE RECOMMENDED
+    )
+endif()
+
 if (BUILD_DESKTOP)
     # shall we use DBus?
     # enabled per default on Linux & BSD systems
@@ -213,7 +235,6 @@ else()
     set(HAVE_PHONON 0)
 endif()
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/modules)
 
 find_package(ZLIB REQUIRED)
 
@@ -576,11 +597,16 @@ if (Qt6TextToSpeech_FOUND)
       part/tts.cpp)
 endif()
 
+if (HAVE_TESSERACT)
+   set(okularpart_SRCS ${okularpart_SRCS}
+      part/pageviewocr.cpp)
+endif()
+
 kconfig_add_kcfg_files(okularpart_SRCS GENERATE_MOC conf/settings.kcfgc)
 
 add_library(okularpart SHARED ${okularpart_SRCS})
-generate_export_header(okularpart BASE_NAME okularpart)
 
+generate_export_header(okularpart BASE_NAME okularpart)
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
     Qt6::Svg
@@ -595,6 +621,14 @@ target_link_libraries(okularpart okularcore
     KF6::TextWidgets
     KF6::ColorScheme
 )
+
+if(HAVE_TESSERACT)
+    target_link_libraries(okularpart Tesseract::Tesseract)
+    if(TARGET OpenMP::OpenMP_CXX)
+        target_link_libraries(okularpart OpenMP::OpenMP_CXX)
+    endif()
+endif()
+
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
 endif()

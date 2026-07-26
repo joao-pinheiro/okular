@@ -24,3 +24,6 @@
 
 /* Defines whether we are building with dbus enabled */
 #cmakedefine01 HAVE_DBUS
+
+/* Defines whether Tesseract OCR support is available */
+#cmakedefine01 HAVE_TESSERACT
