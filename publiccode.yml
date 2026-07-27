@@ -124,14 +124,14 @@ localisation:
     - br
     - bs
     - ca
-    - ca@valencia
+    - ca-valencia
     - cs
     - cy
     - da
     - de
     - el
     - en
-    - en_GB
+    - en-GB
     - eo
     - es
     - et
@@ -174,7 +174,7 @@ localisation:
     - pa
     - pl
     - pt
-    - pt_BR
+    - pt-BR
     - ro
     - ru
     - se
@@ -183,9 +183,9 @@ localisation:
     - sl
     - sq
     - sr
-    - sr@ijekavian
-    - sr@ijekavianlatin
-    - sr@latin
+    - sr-ijekavsk
+    - sr-Latn-ijekavsk
+    - sr-Latn
     - sv
     - ta
     - tg
@@ -196,6 +196,6 @@ localisation:
     - vi
     - wa
     - xh
-    - zh_CN
-    - zh_HK
-    - zh_TW
+    - zh-CN
+    - zh-HK
+    - zh-TW
