@@ -2,8 +2,6 @@ publiccodeYmlVersion: 0.5.0
 name: Okular
 url: https://invent.kde.org/graphics/okular.git
 landingURL: https://okular.kde.org/
-softwareVersion: 26.04.3
-releaseDate: 2026-07-02
 logo: icons/512-apps-okular.png
 platforms:
   - android
