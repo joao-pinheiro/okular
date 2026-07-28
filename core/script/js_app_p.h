@@ -61,7 +61,7 @@ public:
     Q_INVOKABLE void clearTimeOut(const QJSValue &oTime);
     Q_INVOKABLE QJSValue okular_popUpMenuEx(const QJSValue &arguments);
     Q_INVOKABLE void launchURL(const QString &cURL, bool bNewFrame = false);
-    Q_INVOKABLE void openDoc(const QString &cPath, const QJSValue &oDoc = {}, const QString &cFS = {}, bool bHidden = false, bool bUseConv = false, const QString &cDest = {});
+    Q_INVOKABLE void okular_openDoc(const QString &cPath, const QJSValue &oDoc = {}, const QString &cFS = {}, bool bHidden = false, bool bUseConv = false, const QString &cDest = {});
 
 private:
     QJSValue wrapTimer(QTimer *timer) const;

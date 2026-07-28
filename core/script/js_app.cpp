@@ -416,7 +416,7 @@ void JSApp::launchURL(const QString &cURL, bool bNewFrame)
 }
 
 // app.openDoc()
-void JSApp::openDoc(const QString &cPath, const QJSValue &oDoc, const QString &cFS, bool bHidden, bool bUseConv, const QString &cDest)
+void JSApp::okular_openDoc(const QString &cPath, const QJSValue &oDoc, const QString &cFS, bool bHidden, bool bUseConv, const QString &cDest)
 {
     if (cPath.isEmpty()) {
         return;

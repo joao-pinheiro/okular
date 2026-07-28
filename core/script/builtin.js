@@ -596,3 +596,11 @@ app.popUpMenu = function() {
     var result =  app.okular_popUpMenuEx(exArguments);
     return result;
 }
+
+app.openDoc = function(cPathOrParams, oDoc, cFS, bHidden, bUseConv, cDest) {
+    if (cPathOrParams !== null && typeof cPathOrParams === "object") {
+        var p = cPathOrParams;
+        return app.okular_openDoc(p.cPath, p.oDoc, p.cFS, p.bHidden, p.bUseConv, p.cDest);
+    }
+    return app.okular_openDoc(cPathOrParams, oDoc, cFS, bHidden, bUseConv, cDest);
+}
