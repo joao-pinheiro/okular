@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMenu>
+#include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
 
@@ -96,6 +97,8 @@ private Q_SLOTS:
     void testPopUpMenuEx();
     void testPrintD();
     void testPrintD_data();
+    void testOpenDocNonPdf();
+    void testOpenDocMissingFile();
 
 private:
     Okular::Document *m_document;
@@ -490,6 +493,31 @@ void JSFunctionsTest::testPrintD()
 
     QVERIFY(script.contains(QLatin1String("printd")));
     PrintDHelper test(m_document, script, result);
+}
+
+void JSFunctionsTest::testOpenDocNonPdf()
+{
+    QSignalSpy errorSpy(m_document, &Okular::Document::error);
+
+    const QString nonPdf = QStringLiteral(KDESRCDIR "data/imageSizes.md");
+    Okular::ScriptAction *action = new Okular::ScriptAction(Okular::JavaScript, QStringLiteral("try { app.openDoc({cPath: \"%1\"}); } catch (e) { app.alert(\"caught\"); }").arg(nonPdf));
+    QScopedPointer<MessageBoxHelper> messageBoxHelper(new MessageBoxHelper(QMessageBox::Ok, QStringLiteral("caught"), QMessageBox::Critical, QStringLiteral("Okular"), false));
+    m_document->processAction(action);
+    delete action;
+
+    QCOMPARE(errorSpy.count(), 1);
+}
+
+void JSFunctionsTest::testOpenDocMissingFile()
+{
+    QSignalSpy errorSpy(m_document, &Okular::Document::error);
+
+    const QString missing = QStringLiteral(KDESRCDIR "data/this-file-does-not-exist.pdf");
+    Okular::ScriptAction *action = new Okular::ScriptAction(Okular::JavaScript, QStringLiteral("app.openDoc({cPath: \"%1\"});").arg(missing));
+    m_document->processAction(action);
+    delete action;
+
+    QCOMPARE(errorSpy.count(), 1);
 }
 
 void JSFunctionsTest::cleanupTestCase()
