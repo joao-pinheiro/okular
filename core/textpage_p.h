@@ -60,6 +60,11 @@ public:
     QMap<int, SearchPoint *> m_searchPoints;
     Page *m_page;
 
+    /**
+     * Whether the page's text is predominantly vertical, as detected by correctTextOrder().
+     */
+    bool m_verticalText = false;
+
 private:
     RegularAreaRect *searchPointToArea(const SearchPoint *sp);
 };

@@ -16,8 +16,11 @@
 #include "page_p.h"
 #include <unordered_set>
 
+#include <QHash>
+#include <QPoint>
 #include <QVarLengthArray>
 #include <QtAlgorithms>
+#include <cmath>
 #include <cstring>
 
 using namespace Okular;
@@ -129,6 +132,121 @@ static bool doesConsumeY(const QRect first, const QRect second, int threshold)
 static bool doesConsumeY(const NormalizedRect &first, const NormalizedRect &second, int threshold)
 {
     return segmentsOverlap(first.top, first.bottom, second.top, second.bottom, threshold);
+}
+
+static bool doesConsumeX(const QRect first, const QRect second, int threshold)
+{
+    return segmentsOverlap(first.left(), first.right(), second.left(), second.right(), threshold);
+}
+
+/**
+ * 90-degree rotation letting the horizontal-reading algorithms below be reused for
+ * vertical text: top-to-bottom within a column becomes left-to-right within a line, and
+ * right-to-left column order becomes top-to-bottom line order. Its own inverse via
+ * QTransform::inverted().
+ */
+static QTransform verticalTextLogicalMatrix()
+{
+    // logicalX = realY ; logicalY = 1 - realX
+    return QTransform(0, -1, 1, 0, 0, 1);
+}
+
+/**
+ * Heuristically decides whether a page's text is predominantly vertical. Poppler's Qt API
+ * doesn't expose a writing-mode flag, so this is inferred from character geometry: each
+ * character's actual spatial neighbors (via a coarse grid), not consecutive characters in
+ * generator order, since side notes/footnotes next to the main column make the generator's
+ * order zig-zag between columns and confuse an order-based heuristic.
+ */
+static bool isPredominantlyVertical(const TextEntity::List &characters, int pageWidth, int pageHeight)
+{
+    QList<QRect> boxes;
+    boxes.reserve(characters.size());
+    double sumWidth = 0, sumHeight = 0;
+    for (const TextEntity &c : characters) {
+        const QRect r = c.area().roundedGeometry(pageWidth, pageHeight);
+        if (r.isEmpty()) {
+            continue;
+        }
+        boxes.append(r);
+        sumWidth += r.width();
+        sumHeight += r.height();
+    }
+
+    // Require a reasonable sample size before concluding "vertical"; default to horizontal
+    if (boxes.size() < 8) {
+        return false;
+    }
+
+    const double cellWidth = sumWidth / boxes.size();
+    const double cellHeight = sumHeight / boxes.size();
+    if (cellWidth <= 0 || cellHeight <= 0) {
+        return false;
+    }
+
+    // Bucket glyphs into a grid sized to the average glyph, so each glyph's spatial
+    // neighbors can be found by only looking at nearby cells instead of every character.
+    auto gridKey = [](int ix, int iy) { return (qint64(ix) << 32) ^ quint32(iy); };
+    auto cellOf = [&](const QRect &box) {
+        const double cx = box.left() + box.width() / 2.0;
+        const double cy = box.top() + box.height() / 2.0;
+        return QPoint(int(std::floor(cx / cellWidth)), int(std::floor(cy / cellHeight)));
+    };
+
+    QHash<qint64, QVarLengthArray<int, 4>> grid;
+    for (int i = 0; i < boxes.size(); ++i) {
+        const QPoint cell = cellOf(boxes.at(i));
+        grid[gridKey(cell.x(), cell.y())].append(i);
+    }
+
+    int verticalNeighbors = 0, horizontalNeighbors = 0;
+    for (int i = 0; i < boxes.size(); ++i) {
+        const QRect &box = boxes.at(i);
+        const double cy = box.top() + box.height() / 2.0;
+        const double cx = box.left() + box.width() / 2.0;
+        const QPoint cell = cellOf(box);
+
+        bool foundVertical = false, foundHorizontal = false;
+        for (int dx = -1; dx <= 1 && !(foundVertical && foundHorizontal); ++dx) {
+            for (int dy = -2; dy <= 2 && !(foundVertical && foundHorizontal); ++dy) {
+                if (dx == 0 && dy == 0) {
+                    continue;
+                }
+                const auto it = grid.constFind(gridKey(cell.x() + dx, cell.y() + dy));
+                if (it == grid.constEnd()) {
+                    continue;
+                }
+                for (int j : it.value()) {
+                    const QRect &other = boxes.at(j);
+                    const double ocy = other.top() + other.height() / 2.0;
+                    const double ocx = other.left() + other.width() / 2.0;
+
+                    if (!foundVertical && doesConsumeX(box, other, 60)) {
+                        const double dist = std::abs(ocy - cy);
+                        if (dist > 0 && dist < cellHeight * 1.6) {
+                            foundVertical = true;
+                        }
+                    }
+                    if (!foundHorizontal && doesConsumeY(box, other, 60)) {
+                        const double dist = std::abs(ocx - cx);
+                        if (dist > 0 && dist < cellWidth * 1.6) {
+                            foundHorizontal = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (foundVertical) {
+            ++verticalNeighbors;
+        }
+        if (foundHorizontal) {
+            ++horizontalNeighbors;
+        }
+    }
+
+    // Require a clear majority before concluding "vertical".
+    return verticalNeighbors > horizontalNeighbors * 2;
 }
 
 TextEntity::TextEntity(const QString &text, const NormalizedRect &area)
@@ -304,8 +422,19 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
     NormalizedPoint startC = sel.start();
     NormalizedPoint endC = sel.end();
 
-    // if startPoint is right to endPoint swap them
-    if (startC.x > endC.x) {
+    // For vertical text, the "nearest entity in reading direction" searches below need to
+    // reason in a 90-degree rotated "logical" space (see verticalTextLogicalMatrix());
+    // for horizontal text this transform is the identity, so behavior is unchanged.
+    const bool vertical = d->m_verticalText;
+    const QTransform logical = vertical ? verticalTextLogicalMatrix() : QTransform();
+    auto logicalPoint = [&logical](NormalizedPoint p) {
+        p.transform(logical);
+        return p;
+    };
+    auto logicalArea = [&logical, vertical](const TextEntity::List::ConstIterator &i) { return vertical ? i->transformedArea(logical) : i->area(); };
+
+    // if startPoint is (in reading order) after endPoint, swap them
+    if (logicalPoint(startC).x > logicalPoint(endC).x) {
         std::swap(startC, endC);
     }
 
@@ -386,9 +515,18 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
         }
     }
 
+    // Re-derive logical-space points since startC/endC may have just been clamped above.
+    const NormalizedPoint startL = logicalPoint(startC);
+    const NormalizedPoint endL = logicalPoint(endC);
+    const double geomScaleX = vertical ? scaleY : scaleX;
+    const double geomScaleY = vertical ? scaleX : scaleY;
+
     TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
     TextEntity::List::ConstIterator start = it, end = itEnd, tmpIt = it; //, tmpItEnd = itEnd;
-    const MergeSide side = d->m_page ? (MergeSide)d->m_page->totalOrientation() : MergeRight;
+    // Vertical text stacks downward, so merge on the bottom edge instead of the right edge;
+    // composes with the existing rotation-based side below, unchanged when not vertical.
+    const MergeSide baseSide = vertical ? MergeBottom : MergeRight;
+    const MergeSide side = d->m_page ? (MergeSide)(((int)baseSide + (int)d->m_page->totalOrientation()) % 4) : baseSide;
 
     NormalizedRect tmp;
     // case 2(a)
@@ -427,12 +565,12 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
         NormalizedRect rect;
 
         // selection type 01
-        if (startC.y <= endC.y) {
+        if (startL.y <= endL.y) {
             for (; it != itEnd; ++it) {
-                rect = it->area();
-                bool flagV = !rect.isBottom(startC);
+                rect = logicalArea(it);
+                bool flagV = !rect.isBottom(startL);
 
-                if (flagV && rect.isRight(startC)) {
+                if (flagV && rect.isRight(startL)) {
                     start = it;
                     break;
                 }
@@ -445,13 +583,13 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
             int distance = scaleX + scaleY + 100;
 
             for (; it != itEnd; ++it) {
-                rect = it->area();
+                rect = logicalArea(it);
 
-                if (rect.isBottomOrLevel(startC) && rect.isRight(startC)) {
-                    QRect entRect = rect.geometry(scaleX, scaleY);
+                if (rect.isBottomOrLevel(startL) && rect.isRight(startL)) {
+                    QRect entRect = rect.geometry(geomScaleX, geomScaleY);
                     int xdist, ydist;
-                    xdist = entRect.center().x() - startC.x * scaleX;
-                    ydist = entRect.center().y() - startC.y * scaleY;
+                    xdist = entRect.center().x() - startL.x * geomScaleX;
+                    ydist = entRect.center().y() - startL.y * geomScaleY;
 
                     // make them positive
                     if (xdist < 0) {
@@ -477,12 +615,12 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
 
         NormalizedRect rect;
 
-        if (startC.y <= endC.y) {
+        if (startL.y <= endL.y) {
             for (; itEnd >= it; itEnd--) {
-                rect = itEnd->area();
-                bool flagV = !rect.isTop(endC);
+                rect = logicalArea(itEnd);
+                bool flagV = !rect.isTop(endL);
 
-                if (flagV && rect.isLeft(endC)) {
+                if (flagV && rect.isLeft(endL)) {
                     end = itEnd;
                     break;
                 }
@@ -492,13 +630,13 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
         else {
             int distance = scaleX + scaleY + 100;
             for (; itEnd >= it; itEnd--) {
-                rect = itEnd->area();
+                rect = logicalArea(itEnd);
 
-                if (rect.isTopOrLevel(endC) && rect.isLeft(endC)) {
-                    QRect entRect = rect.geometry(scaleX, scaleY);
+                if (rect.isTopOrLevel(endL) && rect.isLeft(endL)) {
+                    QRect entRect = rect.geometry(geomScaleX, geomScaleY);
                     int xdist, ydist;
-                    xdist = entRect.center().x() - endC.x * scaleX;
-                    ydist = entRect.center().y() - endC.y * scaleY;
+                    xdist = entRect.center().x() - endL.x * geomScaleX;
+                    ydist = entRect.center().y() - endL.y * geomScaleY;
 
                     // make them positive
                     if (xdist < 0) {
@@ -1637,20 +1775,41 @@ void TextPagePrivate::correctTextOrder()
      */
     removeSpace(characters);
 
+    // If vertical, work in a "logical" rotated space for the rest of this function so the
+    // horizontal-reading algorithms below can be reused unmodified (see
+    // verticalTextLogicalMatrix()); areas are mapped back to real coordinates before storing.
+    m_verticalText = isPredominantlyVertical(characters, pageWidth, pageHeight);
+
+    int layoutWidth = pageWidth, layoutHeight = pageHeight;
+    if (m_verticalText) {
+        const QTransform toLogical = verticalTextLogicalMatrix();
+        for (TextEntity &character : characters) {
+            character = TextEntity(character.text(), character.transformedArea(toLogical));
+        }
+        std::swap(layoutWidth, layoutHeight);
+    }
+
     /**
      * Construct words from characters
      */
-    const QList<WordWithCharacters> wordsWithCharacters = makeWordFromCharacters(characters, pageWidth, pageHeight);
+    const QList<WordWithCharacters> wordsWithCharacters = makeWordFromCharacters(characters, layoutWidth, layoutHeight);
 
     /**
      * Make a XY Cut tree for segmentation of the texts
      */
-    RegionTextList tree = XYCutForBoundingBoxes(wordsWithCharacters, pageWidth, pageHeight);
+    RegionTextList tree = XYCutForBoundingBoxes(wordsWithCharacters, layoutWidth, layoutHeight);
 
     /**
      * Add spaces to the word
      */
-    const auto listOfCharacters = addNecessarySpace(std::move(tree), pageWidth, pageHeight);
+    auto listOfCharacters = addNecessarySpace(std::move(tree), layoutWidth, layoutHeight);
+
+    if (m_verticalText) {
+        const QTransform toReal = verticalTextLogicalMatrix().inverted();
+        for (TextEntity &character : listOfCharacters) {
+            character = TextEntity(character.text(), character.transformedArea(toReal));
+        }
+    }
 
     setWordList(listOfCharacters);
 }
@@ -1766,24 +1925,26 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
         return nullptr;
     }
 
-    // Get the vertical bounds of the text entity at the click point
+    // Bounds transverse to the reading direction: vertical for horizontal text (finds the
+    // rest of the "line"), horizontal for vertical text (finds the rest of the "column").
     const NormalizedRect &clickArea = posIt->area();
-    const double lineTop = clickArea.top;
-    const double lineBottom = clickArea.bottom;
-    const double lineHeight = lineBottom - lineTop;
+    const bool vertical = d->m_verticalText;
+    const double lineAxisStart = vertical ? clickArea.left : clickArea.top;
+    const double lineAxisEnd = vertical ? clickArea.right : clickArea.bottom;
+    const double lineAxisExtent = lineAxisEnd - lineAxisStart;
 
-    // Helper lambda to check if two areas are on the same line
-    auto isOnSameLine = [lineTop, lineBottom, lineHeight](const NormalizedRect &area) {
-        const double areaTop = area.top;
-        const double areaBottom = area.bottom;
-        const double areaHeight = areaBottom - areaTop;
+    // Checks whether two areas are on the same line (or, for vertical text, column)
+    auto isOnSameLine = [vertical, lineAxisStart, lineAxisEnd, lineAxisExtent](const NormalizedRect &area) {
+        const double areaAxisStart = vertical ? area.left : area.top;
+        const double areaAxisEnd = vertical ? area.right : area.bottom;
+        const double areaAxisExtent = areaAxisEnd - areaAxisStart;
 
-        const double overlapTop = std::max(lineTop, areaTop);
-        const double overlapBottom = std::min(lineBottom, areaBottom);
-        const double overlap = std::max(0.0, overlapBottom - overlapTop);
+        const double overlapStart = std::max(lineAxisStart, areaAxisStart);
+        const double overlapEnd = std::min(lineAxisEnd, areaAxisEnd);
+        const double overlap = std::max(0.0, overlapEnd - overlapStart);
 
-        const double minHeight = std::min(lineHeight, areaHeight);
-        return minHeight > 0 && (overlap / minHeight) >= 0.70;
+        const double minExtent = std::min(lineAxisExtent, areaAxisExtent);
+        return minExtent > 0 && (overlap / minExtent) >= 0.70;
     };
 
     // Find the start of the line by going backwards
