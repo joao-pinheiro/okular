@@ -7,10 +7,12 @@
 #ifndef MARKDOWN_CONVERTER_H
 #define MARKDOWN_CONVERTER_H
 
-#include <core/textdocumentgenerator.h>
-
+#include <QCache>
 #include <QDir>
+#include <QImage>
 #include <QTextFragment>
+
+#include <core/textdocumentgenerator.h>
 
 class QTextBlock;
 class QTextFrame;
@@ -38,9 +40,21 @@ public:
         return m_isFancyPantsEnabled;
     }
 
+    void setLatexEnabled(bool b)
+    {
+        m_latexEnabled = b;
+    }
+    bool isLatexEnabled() const
+    {
+        return m_latexEnabled;
+    }
+
     QTextDocument *convertOpenFile();
 
 private:
+    void processMath(QTextDocument *textDocument);
+    QImage renderLatexToImage(const QString &equation, bool display);
+
     void extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors);
     void extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors);
     void convertImages(QTextFrame *parent, const QDir &dir, QTextDocument *textDocument);
@@ -50,6 +64,8 @@ private:
     FILE *m_markdownFile;
     QDir m_fileDir;
     bool m_isFancyPantsEnabled;
+    bool m_latexEnabled;
+    QCache<QString, QImage> m_latexCache;
 };
 
 namespace detail

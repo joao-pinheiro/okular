@@ -4,13 +4,16 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
-#include <QTest>
-
-#include "../settings_core.h"
-#include "core/document.h"
-#include "generators/markdown/converter.h"
 #include <QMimeDatabase>
 #include <QMimeType>
+#include <QStandardPaths>
+#include <QTest>
+
+#include <core/document.h>
+
+#include "../settings_core.h"
+#include "generators/markdown/converter.h"
+
 #include <memory>
 
 class MarkdownTest : public QObject
@@ -26,6 +29,8 @@ private Q_SLOTS:
     void testSpecialCharsInImageFileName();
     void testStrikeThrough();
     void testHtmlTagFixup();
+    void testInlineLatex();
+    void testLatexDisabled();
 
 private:
     void findImages(QTextFrame *parent, QList<QTextImageFormat> &images);
@@ -208,6 +213,37 @@ void MarkdownTest::testHtmlTagFixup()
         const QString outputHtml = Markdown::detail::fixupHtmlTags(QStringLiteral("<del>test</del>"));
         QCOMPARE(outputHtml, QStringLiteral("<s>test</s>"));
     }
+}
+
+void MarkdownTest::testInlineLatex()
+{
+    if (QStandardPaths::findExecutable(QStringLiteral("latex")).isEmpty() || QStandardPaths::findExecutable(QStringLiteral("dvisvgm")).isEmpty()) {
+        QSKIP("latex or dvisvgm not found");
+    }
+
+    Markdown::Converter converter;
+    std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/latex.md")));
+
+    QTextFrame *parent = document->rootFrame();
+
+    QList<QTextImageFormat> images;
+    findImages(parent, images);
+
+    QCOMPARE(images.size(), 4);
+}
+
+void MarkdownTest::testLatexDisabled()
+{
+    Markdown::Converter converter;
+    converter.setLatexEnabled(false);
+    std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/latex.md")));
+
+    QTextFrame *parent = document->rootFrame();
+
+    QList<QTextImageFormat> images;
+    findImages(parent, images);
+
+    QCOMPARE(images.size(), 0);
 }
 
 QTEST_MAIN(MarkdownTest)
