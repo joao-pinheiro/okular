@@ -62,6 +62,7 @@
 
 // system includes
 #include <array>
+#include <cmath>
 #include <math.h>
 #include <stdlib.h>
 
@@ -3393,8 +3394,38 @@ void PageView::wheelEvent(QWheelEvent *e)
             d->scroller->handleInput(QScroller::InputRelease, e->position(), e->timestamp() - 1);
         }
 
-        float newZoom = d->zoomFactor * (1.0 + (delta / 500.0));
-        zoomWithFixedCenter(ZoomRefreshCurrent, e->position(), newZoom);
+        if (Okular::Settings::zoomWheelDiscreteSteps() && e->phase() == Qt::NoScrollPhase && e->pixelDelta().isNull() && delta != 0) {
+            // Classic mouse wheel with the discrete-steps option enabled: step to the
+            // next/previous preset zoom level (the same values the keyboard zoom uses)
+            // while still zooming toward the cursor. A single notch maps to a single
+            // step regardless of the (possibly amplified) angle delta.
+            QList<float> zoomValues(kZoomValues.size());
+            std::copy(kZoomValues.begin(), kZoomValues.end(), zoomValues.begin());
+            zoomValues.append(zoomFactorFitMode(ZoomFitWidth));
+            zoomValues.append(zoomFactorFitMode(ZoomFitPage));
+            std::sort(zoomValues.begin(), zoomValues.end());
+            float target = d->zoomFactor;
+            if (delta < 0) {
+                if (d->zoomFactor > zoomValues.first()) {
+                    target = *(std::lower_bound(zoomValues.begin(), zoomValues.end(), d->zoomFactor) - 1);
+                }
+            } else {
+                if (d->zoomFactor < zoomValues.last()) {
+                    target = *std::upper_bound(zoomValues.begin(), zoomValues.end(), d->zoomFactor);
+                }
+            }
+            zoomWithFixedCenter(ZoomRefreshCurrent, e->position(), target);
+        } else {
+            // Use an exponential (multiplicative) zoom step so that zooming in and out
+            // by the same angle delta are exact inverses. The previous linear factor
+            // (1 + delta / 500) was asymmetric and, for the large angle deltas that
+            // high-resolution mice and some compositors deliver in a single event
+            // (e.g. -480), drove the factor to (or below) zero and collapsed the zoom
+            // to the minimum in a single notch.
+            const double stepFactor = 1.0 + (double(QWheelEvent::DefaultDeltasPerStep) / 500.0);
+            float newZoom = d->zoomFactor * std::pow(stepFactor, delta / double(QWheelEvent::DefaultDeltasPerStep));
+            zoomWithFixedCenter(ZoomRefreshCurrent, e->position(), newZoom);
+        }
 
         if (isDragging) {
             d->scroller->handleInput(QScroller::InputPress, e->position(), e->timestamp());
