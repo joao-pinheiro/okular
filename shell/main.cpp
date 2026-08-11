@@ -76,7 +76,6 @@ int main(int argc, char **argv)
     QCoreApplication::setAttribute(Qt::AA_CompressTabletEvents);
 
     QApplication app(argc, argv);
-    QDomImplementation::setInvalidDataPolicy(QDomImplementation::AcceptInvalidChars);
 
     /**
      * Install event filter to handle macOS file opening.
