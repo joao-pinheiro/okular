@@ -1713,8 +1713,9 @@ QVariant PDFGenerator::metaData(const QString &key, const QVariant &option) cons
             fillViewportFromLinkDestination(viewport, *ld);
         }
         if (viewport.pageNumber >= 0) {
-            return viewport.toString();
+            return QVariant::fromValue(viewport);
         }
+        return QVariant();
     } else if (key == QLatin1String("DocumentTitle")) {
         userMutex()->lock();
         QString title = pdfdoc->info(QStringLiteral("Title"));
@@ -1923,7 +1924,7 @@ static Okular::DocumentSynopsis::Element addOutlineItem(const Poppler::OutlineIt
             } else {
                 Okular::DocumentViewport vp;
                 fillViewportFromLinkDestination(vp, *outlineDestination);
-                element.setViewPort(vp.toString());
+                element.setViewPort(vp);
             }
         }
         element.setOpen(outlineItem.isOpen());
