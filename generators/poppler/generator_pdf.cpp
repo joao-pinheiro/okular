@@ -74,7 +74,7 @@ Q_DECLARE_METATYPE(Poppler::FontInfo)
 static const int defaultPageWidth = 595;
 static const int defaultPageHeight = 842;
 
-static Okular::DocumentSynopsis::Element addOutlineItem(const Poppler::OutlineItem &outlineItem);
+static Okular::DocumentSynopsis::ElementBuilder addOutlineItem(const Poppler::OutlineItem &outlineItem);
 
 class PDFOptionsPage : public Okular::PrintOptionsWidget
 {
@@ -1912,8 +1912,8 @@ Okular::TextPage *PDFGenerator::abstractTextPage(const std::vector<std::unique_p
     return ktp;
 }
 
-static Okular::DocumentSynopsis::Element addOutlineItem(const Poppler::OutlineItem &outlineItem) {
-    Okular::DocumentSynopsis::Element element(outlineItem.name());
+static Okular::DocumentSynopsis::ElementBuilder addOutlineItem(const Poppler::OutlineItem &outlineItem) {
+    Okular::DocumentSynopsis::ElementBuilder element(outlineItem.name());
 
     element.setExternalFileName(outlineItem.externalFileName());
         const QSharedPointer<const Poppler::LinkDestination> outlineDestination = outlineItem.destination();
