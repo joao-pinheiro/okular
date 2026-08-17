@@ -274,6 +274,18 @@ add_definitions(-DTRANSLATION_DOMAIN="okular")
 add_definitions(-DQT_DEPRECATED_WARNINGS_SINCE=0x060600)
 add_definitions(-DKF_DEPRECATED_WARNINGS_SINCE=0x05F000)
 
+find_package(Synctex)
+set_okular_optional_package_properties(Synctex PROPERTIES
+        DESCRIPTION "Synctex parser library extends the DVI and PDF backends. Part of texlive"
+        URL "https://www.tug.org/texlive/"
+        PURPOSE "Support for SyncTex when working with PDF or DVI documents in Okular.")
+
+if (SYNCTEX_FOUND)
+    set(HAVE_SYNCTEX 1)
+else()
+    set(HAVE_SYNCTEX 0)
+endif()
+
 if (Poppler_VERSION VERSION_LESS 24.10.0)
     add_definitions(-DHAVE_NEW_SIGNATURE_API=0)
 else()
@@ -286,7 +298,7 @@ else()
     add_definitions(-DHAVE_AUTOMATIC_SIGNATURE_FONT_SIZE=1)
 endif()
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${PHONON_INCLUDES} core/synctex ${CMAKE_BINARY_DIR}/core)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${PHONON_INCLUDES} ${CMAKE_BINARY_DIR}/core)
 
 option(BUILD_COVERAGE "Build the project with gcov support" OFF)
 
@@ -359,8 +371,6 @@ set(okularcore_SRCS
    core/printoptionswidget.cpp
    core/signatureutils.cpp
    core/script/event.cpp
-   core/synctex/synctex_parser.c
-   core/synctex/synctex_parser_utils.c
 )
 qt_add_resources(okularcore_SRCS
    core/script/builtin.qrc
@@ -414,7 +424,7 @@ kconfig_add_kcfg_files(okularcore_SRCS GENERATE_MOC conf/settings_core.kcfgc)
 
 add_library(okularcore SHARED ${okularcore_SRCS})
 generate_export_header(okularcore BASE_NAME okularcore EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/core/okularcore_export.h")
-target_include_directories(okularcore PUBLIC "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}>")
+target_include_directories(okularcore PUBLIC "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}>" PRIVATE ${SYNCTEX_INCLUDE_DIR})
 
 if (ANDROID)
     set(fileName ${CMAKE_BINARY_DIR}/Okular5Core-android-dependencies.xml)
@@ -430,11 +440,6 @@ IF(APPLE)
     SET(OKULAR_IOKIT "-framework IOKit" CACHE STRING "Apple IOKit framework")
 ENDIF(APPLE)
 
-# Extra library needed by imported synctex code on Windows
-if(WIN32)
-    set(SHLWAPI shlwapi)
-endif(WIN32)
-
 target_link_libraries(okularcore
 PRIVATE
     ${OKULAR_IOKIT}
@@ -448,6 +453,7 @@ PRIVATE
     Qt6::Svg
     ${MATH_LIB}
     ZLIB::ZLIB
+    ${SYNCTEX_LIBRARIES}
 PUBLIC  # these are included from the installed headers
     KF6::CoreAddons
     KF6::XmlGui
