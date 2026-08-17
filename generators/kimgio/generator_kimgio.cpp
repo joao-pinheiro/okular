@@ -12,13 +12,13 @@
 #include "generator_kimgio.h"
 
 #include <QBuffer>
+#include <QColorSpace>
 #include <QFile>
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QPainter>
 #include <QPrinter>
-#include <QColorSpace>
 
 #include <KAboutData>
 #include <KActionCollection>
