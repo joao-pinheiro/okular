@@ -181,11 +181,23 @@ public:
      * then schedules itself for the next page through the event loop. The whole
      * scan state travels in the arguments; @p foundAMatch carries whether any
      * page reported so far held a match, for the final searchFinished() status.
+     * A scan whose @p generation no longer matches the live one for @p searchID
+     * has been superseded by a restart and stops without reporting anything;
+     * this is re-checked on every tick, because emitting searchPageScanned()
+     * lets a directly connected slot cancel or restart the search reentrantly.
      */
-    void doContinueAllDocumentSearch(int currentPage, int searchID, bool foundAMatch);
+    void doContinueAllDocumentSearch(int startPage, int scannedPages, int generation, int searchID, bool foundAMatch);
     void doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words);
 
     void doProcessSearchMatch(RegularAreaRect *match, RunningSearch *search, QSet<int> *pagesToNotify, int currentPage, int searchID, bool moveViewport, const QColor &color);
+
+    /**
+     * The page number at position @p index in a document-wide scan's walk:
+     * startPage, then alternating a page after with a page before
+     * (startPage + 1, startPage - 1, startPage + 2, ...) until the shorter
+     * side runs out, then the rest of the longer side in order.
+     */
+    int pageAtScanIndex(int startPage, int index) const;
 
     /**
      * Executes a JavaScript script from the setInterval function.
@@ -243,6 +255,14 @@ public:
     // find descriptors, mapped by ID (we handle multiple searches)
     QMap<int, RunningSearch *> m_searches;
     bool m_searchCancelled;
+
+    /**
+     * Generation of the live search per search id. Kept here, not in
+     * RunningSearch: resetSearch() deletes that struct, and a counter restarting
+     * at zero cannot tell a superseded scan from the new one.
+     */
+    QHash<int, int> m_searchGenerations;
+    int m_nextSearchGeneration = 0;
 
     // needed because for remote documents docFileName is a local file and
     // we want the remote url when the document refers to relativeNames

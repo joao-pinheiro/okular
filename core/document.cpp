@@ -1760,7 +1760,7 @@ void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch
     delete pagesToNotify;
 }
 
-void DocumentPrivate::doContinueAllDocumentSearch(int currentPage, int searchID, bool foundAMatch)
+void DocumentPrivate::doContinueAllDocumentSearch(int startPage, int scannedPages, int generation, int searchID, bool foundAMatch)
 {
     RunningSearch *search = m_searches.value(searchID);
 
@@ -1775,8 +1775,20 @@ void DocumentPrivate::doContinueAllDocumentSearch(int currentPage, int searchID,
         return;
     }
 
-    if (currentPage < m_pagesVector.count()) {
-        // get page (from the first to the last)
+    // A newer search under this id has taken over: drop out without a word.
+    // The newer scan owns the reporting now, and saying anything here would
+    // double count it. The generation lives outside the RunningSearch, so this
+    // holds even when a restart went through resetSearch() and this tick found
+    // a freshly recreated struct above.
+    if (m_searchGenerations.value(searchID, -1) != generation) {
+        QApplication::restoreOverrideCursor();
+        return;
+    }
+
+    if (scannedPages < m_pagesVector.count()) {
+        // walk outward from startPage, alternating a page after with a page
+        // before, so the pages nearest the reader are reported first
+        const int currentPage = pageAtScanIndex(startPage, scannedPages);
         Page *page = m_pagesVector.at(currentPage);
 
         // request search page if needed
@@ -1833,7 +1845,7 @@ void DocumentPrivate::doContinueAllDocumentSearch(int currentPage, int searchID,
         // the emit; the next tick re-reads that state before touching the search.
         Q_EMIT m_parent->searchPageScanned(searchID, currentPage, matchBoundingRects);
 
-        QTimer::singleShot(0, m_parent, [this, currentPage, searchID, foundAMatch] { doContinueAllDocumentSearch(currentPage + 1, searchID, foundAMatch); });
+        QTimer::singleShot(0, m_parent, [this, startPage, scannedPages, generation, searchID, foundAMatch] { doContinueAllDocumentSearch(startPage, scannedPages + 1, generation, searchID, foundAMatch); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
@@ -1851,6 +1863,26 @@ void DocumentPrivate::doContinueAllDocumentSearch(int currentPage, int searchID,
             Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
         }
     }
+}
+
+int DocumentPrivate::pageAtScanIndex(int startPage, int index) const
+{
+    if (index == 0) {
+        return startPage;
+    }
+    // Alternate a page after with a page before, so the pages nearest the
+    // reader come first on both sides; once the shorter side runs out, the
+    // rest of the longer side follows in order.
+    const int pageCount = m_pagesVector.count();
+    const int forwardCount = pageCount - 1 - startPage; // pages after startPage
+    const int backwardCount = startPage;                // pages before startPage
+    const int alternating = 2 * qMin(forwardCount, backwardCount);
+    if (index <= alternating) {
+        const int distance = (index + 1) / 2;
+        return index % 2 == 1 ? startPage + distance : startPage - distance;
+    }
+    const int rest = index - alternating;
+    return forwardCount > backwardCount ? startPage + backwardCount + rest : startPage - forwardCount - rest;
 }
 
 void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words)
@@ -3790,7 +3822,11 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         delete pagesToNotify;
 
         // search and highlight 'text' (as a solid phrase) on all pages
-        QTimer::singleShot(0, this, [this, searchID] { d->doContinueAllDocumentSearch(0, searchID, false); });
+        // begin at the page being read unless the caller asked to start from the top
+        const int startPage = fromStart ? 0 : qBound(0, int(currentPage()), qMax(0, d->m_pagesVector.count() - 1));
+        const int generation = ++d->m_nextSearchGeneration;
+        d->m_searchGenerations[searchID] = generation;
+        QTimer::singleShot(0, this, [this, startPage, generation, searchID] { d->doContinueAllDocumentSearch(startPage, 0, generation, searchID, false); });
     }
     // 2. NEXTMATCH - find next matching item (or start from top)
     // 3. PREVMATCH - find previous matching item (or start from bottom)

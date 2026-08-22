@@ -67,6 +67,9 @@ private Q_SLOTS:
     void testAllDocumentSearchReportsEachScannedPage();
     void testReportedRectIsTheMatchNotTheStartOfThePage();
     void testMatchesAreHighlightedWhileTheScanIsStillRunning();
+    void testSearchFromCurrentPageExpandsOutward();
+    void testRestartingASearchDropsThePreviousScan();
+    void testRestartingAfterResetDropsThePreviousScan();
     void testCancellingASearchStopsTheScan();
 };
 
@@ -518,6 +521,85 @@ void SearchTest::testMatchesAreHighlightedWhileTheScanIsStillRunning()
 
     QVERIFY(checkedAnyPage);
     QVERIFY(highlightedWhenReported);
+}
+
+void SearchTest::testSearchFromCurrentPageExpandsOutward()
+{
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    document.setViewportPage(10);
+    QCOMPARE(document.currentPage(), 10u);
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), false, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QVERIFY(finishedSpy.wait());
+
+    QList<int> reportedPages;
+    for (int i = 0; i < scannedSpy.count(); ++i) {
+        reportedPages << scannedSpy.at(i).at(1).toInt();
+    }
+
+    QList<int> expectedPages;
+    expectedPages << 10;
+    for (int distance = 1; distance <= 10; ++distance) {
+        expectedPages << 10 + distance << 10 - distance;
+    }
+    for (int page = 21; page < 40; ++page) {
+        expectedPages << page;
+    }
+
+    QCOMPARE(reportedPages, expectedPages);
+}
+
+void SearchTest::testRestartingASearchDropsThePreviousScan()
+{
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    // a superseded scan still walking would report more pages after the finish
+    QVERIFY(finishedSpy.wait(30000));
+    QTest::qWait(250);
+
+    QCOMPARE(scannedSpy.count(), 40);
+}
+
+void SearchTest::testRestartingAfterResetDropsThePreviousScan()
+{
+    // cancel, reset, search again: what the panel does to restart a search
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    // stop it mid-scan exactly as the panel does, then start the same search again
+    bool restarted = false;
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::NormalizedRect> &) {
+        if (restarted) {
+            return;
+        }
+        restarted = true;
+        document.cancelSearch();
+        document.resetSearch(searchID);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    });
+
+    // one scan of 40 pages plus the page reported before the restart
+    QTRY_VERIFY_WITH_TIMEOUT(scannedSpy.count() >= 41, 30000);
+    QTest::qWait(250);
+
+    QVERIFY(restarted);
+    QVERIFY2(scannedSpy.count() <= 41, qPrintable(QStringLiteral("%1 pages reported for a 40 page document").arg(scannedSpy.count())));
 }
 
 void SearchTest::testCancellingASearchStopsTheScan()
