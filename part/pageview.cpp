@@ -2336,8 +2336,6 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
                     }
                 }
 
-                setCursor(Qt::ClosedHandCursor);
-
                 // Wrap mouse cursor
                 if (Okular::Settings::dragBeyondScreenEdges()) {
                     Qt::Edges wrapEdges;
@@ -2638,6 +2636,8 @@ void PageView::mousePressEvent(QMouseEvent *e)
         }
         break;
     }
+
+    updateCursor(eventPos);
 }
 
 void PageView::mouseReleaseEvent(QMouseEvent *e)
