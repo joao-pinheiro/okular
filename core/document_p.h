@@ -175,7 +175,14 @@ public:
 
     typedef std::pair<RegularAreaRect *, QColor> MatchColor;
     void doContinueDirectionMatchSearch(DoContinueDirectionMatchSearchStruct *searchStruct);
-    void doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID);
+    /**
+     * Scans one page of a document-wide search: collects the page's matches,
+     * highlights them, notifies observers and emits Document::searchPageScanned,
+     * then schedules itself for the next page through the event loop. The whole
+     * scan state travels in the arguments; @p foundAMatch carries whether any
+     * page reported so far held a match, for the final searchFinished() status.
+     */
+    void doContinueAllDocumentSearch(int currentPage, int searchID, bool foundAMatch);
     void doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words);
 
     void doProcessSearchMatch(RegularAreaRect *match, RunningSearch *search, QSet<int> *pagesToNotify, int currentPage, int searchID, bool moveViewport, const QColor &color);

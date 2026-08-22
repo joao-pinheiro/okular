@@ -6,8 +6,11 @@
 
 // clazy:excludeall=qstring-allocations
 
+#include <QApplication>
+#include <QFile>
 #include <QMimeDatabase>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include "../core/document.h"
@@ -16,6 +19,17 @@
 #include "../settings_core.h"
 
 Q_DECLARE_METATYPE(Okular::Document::SearchStatus)
+
+constexpr int allDocumentTestSearchID = 100;
+
+static bool openForSearch(Okular::Document &document, const QString &filePath, uint expectedPages)
+{
+    QMimeDatabase db;
+    if (document.openDocument(filePath, QUrl::fromLocalFile(filePath), db.mimeTypeForFile(filePath)) != Okular::Document::OpenSuccess) {
+        return false;
+    }
+    return document.pages() == expectedPages;
+}
 
 class SearchFinishedReceiver : public QObject
 {
@@ -50,11 +64,16 @@ private Q_SLOTS:
     void testHyphenAtEndOfPage();
     void testOneColumn();
     void testTwoColumns();
+    void testAllDocumentSearchReportsEachScannedPage();
+    void testReportedRectIsTheMatchNotTheStartOfThePage();
+    void testMatchesAreHighlightedWhileTheScanIsStillRunning();
+    void testCancellingASearchStopsTheScan();
 };
 
 void SearchTest::initTestCase()
 {
     qRegisterMetaType<Okular::Document::SearchStatus>();
+    qRegisterMetaType<QList<Okular::NormalizedRect>>();
     Okular::SettingsCore::instance(QStringLiteral("searchtest"));
 }
 
@@ -426,5 +445,126 @@ void SearchTest::testTwoColumns()
     delete page;
 }
 
-QTEST_MAIN(SearchTest)
+void SearchTest::testAllDocumentSearchReportsEachScannedPage()
+{
+    // simple-multipage.pdf has 40 pages, each reading "Page <n>"
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    QVERIFY(finishedSpy.wait());
+
+    QCOMPARE(scannedSpy.count(), 40);
+    for (int i = 0; i < scannedSpy.count(); ++i) {
+        const QList<QVariant> args = scannedSpy.at(i);
+        QCOMPARE(args.at(0).toInt(), allDocumentTestSearchID);
+        QCOMPARE(args.at(1).toInt(), i);
+        QCOMPARE(args.at(2).value<QList<Okular::NormalizedRect>>().count(), 1);
+    }
+}
+
+void SearchTest::testReportedRectIsTheMatchNotTheStartOfThePage()
+{
+    // file2.pdf reads "Hola que tal" then "This is nice": "nice" is on the second line
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/file2.pdf"), 2));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("nice"), true, Qt::CaseInsensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QVERIFY(finishedSpy.wait());
+
+    QCOMPARE(scannedSpy.at(0).at(1).toInt(), 0);
+    const QList<Okular::NormalizedRect> reported = scannedSpy.at(0).at(2).value<QList<Okular::NormalizedRect>>();
+    QCOMPARE(reported.count(), 1);
+
+    // what the match actually covers, according to the page itself
+    const Okular::Page *page = document.page(0);
+    std::unique_ptr<Okular::RegularAreaRect> match(page->findText(0, QStringLiteral("nice"), Okular::FromTop, Qt::CaseInsensitive));
+    QVERIFY(match);
+    QVERIFY(!match->isEmpty());
+    Okular::NormalizedRect expected = match->first();
+    for (const Okular::NormalizedRect &part : *match) {
+        expected |= part;
+    }
+
+    QVERIFY(expected.top > 0.0);
+    QCOMPARE(reported.at(0), expected);
+}
+
+void SearchTest::testMatchesAreHighlightedWhileTheScanIsStillRunning()
+{
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    bool highlightedWhenReported = false;
+    bool checkedAnyPage = false;
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int pageNumber, const QList<Okular::NormalizedRect> &matches) {
+        if (matches.isEmpty() || checkedAnyPage) {
+            return;
+        }
+        checkedAnyPage = true;
+        highlightedWhenReported = document.page(pageNumber)->hasHighlights(searchID);
+    });
+
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QVERIFY(finishedSpy.wait());
+
+    QVERIFY(checkedAnyPage);
+    QVERIFY(highlightedWhenReported);
+}
+
+void SearchTest::testCancellingASearchStopsTheScan()
+{
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+
+    bool cancelled = false;
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::NormalizedRect> &) {
+        if (cancelled) {
+            return;
+        }
+        cancelled = true;
+        document.cancelSearch();
+        document.resetSearch(searchID);
+    });
+
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    QVERIFY(finishedSpy.wait(30000));
+    QCOMPARE(finishedSpy.at(0).at(1).value<Okular::Document::SearchStatus>(), Okular::Document::SearchCancelled);
+    QTest::qWait(250);
+
+    QVERIFY(cancelled);
+    QVERIFY2(scannedSpy.count() < 40, qPrintable(QStringLiteral("scanned %1 pages of 40 after cancelling").arg(scannedSpy.count())));
+}
+
+int main(int argc, char *argv[])
+{
+    // a throwaway home: Okular remembers a document's last page under $XDG_DATA_HOME
+    QTemporaryDir homeDir;
+    Q_ASSERT(homeDir.isValid());
+    const QByteArray homePath = QFile::encodeName(homeDir.path());
+    qputenv("USERPROFILE", homePath);
+    qputenv("HOME", homePath);
+    qputenv("XDG_DATA_HOME", QByteArray(homePath + "/.local"));
+    qputenv("XDG_CONFIG_HOME", QByteArray(homePath + "/.config"));
+
+    QApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("searchtest"));
+    app.setOrganizationDomain(QStringLiteral("kde.org"));
+
+    SearchTest testObject;
+    return QTest::qExec(&testObject, argc, argv);
+}
+
 #include "searchtest.moc"

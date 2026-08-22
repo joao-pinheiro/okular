@@ -1760,13 +1760,11 @@ void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch
     delete pagesToNotify;
 }
 
-void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID)
+void DocumentPrivate::doContinueAllDocumentSearch(int currentPage, int searchID, bool foundAMatch)
 {
     RunningSearch *search = m_searches.value(searchID);
 
     if (m_searchCancelled || !search) {
-        typedef QList<RegularAreaRect *> Matches;
-
         QApplication::restoreOverrideCursor();
 
         if (search) {
@@ -1774,11 +1772,6 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
         }
 
         Q_EMIT m_parent->searchFinished(searchID, Document::SearchCancelled);
-        for (const Matches &mv : std::as_const(*pageMatches)) {
-            qDeleteAll(mv);
-        }
-        delete pageMatches;
-        delete pagesToNotify;
         return;
     }
 
@@ -1788,11 +1781,11 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
 
         // request search page if needed
         if (!page->hasTextPage()) {
-            int pageNumber = page->number(); // redundant? is it == currentPage ?
-            m_parent->requestTextPage(pageNumber);
+            m_parent->requestTextPage(page->number());
         }
 
-        // loop on a page adding highlights for all found items
+        // loop on a page collecting all found items
+        QList<RegularAreaRect *> matches;
         RegularAreaRect *lastMatch = nullptr;
         while (true) {
             if (lastMatch) {
@@ -1805,47 +1798,58 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
                 break;
             }
 
-            // add highlight rect to the matches map
-            (*pageMatches)[page].append(lastMatch);
+            matches.append(lastMatch);
         }
-        delete lastMatch;
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID); });
+        // Highlight the page's matches and report them now rather than once the
+        // whole document has been scanned: a caller showing results as they
+        // arrive would otherwise send the reader to a match that is not yet
+        // marked on the page.
+        QList<NormalizedRect> matchBoundingRects;
+        if (!matches.isEmpty()) {
+            matchBoundingRects.reserve(matches.count());
+            for (const RegularAreaRect *match : std::as_const(matches)) {
+                if (match->isEmpty()) {
+                    continue;
+                }
+                // Seed the union with a real part: a default NormalizedRect is (0,0,0,0),
+                // and uniting with it would pin the result to the top left of the page.
+                NormalizedRect boundingRect = match->first();
+                for (const NormalizedRect &part : *match) {
+                    boundingRect |= part;
+                }
+                matchBoundingRects.append(boundingRect);
+
+                page->d->setHighlight(*match, search->cachedColor, searchID);
+            }
+            search->highlightedPages.insert(currentPage);
+            foundAMatch = true;
+            for (DocumentObserver *observer : std::as_const(m_observers)) {
+                observer->notifyPageChanged(currentPage, DocumentObserver::Highlights);
+            }
+            qDeleteAll(matches);
+        }
+        // A directly connected slot can cancel or reset this search from inside
+        // the emit; the next tick re-reads that state before touching the search.
+        Q_EMIT m_parent->searchPageScanned(searchID, currentPage, matchBoundingRects);
+
+        QTimer::singleShot(0, m_parent, [this, currentPage, searchID, foundAMatch] { doContinueAllDocumentSearch(currentPage + 1, searchID, foundAMatch); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
 
         search->isCurrentlySearching = false;
-        bool foundAMatch = pageMatches->count() != 0;
-        for (auto [key, value] : pageMatches->asKeyValueRange()) {
-            for (RegularAreaRect *&match : value) {
-                key->d->setHighlight(*match, search->cachedColor, searchID);
-                delete match;
-                match = nullptr;
-            }
-            search->highlightedPages.insert(key->number());
-            pagesToNotify->insert(key->number());
-        }
 
         for (DocumentObserver *observer : std::as_const(m_observers)) {
             observer->notifySetup(m_pagesVector, 0);
         }
 
-        // notify observers about highlights changes
-        for (int pageNumber : std::as_const(*pagesToNotify)) {
-            for (DocumentObserver *observer : std::as_const(m_observers)) {
-                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
-            }
-        }
-
+        // the matches were highlighted, notified and freed page by page while scanning
         if (foundAMatch) {
             Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
         } else {
             Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
         }
-
-        delete pageMatches;
-        delete pagesToNotify;
     }
 }
 
@@ -3777,10 +3781,16 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
 
     // 1. ALLDOC - process all document marking pages
     if (type == AllDocument) {
-        QHash<Page *, QList<RegularAreaRect *>> *pageMatches = new QHash<Page *, QList<RegularAreaRect *>>;
+        // The scan notifies each page as it reports it; all that is left for the
+        // set collected above is the pages a previous search under this id had
+        // highlighted, so repaint those right away rather than carry the set along.
+        for (const int pageNumber : std::as_const(*pagesToNotify)) {
+            foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
+        }
+        delete pagesToNotify;
 
         // search and highlight 'text' (as a solid phrase) on all pages
-        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID] { d->doContinueAllDocumentSearch(pagesToNotify, pageMatches, 0, searchID); });
+        QTimer::singleShot(0, this, [this, searchID] { d->doContinueAllDocumentSearch(0, searchID, false); });
     }
     // 2. NEXTMATCH - find next matching item (or start from top)
     // 3. PREVMATCH - find previous matching item (or start from bottom)
