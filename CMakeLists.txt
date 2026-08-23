@@ -551,6 +551,7 @@ if(BUILD_DESKTOP)
     part/revisionviewer.cpp
     part/searchlineedit.cpp
     part/searchwidget.cpp
+    part/searchresultsmodel.cpp
     part/sidebar.cpp
     part/side_reviews.cpp
     part/snapshottaker.cpp
