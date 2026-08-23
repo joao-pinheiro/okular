@@ -41,12 +41,19 @@ public:
 Q_SIGNALS:
     void searchStarted();
     void searchStopped();
+    /** Return on an AllDocument search whose results are collected: step to the next one. */
+    void nextResultRequested();
+    /** Shift+Return: step to the previous result. */
+    void previousResultRequested();
 
 public Q_SLOTS:
     void restartSearch();
     void stopSearch();
     void findNext();
     void findPrev();
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     void prepareLineEditForSearch();
@@ -63,6 +70,8 @@ private:
     bool m_fromStart;
     bool m_findAsYouType;
     bool m_searchRunning;
+    // from the key event: polling the keyboard in slotReturnPressed() misses synthesized presses
+    Qt::KeyboardModifiers m_returnModifiers = Qt::NoModifier;
 
 private Q_SLOTS:
     void slotTextChanged(const QString &text);
