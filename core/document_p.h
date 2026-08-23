@@ -264,6 +264,15 @@ public:
     QHash<int, int> m_searchGenerations;
     int m_nextSearchGeneration = 0;
 
+    /**
+     * Pages currently holding a highlight placed through
+     * Document::setHighlightedArea(), per search id. Together with a
+     * RunningSearch's own highlightedPages this covers every page that can
+     * hold highlights under an id, so clearHighlightedAreas() visits those
+     * pages alone instead of walking the whole document on every call.
+     */
+    QHash<int, QSet<int>> m_pagesWithHighlightedAreas;
+
     // needed because for remote documents docFileName is a local file and
     // we want the remote url when the document refers to relativeNames
     QUrl m_url;

@@ -2722,6 +2722,7 @@ void Document::closeDocument()
     // clear 'running searches' descriptors
     qDeleteAll(d->m_searches);
     d->m_searches.clear();
+    d->m_pagesWithHighlightedAreas.clear();
 
     // clear the visible areas and notify the observers
     qDeleteAll(d->m_pageRects);
@@ -3874,6 +3875,43 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
 
         // search and highlight every word in 'text' on all pages
         QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, words); });
+    }
+}
+
+void Document::setHighlightedArea(int searchID, int pageNumber, const NormalizedRect &rect, const QColor &color)
+{
+    clearHighlightedAreas(searchID);
+
+    if (pageNumber < 0 || pageNumber >= d->m_pagesVector.count()) {
+        return;
+    }
+
+    Page *page = d->m_pagesVector.at(pageNumber);
+    RegularAreaRect area;
+    area.append(rect);
+    page->d->setHighlight(area, color, searchID);
+    d->m_pagesWithHighlightedAreas[searchID].insert(pageNumber);
+    foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
+}
+
+void Document::clearHighlightedAreas(int searchID)
+{
+    // only the pages recorded under this id can hold its highlights
+    QSet<int> pageNumbers = d->m_pagesWithHighlightedAreas.take(searchID);
+    if (const RunningSearch *search = d->m_searches.value(searchID)) {
+        pageNumbers |= search->highlightedPages;
+    }
+    for (const int pageNumber : std::as_const(pageNumbers)) {
+        // a recorded page can be gone: swapBackingFile() may have shrunk the document
+        if (pageNumber < 0 || pageNumber >= d->m_pagesVector.count()) {
+            continue;
+        }
+        Page *page = d->m_pagesVector.at(pageNumber);
+        if (!page->hasHighlights(searchID)) {
+            continue;
+        }
+        page->d->deleteHighlights(searchID);
+        foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
     }
 }
 

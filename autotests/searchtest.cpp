@@ -67,6 +67,7 @@ private Q_SLOTS:
     void testAllDocumentSearchReportsEachScannedPage();
     void testReportedRectIsTheMatchNotTheStartOfThePage();
     void testMatchesAreHighlightedWhileTheScanIsStillRunning();
+    void testHighlightedAreaSinglesOutOneMatchAtATime();
     void testSearchFromCurrentPageExpandsOutward();
     void testRestartingASearchDropsThePreviousScan();
     void testRestartingAfterResetDropsThePreviousScan();
@@ -521,6 +522,29 @@ void SearchTest::testMatchesAreHighlightedWhileTheScanIsStillRunning()
 
     QVERIFY(checkedAnyPage);
     QVERIFY(highlightedWhenReported);
+}
+
+void SearchTest::testHighlightedAreaSinglesOutOneMatchAtATime()
+{
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/file2.pdf"), 2));
+
+    const Okular::NormalizedRect area(0.2, 0.2, 0.4, 0.3);
+
+    document.setHighlightedArea(SEARCH_PANEL_CURRENT_MATCH_ID, 0, area, Qt::red);
+    QVERIFY(document.page(0)->hasHighlights(SEARCH_PANEL_CURRENT_MATCH_ID));
+
+    document.setHighlightedArea(SEARCH_PANEL_CURRENT_MATCH_ID, 1, area, Qt::red);
+    QVERIFY(!document.page(0)->hasHighlights(SEARCH_PANEL_CURRENT_MATCH_ID));
+    QVERIFY(document.page(1)->hasHighlights(SEARCH_PANEL_CURRENT_MATCH_ID));
+
+    // a page the document does not have only drops the previous area
+    document.setHighlightedArea(SEARCH_PANEL_CURRENT_MATCH_ID, 2, area, Qt::red);
+    QVERIFY(!document.page(1)->hasHighlights(SEARCH_PANEL_CURRENT_MATCH_ID));
+
+    document.setHighlightedArea(SEARCH_PANEL_CURRENT_MATCH_ID, 1, area, Qt::red);
+    document.clearHighlightedAreas(SEARCH_PANEL_CURRENT_MATCH_ID);
+    QVERIFY(!document.page(1)->hasHighlights(SEARCH_PANEL_CURRENT_MATCH_ID));
 }
 
 void SearchTest::testSearchFromCurrentPageExpandsOutward()

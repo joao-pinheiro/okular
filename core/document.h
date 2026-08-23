@@ -68,6 +68,8 @@ class SignatureInfo;
 #define PAGEVIEW_SEARCH_ID 2
 #define SW_SEARCH_ID 3
 #define PRESENTATION_SEARCH_ID 4
+#define SEARCH_PANEL_SEARCH_ID 5
+#define SEARCH_PANEL_CURRENT_MATCH_ID 6
 
 /**
  * The DocumentInfo structure can be filled in by generators to display
@@ -639,6 +641,24 @@ public:
      * @param color The highlighting color of the matches.
      */
     void searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color);
+
+    /**
+     * Highlights @p rect on page @p pageNumber under @p searchID with @p color, after
+     * removing every highlight previously set under that same @p searchID.
+     *
+     * Use it to single one area out among the matches of a search, such as the result
+     * the reader has just picked, by giving it a colour of its own.
+     *
+     * @since 26.12
+     */
+    void setHighlightedArea(int searchID, int pageNumber, const NormalizedRect &rect, const QColor &color);
+
+    /**
+     * Removes every highlight set under @p searchID.
+     *
+     * @since 26.12
+     */
+    void clearHighlightedAreas(int searchID);
 
     /**
      * Continues the search for the given @p searchID.
