@@ -15,6 +15,9 @@
 class KBusyIndicatorWidget;
 class QTimer;
 
+/** The colour every search match is highlighted with, shared by the find bar and the search results panel. */
+inline const QColor SearchMatchColor(255, 255, 64);
+
 /**
  * @short A line edit for find-as-you-type search. Outputs to the Document.
  */

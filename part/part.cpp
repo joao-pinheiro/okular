@@ -119,6 +119,7 @@
 #include "preferencesdialog.h"
 #include "presentationwidget.h"
 #include "propertiesdialog.h"
+#include "searchresultspanel.h"
 #include "searchwidget.h"
 #include "settings.h"
 #include "side_reviews.h"
@@ -415,6 +416,10 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_bookmarkList = new BookmarkList(m_document, nullptr);
     m_sidebar->addItem(m_bookmarkList, QIcon::fromTheme(QStringLiteral("bookmarks")), i18n("Bookmarks"));
 
+    // [left toolbox: Search Results] | []
+    m_searchResultsPanel = new SearchResultsPanel(m_document, nullptr);
+    m_sidebar->addItem(m_searchResultsPanel, QIcon::fromTheme(QStringLiteral("edit-find")), i18n("Search Results"));
+
     // [left toolbox optional item: Signature Panel] | []
     m_signaturePanel = new SignaturePanel(m_document, nullptr);
     connect(m_signaturePanel.data(), &SignaturePanel::documentHasSignatures, this, &Part::enableSidebarSignaturesItem);
@@ -536,6 +541,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_document->addObserver(m_reviewsWidget);
     m_document->addObserver(m_pageSizeLabel);
     m_document->addObserver(m_bookmarkList);
+    m_document->addObserver(m_searchResultsPanel);
     m_document->addObserver(m_signaturePanel);
 
     connect(m_document->bookmarkManager(), &BookmarkManager::saved, this, &Part::slotRebuildBookmarkMenu);
@@ -987,6 +993,7 @@ Part::~Part()
     delete m_pageSizeLabel;
     delete m_reviewsWidget;
     delete m_bookmarkList;
+    delete m_searchResultsPanel;
     delete m_infoTimer;
     delete m_signaturePanel;
 

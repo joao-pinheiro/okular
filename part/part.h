@@ -73,6 +73,7 @@ class MiniBarLogic;
 class FileKeeper;
 class Reviews;
 class BookmarkList;
+class SearchResultsPanel;
 class DrawingToolActions;
 class Layers;
 class SignaturePanel;
@@ -383,6 +384,7 @@ private:
     QPointer<PageSizeLabel> m_pageSizeLabel;
     QPointer<Reviews> m_reviewsWidget;
     QPointer<BookmarkList> m_bookmarkList;
+    QPointer<SearchResultsPanel> m_searchResultsPanel;
     QPointer<Layers> m_layers;
     QPointer<SignaturePanel> m_signaturePanel;
 
