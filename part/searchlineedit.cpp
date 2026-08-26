@@ -176,9 +176,14 @@ void SearchLineEdit::findPrev()
 
 void SearchLineEdit::slotTextChanged(const QString &text)
 {
-    Q_UNUSED(text);
-
     prepareLineEditForSearch();
+
+    // an emptied field stops the search at once, not after the typing delay or on Return
+    if (text.isEmpty()) {
+        m_inputDelayTimer->stop();
+        resetSearch();
+        return;
+    }
 
     if (m_findAsYouType) {
         restartSearch();

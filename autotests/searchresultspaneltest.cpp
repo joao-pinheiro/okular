@@ -44,6 +44,7 @@ private Q_SLOTS:
     void testThePickedResultStaysInViewWhenEveryOtherResultIsInsertedAboveIt();
     void testTheFirstResultFoundIsSelected();
     void testClearingTheFieldStopsTheRunningSearch();
+    void testClearingTheFieldStopsTheScanEvenWithoutFindAsYouType();
     void testNextAndPreviousMoveTheSelectionAndTheDocumentView();
     void testReturnStepsThroughTheResults();
     void testNextWrapsAroundToTheFirstResult();
@@ -380,12 +381,40 @@ void SearchResultsPanelTest::testClearingTheFieldStopsTheRunningSearch()
         }
         stopped = true;
         f.searchLine->clear();
-        QTest::keyClick(f.searchLine, Qt::Key_Return);
     });
 
-    // the cancellation reports a finish; wait past it long enough that a scan
-    // that kept going would have reported more
+    // the cancellation reports a finish; a scan that kept going would report more after it
     QVERIFY(f.searchAndWait());
+    QTest::qWait(250);
+
+    QVERIFY(stopped);
+    QVERIFY2(scannedSpy.count() < 40, qPrintable(QStringLiteral("scanned %1 pages of 40 after the field was cleared").arg(scannedSpy.count())));
+}
+
+void SearchResultsPanelTest::testClearingTheFieldStopsTheScanEvenWithoutFindAsYouType()
+{
+    PanelFixture f;
+    QVERIFY(f.ok());
+
+    QAction *searchAsYouTypeAction = f.panel->findChild<QAction *>(QStringLiteral("searchResultsSearchAsYouTypeAction"));
+    QVERIFY(searchAsYouTypeAction);
+    searchAsYouTypeAction->setChecked(false);
+
+    QSignalSpy scannedSpy(&f.document, &Okular::Document::searchPageScanned);
+    bool stopped = false;
+    QObject::connect(&f.document, &Okular::Document::searchPageScanned, &f.document, [&](int, int, const QList<Okular::NormalizedRect> &) {
+        if (stopped) {
+            return;
+        }
+        stopped = true;
+        f.searchLine->clear();
+    });
+
+    QSignalSpy finishedSpy(&f.document, &Okular::Document::searchFinished);
+    f.searchLine->setText(QStringLiteral("Page"));
+    QTest::keyClick(f.searchLine, Qt::Key_Return);
+
+    QVERIFY(finishedSpy.wait(30000));
     QTest::qWait(250);
 
     QVERIFY(stopped);
