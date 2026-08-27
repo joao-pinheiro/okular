@@ -3202,6 +3202,9 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                     }
 
                     menu->deleteLater();
+                } else {
+                    // if there is no text selected, then it needs to create the context menu, just like it happens in the other modes
+                    Q_EMIT rightClick(item->page(), e->globalPosition().toPoint());
                 }
             }
         }
