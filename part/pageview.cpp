@@ -4372,37 +4372,32 @@ void PageView::moveMagnifier(const QPoint p) // non scaled point
 
     QPoint scroll(0, 0);
 
-    if (x < 0) {
+    if (x < d->dragScrollMargin) {
         if (horizontalScrollBar()->value() > 0) {
             scroll.setX(x - w);
         }
-        x = 0;
-    }
-
-    if (y < 0) {
-        if (verticalScrollBar()->value() > 0) {
-            scroll.setY(y - h);
-        }
-        y = 0;
-    }
-
-    if (p.x() + w > max_x) {
+    } else if (p.x() + w > max_x - d->dragScrollMargin) {
         if (horizontalScrollBar()->value() < horizontalScrollBar()->maximum()) {
             scroll.setX(p.x() + 2 * w - max_x);
         }
-        x = max_x - d->magnifierView->width() - 1;
     }
-
-    if (p.y() + h > max_y) {
+    
+    if (y < d->dragScrollMargin) {
+        if (verticalScrollBar()->value() > 0) {
+            scroll.setY(y - h);
+        }
+    } else if (p.y() + h > max_y - d->dragScrollMargin) {
         if (verticalScrollBar()->value() < verticalScrollBar()->maximum()) {
             scroll.setY(p.y() + 2 * h - max_y);
         }
-        y = max_y - d->magnifierView->height() - 1;
     }
 
     if (!scroll.isNull()) {
         scrollPosIntoView(contentAreaPoint(p + scroll));
     }
+
+    x = std::max(0, std::min(max_x - d->magnifierView->width(), x));
+    y = std::max(0, std::min(max_y - d->magnifierView->height(), y));
 
     d->magnifierView->doMove(x, y);
 }
