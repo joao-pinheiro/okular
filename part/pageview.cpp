@@ -223,6 +223,8 @@ public:
     bool verticalScrollBarVisible = false;
     bool horizontalScrollBarVisible = false;
 
+    // how far the mouse needs to be from viewport edges to start drag scrolling
+    const int dragScrollMargin = 48;
     // drag scroll
     QPoint dragScrollVector;
     QTimer dragScrollTimer;
@@ -3842,18 +3844,23 @@ void PageView::scrollPosIntoView(const QPoint pos)
     // this number slows the speed of the page by its value, chosen not to be too fast or too slow, the actual speed is determined from the mouse position, not critical
     const int damping = 6;
 
-    if (pos.x() < horizontalScrollBar()->value()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value()) / damping);
-    } else if (horizontalScrollBar()->value() + viewport()->width() < pos.x()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value() - viewport()->width()) / damping);
+    int left = horizontalScrollBar()->value() + d->dragScrollMargin;
+    int right = horizontalScrollBar()->value() + viewport()->width() - d->dragScrollMargin;
+    int top    = verticalScrollBar()->value() + d->dragScrollMargin;
+    int bottom = verticalScrollBar()->value() + viewport()->height() - d->dragScrollMargin;
+
+    if (pos.x() < left) {
+        d->dragScrollVector.setX((pos.x() - left) / damping);
+    } else if (pos.x() > right) {
+        d->dragScrollVector.setX((pos.x() - right) / damping);
     } else {
         d->dragScrollVector.setX(0);
     }
 
-    if (pos.y() < verticalScrollBar()->value()) {
-        d->dragScrollVector.setY((pos.y() - verticalScrollBar()->value()) / damping);
-    } else if (verticalScrollBar()->value() + viewport()->height() < pos.y()) {
-        d->dragScrollVector.setY((pos.y() - verticalScrollBar()->value() - viewport()->height()) / damping);
+    if (pos.y() < top) {
+        d->dragScrollVector.setY((pos.y() - top) / damping);
+    } else if (pos.y() > bottom) {
+        d->dragScrollVector.setY((pos.y() - bottom) / damping);
     } else {
         d->dragScrollVector.setY(0);
     }
