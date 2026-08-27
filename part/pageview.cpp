@@ -5152,6 +5152,8 @@ void PageView::slotDragScroll()
     scrollTo(horizontalScrollBar()->value() + d->dragScrollVector.x(), verticalScrollBar()->value() + d->dragScrollVector.y());
     QPoint p = contentAreaPosition() + viewport()->mapFromGlobal(QCursor::pos());
     updateSelection(p);
+    if(d->mouseMode == Okular::Settings::EnumMouseMode::Magnifier)
+        updateMagnifier(p);
 }
 
 void PageView::slotShowWelcome()
