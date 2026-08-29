@@ -47,7 +47,7 @@ private Q_SLOTS:
     void slotTextChanged();
     void slotSearchStarted();
     void slotSearchStopped();
-    void slotPageScanned(int searchID, int pageNumber, const QList<Okular::NormalizedRect> &matches);
+    void slotPageScanned(int searchID, int pageNumber, const QList<Okular::SearchMatch> &matches);
     void slotResultActivated(const QModelIndex &index);
     void slotCaseSensitivityChanged();
     void slotFromCurrentPageChanged();

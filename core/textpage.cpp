@@ -640,10 +640,15 @@ static int stringLengthAdaptedWithHyphen(const QString &str, TextEntity::List::C
     return len;
 }
 
-RegularAreaRect *TextPagePrivate::searchPointToArea(const SearchPoint *sp)
+QTransform TextPagePrivate::searchMatrix() const
 {
     const PagePrivate *pagePrivate = PagePrivate::get(m_page);
-    const QTransform matrix = pagePrivate ? pagePrivate->rotationMatrix() : QTransform();
+    return pagePrivate ? pagePrivate->rotationMatrix() : QTransform();
+}
+
+RegularAreaRect *TextPagePrivate::searchPointToArea(const SearchPoint *sp)
+{
+    const QTransform matrix = searchMatrix();
     RegularAreaRect *ret = new RegularAreaRect;
 
     for (TextEntity::List::ConstIterator it = sp->it_begin;; it++) {
@@ -1965,4 +1970,131 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
     }
 
     return ret;
+}
+
+QList<SearchMatch> TextPage::findAll(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity)
+{
+    QList<SearchMatch> matches;
+    const QList<TextMatch> found = findAllWithAreas(searchID, text, caseSensitivity);
+    matches.reserve(found.count());
+    for (const TextMatch &textMatch : found) {
+        matches.append(textMatch.match);
+        delete textMatch.area;
+    }
+    return matches;
+}
+
+QList<TextMatch> TextPage::findAllWithAreas(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity)
+{
+    QList<TextMatch> found;
+
+    for (SearchDirection direction = FromTop;; direction = NextResult) {
+        RegularAreaRect *area = findText(searchID, text, direction, caseSensitivity, nullptr);
+        if (!area) {
+            break;
+        }
+        if (area->isNull()) {
+            delete area; // nothing to show or highlight
+            continue;
+        }
+        found.append({area, SearchMatch()});
+    }
+    if (found.isEmpty()) {
+        return found;
+    }
+
+    // The line context is built in the coordinate space the areas are in, the
+    // page's rotated one. Every word is transformed once, then indexed by the
+    // height of its centre, so that the words whose centre falls in a match's
+    // vertical band form one contiguous run found by bisection, however many
+    // matches the page holds.
+    const QTransform matrix = d->searchMatrix();
+
+    const int wordCount = d->m_words.count();
+    QList<NormalizedPoint> centres;
+    centres.reserve(wordCount);
+    for (const TextEntity &word : std::as_const(d->m_words)) {
+        centres.append(word.transformedArea(matrix).center());
+    }
+    QList<int> indicesByCentreY;
+    indicesByCentreY.reserve(wordCount);
+    for (int i = 0; i < wordCount; ++i) {
+        indicesByCentreY.append(i);
+    }
+    std::stable_sort(indicesByCentreY.begin(), indicesByCentreY.end(), [&centres](int a, int b) { return centres.at(a).y < centres.at(b).y; });
+    QList<double> centreYs;
+    centreYs.reserve(wordCount);
+    for (const int index : std::as_const(indicesByCentreY)) {
+        centreYs.append(centres.at(index).y);
+    }
+
+    // The line most recently assembled: consecutive matches mostly sit on the
+    // same line, and its word order and text need building only once.
+    int cachedFirst = -1;
+    int cachedPast = -1;
+    QList<int> lineWords;
+    QString lineText;
+
+    for (TextMatch &textMatch : found) {
+        // Seed the union with a real part: a default NormalizedRect is (0,0,0,0),
+        // and uniting with it would pin the result to the top left of the page.
+        NormalizedRect bounding = textMatch.area->first();
+        for (const NormalizedRect &part : *textMatch.area) {
+            bounding |= part;
+        }
+        textMatch.match.boundingRect = bounding;
+
+        const int first = int(std::lower_bound(centreYs.cbegin(), centreYs.cend(), bounding.top) - centreYs.cbegin());
+        const int past = int(std::upper_bound(centreYs.cbegin() + first, centreYs.cend(), bounding.bottom) - centreYs.cbegin());
+        if (first != cachedFirst || past != cachedPast) {
+            cachedFirst = first;
+            cachedPast = past;
+            lineWords = QList<int>(indicesByCentreY.cbegin() + first, indicesByCentreY.cbegin() + past);
+            std::sort(lineWords.begin(), lineWords.end()); // back to reading order
+            QString text;
+            for (const int index : std::as_const(lineWords)) {
+                text += d->m_words.at(index).text();
+            }
+            lineText = text.simplified();
+        }
+        textMatch.match.lineText = lineText;
+
+        // the match may not be the first occurrence of its text on the line
+        const NormalizedRect beforeMatchArea(0.0, bounding.top, bounding.left, bounding.bottom);
+        QString matchText;
+        QString textBeforeMatch;
+        for (const int index : std::as_const(lineWords)) {
+            const NormalizedPoint &centre = centres.at(index);
+            if (bounding.contains(centre.x, centre.y)) {
+                matchText += d->m_words.at(index).text();
+            }
+            if (beforeMatchArea.contains(centre.x, centre.y)) {
+                textBeforeMatch += d->m_words.at(index).text();
+            }
+        }
+        matchText = matchText.simplified();
+        if (matchText.isEmpty()) {
+            continue;
+        }
+        textBeforeMatch = textBeforeMatch.simplified();
+        int occurrencesBefore = 0;
+        for (int at = textBeforeMatch.indexOf(matchText); at >= 0; at = textBeforeMatch.indexOf(matchText, at + matchText.length())) {
+            ++occurrencesBefore;
+        }
+        int offset = -1;
+        int searchFrom = 0;
+        for (int i = 0; i <= occurrencesBefore; ++i) {
+            offset = lineText.indexOf(matchText, searchFrom);
+            if (offset < 0) {
+                break;
+            }
+            searchFrom = offset + matchText.length();
+        }
+        if (offset >= 0) {
+            textMatch.match.offsetInLine = offset;
+            textMatch.match.length = matchText.length();
+        }
+    }
+
+    return found;
 }

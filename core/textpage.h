@@ -85,6 +85,24 @@ private:
     NormalizedRect m_area;
 };
 
+struct TextMatch;
+
+/**
+ * One match of a text search on a page: where it is, and the line it sits on.
+ *
+ * @since 26.12
+ */
+struct SearchMatch {
+    /** Bounding rectangle of the match on its page. */
+    NormalizedRect boundingRect;
+    /** Whitespace-simplified text of the line the match sits on. */
+    QString lineText;
+    /** Where the match starts in @c lineText, or -1 when it could not be located there. */
+    int offsetInLine = -1;
+    /** Length of the match in @c lineText. */
+    int length = 0;
+};
+
 /**
  * @short Represents the textual information of a Page. Makes search and text selection possible.
  *
@@ -103,6 +121,8 @@ class OKULARCORE_EXPORT TextPage
     /// @cond PRIVATE
     friend class Page;
     friend class PagePrivate;
+    // the document-wide search: findAllWithAreas() on a page it is scanning
+    friend class DocumentPrivate;
     /// @endcond
 
 public:
@@ -199,12 +219,32 @@ public:
      */
     std::unique_ptr<RegularAreaRect> textArea(const TextSelection &selection) const;
 
+    /**
+     * Finds every occurrence of @p text on the page, each with the line it sits
+     * on: findText() run to exhaustion under @p searchID, the match then located
+     * in its line's text. The page's words are read once however many matches
+     * there are.
+     *
+     * @since 26.12
+     */
+    QList<SearchMatch> findAll(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity);
+
 private:
+    /**
+     * findAll() keeping each match's area (owned by the caller), for the
+     * document-wide search that both highlights and reports matches. Areas and
+     * bounding rectangles are in the coordinates findText() produces, the
+     * page's rotated ones.
+     */
+    QList<TextMatch> findAllWithAreas(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity);
+
     TextPagePrivate *const d;
 
     Q_DISABLE_COPY(TextPage)
 };
 
 }
+
+Q_DECLARE_METATYPE(Okular::SearchMatch)
 
 #endif

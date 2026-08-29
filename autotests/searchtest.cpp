@@ -72,12 +72,13 @@ private Q_SLOTS:
     void testRestartingASearchDropsThePreviousScan();
     void testRestartingAfterResetDropsThePreviousScan();
     void testCancellingASearchStopsTheScan();
+    void testFindAllReportsTheLineOfEachMatch();
+    void testFindAllLocatesARepeatedWordInItsLine();
 };
 
 void SearchTest::initTestCase()
 {
     qRegisterMetaType<Okular::Document::SearchStatus>();
-    qRegisterMetaType<QList<Okular::NormalizedRect>>();
     Okular::SettingsCore::instance(QStringLiteral("searchtest"));
 }
 
@@ -467,7 +468,7 @@ void SearchTest::testAllDocumentSearchReportsEachScannedPage()
         const QList<QVariant> args = scannedSpy.at(i);
         QCOMPARE(args.at(0).toInt(), allDocumentTestSearchID);
         QCOMPARE(args.at(1).toInt(), i);
-        QCOMPARE(args.at(2).value<QList<Okular::NormalizedRect>>().count(), 1);
+        QCOMPARE(args.at(2).value<QList<Okular::SearchMatch>>().count(), 1);
     }
 }
 
@@ -484,10 +485,9 @@ void SearchTest::testReportedRectIsTheMatchNotTheStartOfThePage()
     QVERIFY(finishedSpy.wait());
 
     QCOMPARE(scannedSpy.at(0).at(1).toInt(), 0);
-    const QList<Okular::NormalizedRect> reported = scannedSpy.at(0).at(2).value<QList<Okular::NormalizedRect>>();
+    const QList<Okular::SearchMatch> reported = scannedSpy.at(0).at(2).value<QList<Okular::SearchMatch>>();
     QCOMPARE(reported.count(), 1);
 
-    // what the match actually covers, according to the page itself
     const Okular::Page *page = document.page(0);
     std::unique_ptr<Okular::RegularAreaRect> match(page->findText(0, QStringLiteral("nice"), Okular::FromTop, Qt::CaseInsensitive));
     QVERIFY(match);
@@ -498,7 +498,7 @@ void SearchTest::testReportedRectIsTheMatchNotTheStartOfThePage()
     }
 
     QVERIFY(expected.top > 0.0);
-    QCOMPARE(reported.at(0), expected);
+    QCOMPARE(reported.at(0).boundingRect, expected);
 }
 
 void SearchTest::testMatchesAreHighlightedWhileTheScanIsStillRunning()
@@ -508,7 +508,7 @@ void SearchTest::testMatchesAreHighlightedWhileTheScanIsStillRunning()
 
     bool highlightedWhenReported = false;
     bool checkedAnyPage = false;
-    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int pageNumber, const QList<Okular::NormalizedRect> &matches) {
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int pageNumber, const QList<Okular::SearchMatch> &matches) {
         if (matches.isEmpty() || checkedAnyPage) {
             return;
         }
@@ -606,9 +606,8 @@ void SearchTest::testRestartingAfterResetDropsThePreviousScan()
 
     document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
 
-    // stop it mid-scan exactly as the panel does, then start the same search again
     bool restarted = false;
-    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::NormalizedRect> &) {
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::SearchMatch> &) {
         if (restarted) {
             return;
         }
@@ -634,7 +633,7 @@ void SearchTest::testCancellingASearchStopsTheScan()
     QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
 
     bool cancelled = false;
-    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::NormalizedRect> &) {
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int, const QList<Okular::SearchMatch> &) {
         if (cancelled) {
             return;
         }
@@ -652,6 +651,48 @@ void SearchTest::testCancellingASearchStopsTheScan()
 
     QVERIFY(cancelled);
     QVERIFY2(scannedSpy.count() < 40, qPrintable(QStringLiteral("scanned %1 pages of 40 after cancelling").arg(scannedSpy.count())));
+}
+
+void SearchTest::testFindAllReportsTheLineOfEachMatch()
+{
+    const QList<QString> text = {QStringLiteral("The"), QStringLiteral("quick"), QStringLiteral("brown"), QStringLiteral("fox"), QStringLiteral("over"), QStringLiteral("the"), QStringLiteral("lazy"), QStringLiteral("dog")};
+    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10),
+                                                Okular::NormalizedRect(0.25, 0.00, 0.45, 0.10),
+                                                Okular::NormalizedRect(0.55, 0.00, 0.75, 0.10),
+                                                Okular::NormalizedRect(0.85, 0.00, 1.00, 0.10),
+                                                Okular::NormalizedRect(0.00, 0.15, 0.15, 0.25),
+                                                Okular::NormalizedRect(0.25, 0.15, 0.40, 0.25),
+                                                Okular::NormalizedRect(0.50, 0.15, 0.65, 0.25),
+                                                Okular::NormalizedRect(0.75, 0.15, 0.90, 0.25)};
+    CREATE_PAGE
+
+    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("brown"), Qt::CaseSensitive);
+    QCOMPARE(matches.count(), 1);
+    QCOMPARE(matches.at(0).lineText, QStringLiteral("The quick brown fox"));
+    QCOMPARE(matches.at(0).lineText.mid(matches.at(0).offsetInLine, matches.at(0).length), QStringLiteral("brown"));
+    QCOMPARE(matches.at(0).boundingRect, rect.at(2));
+
+    const QList<Okular::SearchMatch> lazy = tp->findAll(0, QStringLiteral("lazy"), Qt::CaseSensitive);
+    QCOMPARE(lazy.count(), 1);
+    QCOMPARE(lazy.at(0).lineText, QStringLiteral("over the lazy dog"));
+
+    delete page;
+}
+
+void SearchTest::testFindAllLocatesARepeatedWordInItsLine()
+{
+    const QList<QString> text = {QStringLiteral("one"), QStringLiteral("two"), QStringLiteral("one"), QStringLiteral("three")};
+    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10), Okular::NormalizedRect(0.25, 0.00, 0.40, 0.10), Okular::NormalizedRect(0.50, 0.00, 0.65, 0.10), Okular::NormalizedRect(0.75, 0.00, 0.95, 0.10)};
+    CREATE_PAGE
+
+    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("one"), Qt::CaseSensitive);
+    QCOMPARE(matches.count(), 2);
+    QCOMPARE(matches.at(0).lineText, QStringLiteral("one two one three"));
+    QCOMPARE(matches.at(0).offsetInLine, 0);
+    QCOMPARE(matches.at(1).offsetInLine, 8);
+    QCOMPARE(matches.at(1).lineText.mid(matches.at(1).offsetInLine, matches.at(1).length), QStringLiteral("one"));
+
+    delete page;
 }
 
 int main(int argc, char *argv[])

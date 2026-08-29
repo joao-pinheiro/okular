@@ -1796,54 +1796,33 @@ void DocumentPrivate::doContinueAllDocumentSearch(int startPage, int scannedPage
             m_parent->requestTextPage(page->number());
         }
 
-        // loop on a page collecting all found items
-        QList<RegularAreaRect *> matches;
-        RegularAreaRect *lastMatch = nullptr;
-        while (true) {
-            if (lastMatch) {
-                lastMatch = page->findText(searchID, search->cachedString, NextResult, search->cachedCaseSensitivity, lastMatch);
-            } else {
-                lastMatch = page->findText(searchID, search->cachedString, FromTop, search->cachedCaseSensitivity);
-            }
-
-            if (!lastMatch) {
-                break;
-            }
-
-            matches.append(lastMatch);
+        // every match on the page, each with the line it sits on
+        QList<TextMatch> matches;
+        if (TextPage *textPage = page->d->m_text) {
+            matches = textPage->findAllWithAreas(searchID, search->cachedString, search->cachedCaseSensitivity);
         }
 
         // Highlight the page's matches and report them now rather than once the
         // whole document has been scanned: a caller showing results as they
         // arrive would otherwise send the reader to a match that is not yet
         // marked on the page.
-        QList<NormalizedRect> matchBoundingRects;
+        QList<SearchMatch> reported;
         if (!matches.isEmpty()) {
-            matchBoundingRects.reserve(matches.count());
-            for (const RegularAreaRect *match : std::as_const(matches)) {
-                if (match->isEmpty()) {
-                    continue;
-                }
-                // Seed the union with a real part: a default NormalizedRect is (0,0,0,0),
-                // and uniting with it would pin the result to the top left of the page.
-                NormalizedRect boundingRect = match->first();
-                for (const NormalizedRect &part : *match) {
-                    boundingRect |= part;
-                }
-                matchBoundingRects.append(boundingRect);
-
-                page->d->setHighlight(*match, search->cachedColor, searchID);
+            reported.reserve(matches.count());
+            for (const TextMatch &match : std::as_const(matches)) {
+                reported.append(match.match);
+                page->d->setHighlight(*match.area, search->cachedColor, searchID);
+                delete match.area;
             }
             search->highlightedPages.insert(currentPage);
             foundAMatch = true;
             for (DocumentObserver *observer : std::as_const(m_observers)) {
                 observer->notifyPageChanged(currentPage, DocumentObserver::Highlights);
             }
-            qDeleteAll(matches);
         }
         // A directly connected slot can cancel or reset this search from inside
         // the emit; the next tick re-reads that state before touching the search.
-        Q_EMIT m_parent->searchPageScanned(searchID, currentPage, matchBoundingRects);
+        Q_EMIT m_parent->searchPageScanned(searchID, currentPage, reported);
 
         QTimer::singleShot(0, m_parent, [this, startPage, scannedPages, generation, searchID, foundAMatch] { doContinueAllDocumentSearch(startPage, scannedPages + 1, generation, searchID, foundAMatch); });
     } else {
@@ -2247,6 +2226,7 @@ Document::Document(QWidget *widget)
     connect(d->m_undoStack, &QUndoStack::cleanChanged, this, &Document::undoHistoryCleanChanged);
 
     qRegisterMetaType<Okular::FontInfo>();
+    qRegisterMetaType<QList<Okular::SearchMatch>>();
 }
 
 Document::~Document()

@@ -375,7 +375,7 @@ void SearchResultsPanelTest::testClearingTheFieldStopsTheRunningSearch()
 
     QSignalSpy scannedSpy(&f.document, &Okular::Document::searchPageScanned);
     bool stopped = false;
-    QObject::connect(&f.document, &Okular::Document::searchPageScanned, &f.document, [&](int, int, const QList<Okular::NormalizedRect> &) {
+    QObject::connect(&f.document, &Okular::Document::searchPageScanned, &f.document, [&](int, int, const QList<Okular::SearchMatch> &) {
         if (stopped) {
             return;
         }
@@ -402,7 +402,7 @@ void SearchResultsPanelTest::testClearingTheFieldStopsTheScanEvenWithoutFindAsYo
 
     QSignalSpy scannedSpy(&f.document, &Okular::Document::searchPageScanned);
     bool stopped = false;
-    QObject::connect(&f.document, &Okular::Document::searchPageScanned, &f.document, [&](int, int, const QList<Okular::NormalizedRect> &) {
+    QObject::connect(&f.document, &Okular::Document::searchPageScanned, &f.document, [&](int, int, const QList<Okular::SearchMatch> &) {
         if (stopped) {
             return;
         }

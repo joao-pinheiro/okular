@@ -16,6 +16,7 @@
 #include "okularcore_export.h"
 #include "pagesize.h"
 #include "signatureutils.h"
+#include "textpage.h"
 
 #include <QDomDocument>
 #include <QList>
@@ -1372,13 +1373,13 @@ Q_SIGNALS:
      * Reports that an AllDocument search has finished scanning one page.
      *
      * Emitted for every page as the scan progresses, so that a caller can display
-     * results and progress while the search is still running. @p matches holds the
-     * bounding rectangle of every match found on that page, and is empty for a page
-     * with no match.
+     * results and progress while the search is still running. @p matches holds every
+     * match found on that page, each with its bounding rectangle and the line it
+     * sits on, and is empty for a page with no match.
      *
      * @since 26.12
      */
-    void searchPageScanned(int searchID, int pageNumber, const QList<Okular::NormalizedRect> &matches);
+    void searchPageScanned(int searchID, int pageNumber, const QList<Okular::SearchMatch> &matches);
 
     /**
      * This signal is emitted whenever a source reference with the given parameters has been

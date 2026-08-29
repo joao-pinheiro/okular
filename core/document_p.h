@@ -12,6 +12,7 @@
 #include "script/event_p.h"
 
 #include "synctex/synctex_parser.h"
+#include "textpage_p.h"
 #include <memory>
 
 // qt/kde/system includes

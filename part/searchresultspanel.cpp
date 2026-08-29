@@ -281,7 +281,7 @@ void SearchResultsPanel::slotSearchStopped()
     updateStatus();
 }
 
-void SearchResultsPanel::slotPageScanned(int searchID, int pageNumber, const QList<Okular::NormalizedRect> &matches)
+void SearchResultsPanel::slotPageScanned(int searchID, int pageNumber, const QList<Okular::SearchMatch> &matches)
 {
     if (searchID != SEARCH_PANEL_SEARCH_ID) {
         return;
@@ -290,18 +290,19 @@ void SearchResultsPanel::slotPageScanned(int searchID, int pageNumber, const QLi
     ++m_scannedPages;
 
     if (!matches.isEmpty()) {
-        const Okular::Page *page = m_document->page(pageNumber);
-        if (page) {
-            // one word-list fetch serves every match on the page: each fetch
-            // walks and transforms the page's entire text
-            const Okular::TextEntity::List pageWords = page->words(nullptr, Okular::TextPage::CentralPixelTextAreaInclusionBehaviour);
-            QList<SearchResult> results;
-            results.reserve(matches.count());
-            for (const Okular::NormalizedRect &match : matches) {
-                results.append(SearchResultsModel::searchResultForMatch(pageWords, pageNumber, match));
-            }
-            enqueueResults(results);
+        QList<SearchResult> results;
+        results.reserve(matches.count());
+        for (const Okular::SearchMatch &match : matches) {
+            SearchResult result;
+            result.pageNumber = pageNumber;
+            result.boundingRect = match.boundingRect;
+            result.snippet = match.lineText;
+            result.matchOffset = match.offsetInLine;
+            result.matchLength = match.length;
+            SearchResultsModel::elideSnippetAroundMatch(result, SearchResultsModel::DefaultSnippetLength);
+            results.append(result);
         }
+        enqueueResults(results);
     }
 }
 
