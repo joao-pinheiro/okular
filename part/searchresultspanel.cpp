@@ -306,6 +306,13 @@ void SearchResultsPanel::slotPageScanned(int searchID, int pageNumber, const QLi
     }
 }
 
+// Every flush re-lays out the whole view, so past a few thousand rows the
+// flushes are paced to the size of the list, up to one second apart.
+static int flushDelayMs(int rowCount)
+{
+    return qMin(1000, rowCount / 2500);
+}
+
 void SearchResultsPanel::enqueueResults(const QList<SearchResult> &pageResults)
 {
     if (pageResults.isEmpty()) {
@@ -315,7 +322,7 @@ void SearchResultsPanel::enqueueResults(const QList<SearchResult> &pageResults)
     m_pendingResults.append(pageResults);
     m_pendingCount += pageResults.count();
     if (!m_flushTimer->isActive()) {
-        m_flushTimer->start();
+        m_flushTimer->start(flushDelayMs(m_model->rowCount()));
     }
 }
 

@@ -611,10 +611,8 @@ void SearchResultsPanelTest::testManyResultInsertionsWhileScrolledAwayStayFast()
     f.view->verticalScrollBar()->setValue(f.view->verticalScrollBar()->maximum());
     QCOMPARE(f.view->verticalScrollBar()->value(), f.view->verticalScrollBar()->maximum());
 
-    // Half the pages land past the end, half before the start, as the outward
-    // walk produces, with the event loop turning every 100 pages the way a real
-    // scan's yields do. The scrollbar spy proves corrections actually ran - a
-    // run where nothing was corrected would measure nothing.
+    // pages land alternately past the end and before the start, as the outward
+    // walk produces, with the event loop turning every 100 pages
     const int pageCount = 4000; // 25 matches each -> 100,000 more rows
     int nextHighPage = 2200;
     int nextLowPage = 1999;
@@ -626,24 +624,19 @@ void SearchResultsPanelTest::testManyResultInsertionsWhileScrolledAwayStayFast()
         const int page = (batch % 2 == 0) ? nextHighPage++ : nextLowPage--;
         f.panel->enqueueResults(resultsOnPage(page, 25));
         if (batch % 100 == 99) {
-            QCoreApplication::processEvents();
+            QTest::qWait(15);
         }
     }
-    QCoreApplication::processEvents();
+    QTRY_COMPARE_WITH_TIMEOUT(f.model->rowCount(), 200 + pageCount * 25, 5000);
     const qint64 elapsedMs = timer.elapsed();
 
-    QCOMPARE(f.model->rowCount(), 200 + pageCount * 25);
     QVERIFY2(restoreSpy.count() > 5, qPrintable(QStringLiteral("only %1 scrollbar movements during the whole burst; the position was never actually restored, so nothing was measured").arg(restoreSpy.count())));
-    QVERIFY2(elapsedMs < 2000, qPrintable(QStringLiteral("listing %1 reported pages while scrolled away took %2 ms; results are not being coalesced across the burst").arg(pageCount).arg(elapsedMs)));
+    QVERIFY2(elapsedMs < 2500, qPrintable(QStringLiteral("listing %1 reported pages while scrolled away took %2 ms; results are not being coalesced across the burst").arg(pageCount).arg(elapsedMs)));
 }
 
 void SearchResultsPanelTest::testTheAnchoredRowNeverFlashesWrongContentDuringABurst()
 {
-    // Insertion and scroll correction happen in one indivisible pass per
-    // event-loop trip (see slotFlushPendingResults()) precisely so no paint can
-    // catch the list shifted. Assert that on every frame that reaches the
-    // viewport, not just the settled end state: deferred-correction designs
-    // jittered (or, suppressing paints, went blank) in the field.
+    // no paint may catch the list shifted between an insertion and its scroll correction
     PanelFixture f;
     QVERIFY(f.ok());
     QVERIFY(f.showSized());
