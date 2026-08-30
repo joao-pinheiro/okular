@@ -1625,15 +1625,15 @@ TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageH
 /**
  * Correct the textOrder, all layout recognition works here
  */
-void TextPagePrivate::correctTextOrder()
+void TextPagePrivate::correctTextOrder(double rawPageWidth, double rawPageHeight)
 {
-    // m_page->width() and m_page->height() are in pixels at
+    // rawPageWidth and rawPageHeight are in pixels at
     // 100% zoom level, and thus depend on display DPI.
     // To avoid Okular failing on lowDPI displays,
     // we scale pageWidth and pageHeight so their sum equals 2000.
-    const double scalingFactor = 2000.0 / (m_page->width() + m_page->height());
-    const int pageWidth = (int)(scalingFactor * m_page->width());
-    const int pageHeight = (int)(scalingFactor * m_page->height());
+    const double scalingFactor = 2000.0 / (rawPageWidth + rawPageHeight);
+    const int pageWidth = (int)(scalingFactor * rawPageWidth);
+    const int pageHeight = (int)(scalingFactor * rawPageHeight);
 
     TextEntity::List characters = m_words;
 
@@ -1972,6 +1972,20 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
     return ret;
 }
 
+void TextPage::prepareForPage(const Page *page)
+{
+    prepareForPage(page, page->width(), page->height());
+}
+
+void TextPage::prepareForPage(const Page *page, double width, double height)
+{
+    d->m_page = page;
+    d->correctTextOrder(width, height);
+}
+
+bool TextPage::isPreparedFor(const Page *page) const
+{
+    return d->m_page == page;
 QList<SearchMatch> TextPage::findAll(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity)
 {
     QList<SearchMatch> matches;

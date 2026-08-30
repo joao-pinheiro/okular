@@ -72,6 +72,8 @@ private Q_SLOTS:
     void testRestartingASearchDropsThePreviousScan();
     void testRestartingAfterResetDropsThePreviousScan();
     void testCancellingASearchStopsTheScan();
+    void testTextPageCanBePreparedBeforeBeingAttached();
+    void testTextPageSnapshotMatchesLiveGeometry();
     void testFindAllReportsTheLineOfEachMatch();
     void testFindAllLocatesARepeatedWordInItsLine();
 };
@@ -653,6 +655,63 @@ void SearchTest::testCancellingASearchStopsTheScan()
     QVERIFY2(scannedSpy.count() < 40, qPrintable(QStringLiteral("scanned %1 pages of 40 after cancelling").arg(scannedSpy.count())));
 }
 
+void SearchTest::testTextPageCanBePreparedBeforeBeingAttached()
+{
+    const QList<QString> words = {QStringLiteral("Only"), QStringLiteral("one"), QStringLiteral("column"), QStringLiteral("here")};
+    const QList<Okular::NormalizedRect> rects = {Okular::NormalizedRect(0.0, 0.0, 0.2, 0.1), Okular::NormalizedRect(0.3, 0.0, 0.5, 0.1), Okular::NormalizedRect(0.6, 0.0, 0.9, 0.1), Okular::NormalizedRect(0.0, 0.15, 0.2, 0.25)};
+
+    Okular::Page reference(0, 100, 100, Okular::Rotation0);
+    Okular::TextPage *referenceText = new Okular::TextPage();
+    for (int i = 0; i < words.size(); ++i) {
+        referenceText->append(words[i], rects[i]);
+    }
+    reference.setTextPage(referenceText);
+
+    Okular::Page prepared(0, 100, 100, Okular::Rotation0);
+    Okular::TextPage *preparedText = new Okular::TextPage();
+    for (int i = 0; i < words.size(); ++i) {
+        preparedText->append(words[i], rects[i]);
+    }
+    preparedText->prepareForPage(&prepared);
+    prepared.setTextPage(preparedText);
+
+    QCOMPARE(prepared.text(), reference.text());
+}
+
+void SearchTest::testTextPageSnapshotMatchesLiveGeometry()
+{
+    // the layout analysis must use the snapshot passed in, never the page's live geometry
+    const QList<QString> words = {QStringLiteral("This"), QStringLiteral("text"), QStringLiteral("in"), QStringLiteral("two"), QStringLiteral("is"), QStringLiteral("set"), QStringLiteral("columns.")};
+    const QList<Okular::NormalizedRect> rects = {Okular::NormalizedRect(0.0, 0.0, 0.20, 0.1),
+                                                 Okular::NormalizedRect(0.25, 0.0, 0.45, 0.1),
+                                                 Okular::NormalizedRect(0.6, 0.0, 0.7, 0.1),
+                                                 Okular::NormalizedRect(0.75, 0.0, 0.9, 0.1),
+                                                 Okular::NormalizedRect(0.0, 0.15, 0.1, 0.25),
+                                                 Okular::NormalizedRect(0.15, 0.15, 0.3, 0.25),
+                                                 Okular::NormalizedRect(0.6, 0.15, 1.0, 0.25)};
+
+    // the page's own geometry matches the square snapshot, not the narrow one
+    Okular::Page page(0, 100, 100, Okular::Rotation0);
+
+    Okular::TextPage *squareText = new Okular::TextPage();
+    for (int i = 0; i < words.size(); ++i) {
+        squareText->append(words[i], rects[i]);
+    }
+    squareText->prepareForPage(&page, 100, 100);
+    Okular::RegularAreaRect *squareResult = squareText->findText(0, QStringLiteral("This text in"), Okular::FromTop, Qt::CaseSensitive, nullptr);
+    QVERIFY(!squareResult);
+    delete squareResult;
+    delete squareText;
+
+    Okular::TextPage *narrowText = new Okular::TextPage();
+    for (int i = 0; i < words.size(); ++i) {
+        narrowText->append(words[i], rects[i]);
+    }
+    narrowText->prepareForPage(&page, 20, 2000);
+    Okular::RegularAreaRect *narrowResult = narrowText->findText(0, QStringLiteral("This text in"), Okular::FromTop, Qt::CaseSensitive, nullptr);
+    QVERIFY(narrowResult);
+    delete narrowResult;
+    delete narrowText;
 void SearchTest::testFindAllReportsTheLineOfEachMatch()
 {
     const QList<QString> text = {QStringLiteral("The"), QStringLiteral("quick"), QStringLiteral("brown"), QStringLiteral("fox"), QStringLiteral("over"), QStringLiteral("the"), QStringLiteral("lazy"), QStringLiteral("dog")};

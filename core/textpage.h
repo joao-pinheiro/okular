@@ -220,6 +220,25 @@ public:
     std::unique_ptr<RegularAreaRect> textArea(const TextSelection &selection) const;
 
     /**
+     * Attaches this text page to @p page and runs the layout analysis needed by
+     * text search and selection, using @p page's width() and height().
+     * Main-thread only, as it reads the page's geometry.
+     *
+     * @since 26.12
+     */
+    void prepareForPage(const Page *page);
+
+    /**
+     * Same as prepareForPage(const Page *), with @p width and @p height in place
+     * of the page's own. Never reads the page's geometry, so it can run on a
+     * worker thread.
+     *
+     * @since 26.12
+     */
+    void prepareForPage(const Page *page, double width, double height);
+
+    /** Whether prepareForPage() has already run for @p page. @since 26.12 */
+    bool isPreparedFor(const Page *page) const;
      * Finds every occurrence of @p text on the page, each with the line it sits
      * on: findText() run to exhaustion under @p searchID, the match then located
      * in its line's text. The page's words are read once however many matches

@@ -57,9 +57,10 @@ public:
 
     /**
      * Make necessary modifications in the TextList to make the text order correct, so
-     * that textselection works fine
+     * that textselection works fine. Width and height are passed in: this can run
+     * off the main thread, where m_page's geometry may change concurrently.
      */
-    void correctTextOrder();
+    void correctTextOrder(double pageWidth, double pageHeight);
 
     /** The matrix search results are transformed with: the page's rotation, or the identity when no page is attached. */
     QTransform searchMatrix() const;
@@ -67,7 +68,10 @@ public:
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;
     QMap<int, SearchPoint *> m_searchPoints;
-    Page *m_page;
+    /** Set by TextPage::prepareForPage() and nowhere else, so a non-null value
+     *  also means the preparation ran: TextPage::isPreparedFor() is just a
+     *  comparison against it. */
+    const Page *m_page = nullptr;
 
 private:
     RegularAreaRect *searchPointToArea(const SearchPoint *sp);

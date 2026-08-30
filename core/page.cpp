@@ -106,6 +106,11 @@ PagePrivate *PagePrivate::get(Page *page)
     return page ? page->d : nullptr;
 }
 
+const PagePrivate *PagePrivate::get(const Page *page)
+{
+    return page ? page->d : nullptr;
+}
+
 void PagePrivate::imageRotationDone(RotationJob *job)
 {
     TilesManager *tm = tilesManager(job->observer());
@@ -615,9 +620,9 @@ void Page::setTextPage(TextPage *textPage)
 
     d->m_text = textPage;
     if (d->m_text) {
-        d->m_text->d->m_page = this;
-        // Correct/optimize text order for search and text selection
-        d->m_text->d->correctTextOrder();
+        if (!d->m_text->isPreparedFor(this)) {
+            d->m_text->prepareForPage(this);
+        }
     }
 }
 
