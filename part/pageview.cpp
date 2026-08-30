@@ -224,7 +224,7 @@ public:
     bool horizontalScrollBarVisible = false;
 
     // how far the mouse needs to be from viewport edges to start drag scrolling
-    const int dragScrollMargin = 48;
+    const int dragScrollMargin = 24;
     // drag scroll
     QPoint dragScrollVector;
     QTimer dragScrollTimer;
@@ -3846,7 +3846,7 @@ void PageView::scrollPosIntoView(const QPoint pos)
 
     int left = horizontalScrollBar()->value() + d->dragScrollMargin;
     int right = horizontalScrollBar()->value() + viewport()->width() - d->dragScrollMargin;
-    int top    = verticalScrollBar()->value() + d->dragScrollMargin;
+    int top = verticalScrollBar()->value() + d->dragScrollMargin;
     int bottom = verticalScrollBar()->value() + viewport()->height() - d->dragScrollMargin;
 
     if (pos.x() < left) {
