@@ -50,9 +50,21 @@ class Page;
 class PixmapRequest;
 class PixmapRequestPrivate;
 class TextPage;
+class TextPageJob;
 class TextRequest;
 class TextRequestPrivate;
 class NormalizedRect;
+
+/**
+ * How many pages a document-wide search may extract text from at once, for a
+ * document of @p documentSize bytes (-1 when unknown): at most 8, never more
+ * than the machine has cores, and within the memory budget of the memory level
+ * the user chose. Shared between the document, which caps its worker count with
+ * it, and a generator sizing resources for concurrent textPage() calls.
+ *
+ * @since 26.12
+ */
+OKULARCORE_EXPORT int maxConcurrentTextExtractions(qint64 documentSize);
 
 /* Note: on contents generation and asynchronous queries.
  * Many observers may want to request data synchronously or asynchronously.
@@ -185,6 +197,7 @@ class OKULARCORE_EXPORT Generator : public QObject
     /// @cond PRIVATE
     friend class PixmapGenerationThread;
     friend class TextPageGenerationThread;
+    friend class TextPageJob;
     /// @endcond
 
     Q_OBJECT

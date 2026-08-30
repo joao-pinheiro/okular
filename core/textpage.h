@@ -121,8 +121,8 @@ class OKULARCORE_EXPORT TextPage
     /// @cond PRIVATE
     friend class Page;
     friend class PagePrivate;
-    // the document-wide search: findAllWithAreas() on a page it is scanning
     friend class DocumentPrivate;
+    friend class TextPageJob;
     /// @endcond
 
 public:
@@ -239,22 +239,16 @@ public:
 
     /** Whether prepareForPage() has already run for @p page. @since 26.12 */
     bool isPreparedFor(const Page *page) const;
-     * Finds every occurrence of @p text on the page, each with the line it sits
-     * on: findText() run to exhaustion under @p searchID, the match then located
-     * in its line's text. The page's words are read once however many matches
-     * there are.
+
+    /**
+     * Finds every occurrence of @p text on the page, each with the line it sits on.
      *
      * @since 26.12
      */
     QList<SearchMatch> findAll(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity);
 
 private:
-    /**
-     * findAll() keeping each match's area (owned by the caller), for the
-     * document-wide search that both highlights and reports matches. Areas and
-     * bounding rectangles are in the coordinates findText() produces, the
-     * page's rotated ones.
-     */
+    // findAll() keeping each match's area, owned by the caller
     QList<TextMatch> findAllWithAreas(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity);
 
     TextPagePrivate *const d;

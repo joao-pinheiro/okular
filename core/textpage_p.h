@@ -14,6 +14,8 @@
 #include <QPair>
 #include <QTransform>
 
+#include <optional>
+
 class SearchPoint;
 
 class RegionText;
@@ -62,16 +64,16 @@ public:
      */
     void correctTextOrder(double pageWidth, double pageHeight);
 
-    /** The matrix search results are transformed with: the page's rotation, or the identity when no page is attached. */
+    /** The matrix search results are transformed with: m_matrixOverride when set, else the page's rotation, else the identity. */
     QTransform searchMatrix() const;
 
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;
     QMap<int, SearchPoint *> m_searchPoints;
-    /** Set by TextPage::prepareForPage() and nowhere else, so a non-null value
-     *  also means the preparation ran: TextPage::isPreparedFor() is just a
-     *  comparison against it. */
-    const Page *m_page = nullptr;
+    const Page *m_page = nullptr; // set by TextPage::prepareForPage()
+    // Set by a worker searching a TextPage not attached yet: it must not read the
+    // page's geometry, so results stay unrotated and the main thread rotates them.
+    std::optional<QTransform> m_matrixOverride;
 
 private:
     RegularAreaRect *searchPointToArea(const SearchPoint *sp);

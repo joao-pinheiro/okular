@@ -43,6 +43,8 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QThread>
+#include <QThreadPool>
 #include <QTimer>
 #include <QUndoCommand>
 #include <QWindow>
@@ -88,6 +90,7 @@
 #include "sourcereference.h"
 #include "sourcereference_p.h"
 #include "texteditors_p.h"
+#include "textpagejob_p.h"
 #include "tile.h"
 #include "tilesmanager_p.h"
 #include "utils.h"
@@ -1760,108 +1763,258 @@ void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch
     delete pagesToNotify;
 }
 
-void DocumentPrivate::doContinueAllDocumentSearch(int startPage, int scannedPages, int generation, int searchID, bool foundAMatch)
+bool DocumentPrivate::abandonIfStale(AllDocumentScan *scan)
 {
-    RunningSearch *search = m_searches.value(searchID);
+    if (!scanIsStale(scan)) {
+        return false;
+    }
 
+    // jobs already on the pool cannot be aborted: the last completion frees the scan
+    if (scan->inFlight > 0) {
+        return true;
+    }
+
+    QApplication::restoreOverrideCursor();
+
+    // a superseded scan reports nothing, the newer one does
+    RunningSearch *search = m_searches.value(scan->searchID);
     if (m_searchCancelled || !search) {
-        QApplication::restoreOverrideCursor();
-
         if (search) {
             search->isCurrentlySearching = false;
         }
-
-        Q_EMIT m_parent->searchFinished(searchID, Document::SearchCancelled);
-        return;
+        Q_EMIT m_parent->searchFinished(scan->searchID, Document::SearchCancelled);
     }
 
-    // A newer search under this id has taken over: drop out without a word.
-    // The newer scan owns the reporting now, and saying anything here would
-    // double count it. The generation lives outside the RunningSearch, so this
-    // holds even when a restart went through resetSearch() and this tick found
-    // a freshly recreated struct above.
-    if (m_searchGenerations.value(searchID, -1) != generation) {
-        QApplication::restoreOverrideCursor();
-        return;
-    }
-
-    if (scannedPages < m_pagesVector.count()) {
-        // walk outward from startPage, alternating a page after with a page
-        // before, so the pages nearest the reader are reported first
-        const int currentPage = pageAtScanIndex(startPage, scannedPages);
-        Page *page = m_pagesVector.at(currentPage);
-
-        // request search page if needed
-        if (!page->hasTextPage()) {
-            m_parent->requestTextPage(page->number());
-        }
-
-        // every match on the page, each with the line it sits on
-        QList<TextMatch> matches;
-        if (TextPage *textPage = page->d->m_text) {
-            matches = textPage->findAllWithAreas(searchID, search->cachedString, search->cachedCaseSensitivity);
-        }
-
-        // Highlight the page's matches and report them now rather than once the
-        // whole document has been scanned: a caller showing results as they
-        // arrive would otherwise send the reader to a match that is not yet
-        // marked on the page.
-        QList<SearchMatch> reported;
-        if (!matches.isEmpty()) {
-            reported.reserve(matches.count());
-            for (const TextMatch &match : std::as_const(matches)) {
-                reported.append(match.match);
-                page->d->setHighlight(*match.area, search->cachedColor, searchID);
-                delete match.area;
-            }
-            search->highlightedPages.insert(currentPage);
-            foundAMatch = true;
-            for (DocumentObserver *observer : std::as_const(m_observers)) {
-                observer->notifyPageChanged(currentPage, DocumentObserver::Highlights);
-            }
-        }
-        // A directly connected slot can cancel or reset this search from inside
-        // the emit; the next tick re-reads that state before touching the search.
-        Q_EMIT m_parent->searchPageScanned(searchID, currentPage, reported);
-
-        QTimer::singleShot(0, m_parent, [this, startPage, scannedPages, generation, searchID, foundAMatch] { doContinueAllDocumentSearch(startPage, scannedPages + 1, generation, searchID, foundAMatch); });
-    } else {
-        // reset cursor to previous shape
-        QApplication::restoreOverrideCursor();
-
-        search->isCurrentlySearching = false;
-
-        for (DocumentObserver *observer : std::as_const(m_observers)) {
-            observer->notifySetup(m_pagesVector, 0);
-        }
-
-        // the matches were highlighted, notified and freed page by page while scanning
-        if (foundAMatch) {
-            Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
-        } else {
-            Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
-        }
-    }
+    m_allDocumentScans.removeOne(scan);
+    delete scan;
+    return true;
 }
 
-int DocumentPrivate::pageAtScanIndex(int startPage, int index) const
+void DocumentPrivate::doContinueAllDocumentSearch(AllDocumentScan *scan)
+{
+    if (abandonIfStale(scan)) {
+        return;
+    }
+
+    // Walk outward from startPage (see pageAtScanIndex()), keeping up to
+    // m_textPageWorkers extractions on the pool; cached pages are handled
+    // inline, the rest report back through textPageJobFinished(). With no
+    // workers, extraction happens right here, one page per event-loop tick.
+    const int pageCount = m_pagesVector.count();
+    const bool extractHere = m_textPageWorkers == 0;
+    while (scan->scannedPages < pageCount && (extractHere || scan->inFlight < m_textPageWorkers)) {
+        // pageReady() below emits searchPageScanned(), which can reenter and
+        // cancel or restart this search id mid-loop. Abandon on the spot: with
+        // nothing in flight, no completion would ever come back to clean up.
+        if (abandonIfStale(scan)) {
+            return;
+        }
+        const int currentPage = pageAtScanIndex(scan, scan->scannedPages);
+        ++scan->scannedPages;
+
+        if (m_pagesVector.at(currentPage)->hasTextPage()) {
+            findMatchesForPage(currentPage, scan);
+            pageReady(currentPage, scan);
+        } else if (extractHere) {
+            m_parent->requestTextPage(currentPage);
+            findMatchesForPage(currentPage, scan);
+            pageReady(currentPage, scan);
+            if (scan->scannedPages < pageCount) {
+                scheduleAllDocumentScan(scan->searchID, scan->generation);
+                return;
+            }
+        } else {
+            submitTextPageJob(currentPage, scan);
+        }
+    }
+
+    if (scan->reportedPages < pageCount) {
+        // still walking the document, or waiting on a page that finished out of
+        // turn to reach the front of the line: textPageJobFinished() resumes
+        // this scan as each submitted job completes
+        return;
+    }
+
+    // The last synchronously drained page can have re-entered and cancelled or
+    // restarted this search id, with the loop exiting through its page count
+    // rather than its stale check - so check once more before finishing.
+    if (abandonIfStale(scan)) {
+        return;
+    }
+
+    // reset cursor to previous shape
+    QApplication::restoreOverrideCursor();
+
+    RunningSearch *search = m_searches.value(scan->searchID);
+    search->isCurrentlySearching = false;
+
+    for (DocumentObserver *observer : std::as_const(m_observers)) {
+        observer->notifySetup(m_pagesVector, 0);
+    }
+
+    if (scan->foundAMatch) {
+        Q_EMIT m_parent->searchFinished(scan->searchID, Document::MatchFound);
+    } else {
+        Q_EMIT m_parent->searchFinished(scan->searchID, Document::NoMatchFound);
+    }
+
+    m_allDocumentScans.removeOne(scan);
+    delete scan;
+}
+
+int DocumentPrivate::pageAtScanIndex(const AllDocumentScan *scan, int index) const
 {
     if (index == 0) {
-        return startPage;
+        return scan->startPage;
     }
-    // Alternate a page after with a page before, so the pages nearest the
-    // reader come first on both sides; once the shorter side runs out, the
-    // rest of the longer side follows in order.
+    // alternate a page after with a page before; once one side runs out, the
+    // rest of the other follows in order
     const int pageCount = m_pagesVector.count();
-    const int forwardCount = pageCount - 1 - startPage; // pages after startPage
-    const int backwardCount = startPage;                // pages before startPage
+    const int forwardCount = pageCount - 1 - scan->startPage; // pages after startPage
+    const int backwardCount = scan->startPage;                // pages before startPage
     const int alternating = 2 * qMin(forwardCount, backwardCount);
     if (index <= alternating) {
         const int distance = (index + 1) / 2;
-        return index % 2 == 1 ? startPage + distance : startPage - distance;
+        return index % 2 == 1 ? scan->startPage + distance : scan->startPage - distance;
     }
     const int rest = index - alternating;
-    return forwardCount > backwardCount ? startPage + backwardCount + rest : startPage - forwardCount - rest;
+    return forwardCount > backwardCount ? scan->startPage + backwardCount + rest : scan->startPage - forwardCount - rest;
+}
+
+bool DocumentPrivate::scanIsStale(const AllDocumentScan *scan) const
+{
+    return m_searchCancelled || !m_searches.contains(scan->searchID) || m_searchGenerations.value(scan->searchID, -1) != scan->generation;
+}
+
+void DocumentPrivate::pageReady(int pageNumber, AllDocumentScan *scan)
+{
+    scan->readyPages.insert(pageNumber);
+
+    // report, in scan order, every page that is ready
+    const int pageCount = m_pagesVector.count();
+    while (scan->reportedPages < pageCount) {
+        // reporting a page can reenter and cancel or restart this search
+        if (scanIsStale(scan)) {
+            break;
+        }
+        const int nextPage = pageAtScanIndex(scan, scan->reportedPages);
+        if (!scan->readyPages.remove(nextPage)) {
+            break;
+        }
+        reportPage(nextPage, scan);
+        ++scan->reportedPages;
+    }
+}
+
+void DocumentPrivate::findMatchesForPage(int pageNumber, AllDocumentScan *scan)
+{
+    const RunningSearch *search = m_searches.value(scan->searchID);
+    Page *page = m_pagesVector.at(pageNumber);
+    if (TextPage *textPage = page->d->m_text) {
+        scan->pageMatches[page].append(textPage->findAllWithAreas(scan->searchID, search->cachedString, search->cachedCaseSensitivity));
+    }
+}
+
+void DocumentPrivate::reportPage(int pageNumber, AllDocumentScan *scan)
+{
+    RunningSearch *search = m_searches.value(scan->searchID);
+    Page *page = m_pagesVector.at(pageNumber);
+
+    // from the collected matches, not the TextPage: the cache may have evicted it by now
+    QList<SearchMatch> matches;
+    const auto pageMatchesIt = scan->pageMatches.constFind(page);
+    if (pageMatchesIt != scan->pageMatches.constEnd()) {
+        matches.reserve(pageMatchesIt->count());
+        for (const TextMatch &textMatch : *pageMatchesIt) {
+            matches.append(textMatch.match);
+            page->d->setHighlight(*textMatch.area, search->cachedColor, scan->searchID);
+            delete textMatch.area;
+        }
+        search->highlightedPages.insert(pageNumber);
+        scan->foundAMatch = true;
+        for (DocumentObserver *observer : std::as_const(m_observers)) {
+            observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+        }
+        scan->pageMatches.erase(pageMatchesIt);
+    }
+    Q_EMIT m_parent->searchPageScanned(scan->searchID, pageNumber, matches);
+}
+
+void DocumentPrivate::submitTextPageJob(int pageNumber, AllDocumentScan *scan)
+{
+    const Page *page = m_pagesVector.at(pageNumber);
+    // the page geometry is snapshotted here: rotateAt() can change it under the
+    // worker, with no locking
+    const RunningSearch *search = m_searches.value(scan->searchID);
+    auto *job = new TextPageJob(m_generator, page, pageNumber, scan->searchID, scan->generation, page->width(), page->height(), search->cachedString, search->cachedCaseSensitivity);
+    ++scan->inFlight;
+
+    // queued through m_parent, so a destroyed Document drops the completion
+    m_textPageJobPool.start([this, job] {
+        job->run();
+        QMetaObject::invokeMethod(m_parent, [this, job] { textPageJobFinished(job); }, Qt::QueuedConnection);
+    });
+}
+
+AllDocumentScan *DocumentPrivate::findAllDocumentScan(int searchID, int generation) const
+{
+    for (AllDocumentScan *candidate : std::as_const(m_allDocumentScans)) {
+        if (candidate->searchID == searchID && candidate->generation == generation) {
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
+void DocumentPrivate::scheduleAllDocumentScan(int searchID, int generation)
+{
+    // the scan is looked up when the timer fires: discardAllDocumentScans() can free it before
+    QTimer::singleShot(0, m_parent, [this, searchID, generation] {
+        if (AllDocumentScan *scan = findAllDocumentScan(searchID, generation)) {
+            doContinueAllDocumentSearch(scan);
+        }
+    });
+}
+
+void DocumentPrivate::textPageJobFinished(TextPageJob *job)
+{
+    // no scan: the document was closed while the job ran
+    AllDocumentScan *scan = findAllDocumentScan(job->searchID(), job->generation());
+
+    TextPage *result = job->takeResult();
+    if (!scan) {
+        delete result;
+        delete job;
+        return;
+    }
+
+    const bool stale = scanIsStale(scan);
+
+    if (!stale && result) {
+        Page *page = m_pagesVector.at(job->pageNumber());
+        page->setTextPage(result);
+        textGenerationDone(page); // as generateTextPage() does: keeps the text page cache bounded
+        // the worker searched in unrotated coordinates; apply the live rotation here
+        const QTransform rotationMatrix = page->d->rotationMatrix();
+        QList<TextMatch> matches = job->takeMatches();
+        for (TextMatch &match : matches) {
+            match.area->transform(rotationMatrix);
+            match.match.boundingRect.transform(rotationMatrix);
+        }
+        scan->pageMatches[page].append(matches);
+    } else {
+        delete result;
+    }
+
+    const int pageNumber = job->pageNumber();
+    --scan->inFlight;
+    delete job;
+
+    if (!stale) {
+        pageReady(pageNumber, scan);
+    }
+
+    doContinueAllDocumentSearch(scan);
 }
 
 void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words)
@@ -2182,6 +2335,16 @@ void DocumentPrivate::clearAndWaitForRequests()
             m_closingLoop = nullptr;
         }
     } while (startEventLoop);
+
+    // no TextPageJob may still read the pages or the generator once they are torn down
+    m_textPageJobPool.waitForDone();
+}
+
+void DocumentPrivate::discardAllDocumentScans()
+{
+    // a completion still queued for one of these scans finds no scan and does nothing
+    qDeleteAll(m_allDocumentScans);
+    m_allDocumentScans.clear();
 }
 
 int DocumentPrivate::findFieldPageNumber(Okular::FormField *field)
@@ -2703,6 +2866,8 @@ void Document::closeDocument()
     qDeleteAll(d->m_searches);
     d->m_searches.clear();
     d->m_pagesWithHighlightedAreas.clear();
+
+    d->discardAllDocumentScans();
 
     // clear the visible areas and notify the observers
     qDeleteAll(d->m_pageRects);
@@ -3794,11 +3959,11 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
 
     // 1. ALLDOC - process all document marking pages
     if (type == AllDocument) {
-        // The scan notifies each page as it reports it; all that is left for the
-        // set collected above is the pages a previous search under this id had
-        // highlighted, so repaint those right away rather than carry the set along.
+        // the scan notifies its own pages; only the previous highlights need repainting now
         for (const int pageNumber : std::as_const(*pagesToNotify)) {
-            foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
+            for (DocumentObserver *observer : std::as_const(d->m_observers)) {
+                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
+            }
         }
         delete pagesToNotify;
 
@@ -3807,7 +3972,15 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
         const int startPage = fromStart ? 0 : qBound(0, int(currentPage()), qMax(0, d->m_pagesVector.count() - 1));
         const int generation = ++d->m_nextSearchGeneration;
         d->m_searchGenerations[searchID] = generation;
-        QTimer::singleShot(0, this, [this, startPage, generation, searchID] { d->doContinueAllDocumentSearch(startPage, 0, generation, searchID, false); });
+
+        // no workers keeps extraction on this thread, as it always has, when
+        // threading is off or the generator cannot be called from another thread
+        const bool canParallelize = SettingsCore::self()->enableThreading() && d->m_generator->hasFeature(Generator::Threaded);
+        d->m_textPageWorkers = canParallelize ? maxConcurrentTextExtractions(d->m_docSize) : 0;
+        d->m_textPageJobPool.setMaxThreadCount(qMax(1, d->m_textPageWorkers));
+
+        d->m_allDocumentScans.append(new AllDocumentScan(startPage, generation, searchID));
+        d->scheduleAllDocumentScan(searchID, generation);
     }
     // 2. NEXTMATCH - find next matching item (or start from top)
     // 3. PREVMATCH - find previous matching item (or start from bottom)
@@ -5007,6 +5180,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
     d->saveDocumentInfo();
 
     d->clearAndWaitForRequests();
+    d->discardAllDocumentScans(); // as closeDocument() does, before the generator changes
 
     qCDebug(OkularCoreDebug) << "Swapping backing file to" << newFileName;
     QList<Page *> newPagesVector;

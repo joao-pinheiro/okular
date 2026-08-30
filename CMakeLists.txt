@@ -352,6 +352,7 @@ set(okularcore_SRCS
    core/textdocumentgenerator.cpp
    core/textdocumentsettings.cpp
    core/textpage.cpp
+   core/textpagejob.cpp
    core/tilesmanager.cpp
    core/utils.cpp
    core/view.cpp

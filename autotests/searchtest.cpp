@@ -7,13 +7,21 @@
 // clazy:excludeall=qstring-allocations
 
 #include <QApplication>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QMimeDatabase>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
+#include <QTimer>
 
 #include "../core/document.h"
+#include "../core/generator.h"
 #include "../core/page.h"
 #include "../core/textpage.h"
 #include "../settings_core.h"
@@ -29,6 +37,20 @@ static bool openForSearch(Okular::Document &document, const QString &filePath, u
         return false;
     }
     return document.pages() == expectedPages;
+}
+
+// a PDF of @p pageCount pages, each carrying just its number
+static void writeManyPagePdf(const QString &pdfPath, int pageCount)
+{
+    QPdfWriter writer(pdfPath);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    QPainter painter(&writer);
+    for (int i = 0; i < pageCount; ++i) {
+        if (i > 0) {
+            writer.newPage();
+        }
+        painter.drawText(100, 100, QString::number(i));
+    }
 }
 
 class SearchFinishedReceiver : public QObject
@@ -72,10 +94,19 @@ private Q_SLOTS:
     void testRestartingASearchDropsThePreviousScan();
     void testRestartingAfterResetDropsThePreviousScan();
     void testCancellingASearchStopsTheScan();
-    void testTextPageCanBePreparedBeforeBeingAttached();
-    void testTextPageSnapshotMatchesLiveGeometry();
+    void testRestartOnTheLastCachedPageDoesNotUseTheFreedSearch();
+    void testConcurrentExtractionCapFollowsTheMemoryLevel();
     void testFindAllReportsTheLineOfEachMatch();
     void testFindAllLocatesARepeatedWordInItsLine();
+    void testTextPageCanBePreparedBeforeBeingAttached();
+    void testTextPageSnapshotMatchesLiveGeometry();
+    void testParallelExtractionGivesTheSameResults();
+    void testThreadingOffKeepsExtractionOnTheMainThread();
+    void testDocumentCanBeClosedWhileAScanIsRunning();
+    void testClosingBeforeTheScanStartsDoesNotUseTheFreedScan();
+    void testBackingFileCanBeSwappedWhileAScanIsRunning();
+    void testTextPageCacheStaysWithinTheMemoryCap();
+    void testRotatingWhileAScanIsRunningDoesNotCorruptResults();
 };
 
 void SearchTest::initTestCase()
@@ -655,6 +686,110 @@ void SearchTest::testCancellingASearchStopsTheScan()
     QVERIFY2(scannedSpy.count() < 40, qPrintable(QStringLiteral("scanned %1 pages of 40 after cancelling").arg(scannedSpy.count())));
 }
 
+void SearchTest::testRestartOnTheLastCachedPageDoesNotUseTheFreedSearch()
+{
+    // a restart on the last page of the synchronous cached-page loop used to leave
+    // the loop holding a RunningSearch that resetSearch() had deleted
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    // prime the cache
+    {
+        QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+        QVERIFY(finishedSpy.wait(30000));
+    }
+    document.resetSearch(allDocumentTestSearchID);
+    for (uint i = 0; i < document.pages(); ++i) {
+        QVERIFY(document.page(i)->hasTextPage());
+    }
+
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    bool restarted = false;
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int searchID, int page, const QList<Okular::SearchMatch> &) {
+        if (restarted || page != 39) {
+            return;
+        }
+        restarted = true;
+        document.cancelSearch();
+        document.resetSearch(searchID);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    });
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    // a memory-checking build (ASan, valgrind) turns the use-after-free into a hard failure
+    QTRY_VERIFY_WITH_TIMEOUT(restarted, 30000);
+    QTRY_VERIFY_WITH_TIMEOUT(finishedSpy.count() >= 1, 30000);
+}
+
+void SearchTest::testConcurrentExtractionCapFollowsTheMemoryLevel()
+{
+    const auto previous = Okular::SettingsCore::memoryLevel();
+    const int machineCap = qMax(1, qMin(8, QThread::idealThreadCount()));
+    constexpr qint64 mib = 1024 * 1024;
+
+    Okular::SettingsCore::setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Low);
+    QCOMPARE(Okular::maxConcurrentTextExtractions(2 * mib), machineCap);
+    QCOMPARE(Okular::maxConcurrentTextExtractions(-1), machineCap);
+    // a 400 MiB document costs ~300 MiB per context: more than Low's whole budget
+    QCOMPARE(Okular::maxConcurrentTextExtractions(400 * mib), 1);
+
+    Okular::SettingsCore::setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Normal);
+    QCOMPARE(Okular::maxConcurrentTextExtractions(400 * mib), qMin(3, machineCap));
+
+    Okular::SettingsCore::setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Aggressive);
+    QCOMPARE(Okular::maxConcurrentTextExtractions(400 * mib), qMin(6, machineCap));
+
+    Okular::SettingsCore::setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Greedy);
+    QCOMPARE(Okular::maxConcurrentTextExtractions(400 * mib), machineCap);
+
+    Okular::SettingsCore::setMemoryLevel(previous);
+}
+
+void SearchTest::testFindAllReportsTheLineOfEachMatch()
+{
+    const QList<QString> text = {QStringLiteral("The"), QStringLiteral("quick"), QStringLiteral("brown"), QStringLiteral("fox"), QStringLiteral("over"), QStringLiteral("the"), QStringLiteral("lazy"), QStringLiteral("dog")};
+    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10),
+                                                Okular::NormalizedRect(0.25, 0.00, 0.45, 0.10),
+                                                Okular::NormalizedRect(0.55, 0.00, 0.75, 0.10),
+                                                Okular::NormalizedRect(0.85, 0.00, 1.00, 0.10),
+                                                Okular::NormalizedRect(0.00, 0.15, 0.15, 0.25),
+                                                Okular::NormalizedRect(0.25, 0.15, 0.40, 0.25),
+                                                Okular::NormalizedRect(0.50, 0.15, 0.65, 0.25),
+                                                Okular::NormalizedRect(0.75, 0.15, 0.90, 0.25)};
+    CREATE_PAGE
+
+    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("brown"), Qt::CaseSensitive);
+    QCOMPARE(matches.count(), 1);
+    QCOMPARE(matches.at(0).lineText, QStringLiteral("The quick brown fox"));
+    QCOMPARE(matches.at(0).lineText.mid(matches.at(0).offsetInLine, matches.at(0).length), QStringLiteral("brown"));
+    QCOMPARE(matches.at(0).boundingRect, rect.at(2));
+
+    const QList<Okular::SearchMatch> lazy = tp->findAll(0, QStringLiteral("lazy"), Qt::CaseSensitive);
+    QCOMPARE(lazy.count(), 1);
+    QCOMPARE(lazy.at(0).lineText, QStringLiteral("over the lazy dog"));
+
+    delete page;
+}
+
+void SearchTest::testFindAllLocatesARepeatedWordInItsLine()
+{
+    const QList<QString> text = {QStringLiteral("one"), QStringLiteral("two"), QStringLiteral("one"), QStringLiteral("three")};
+    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10), Okular::NormalizedRect(0.25, 0.00, 0.40, 0.10), Okular::NormalizedRect(0.50, 0.00, 0.65, 0.10), Okular::NormalizedRect(0.75, 0.00, 0.95, 0.10)};
+    CREATE_PAGE
+
+    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("one"), Qt::CaseSensitive);
+    QCOMPARE(matches.count(), 2);
+    QCOMPARE(matches.at(0).lineText, QStringLiteral("one two one three"));
+    QCOMPARE(matches.at(0).offsetInLine, 0);
+    QCOMPARE(matches.at(1).offsetInLine, 8);
+    QCOMPARE(matches.at(1).lineText.mid(matches.at(1).offsetInLine, matches.at(1).length), QStringLiteral("one"));
+
+    delete page;
+}
+
 void SearchTest::testTextPageCanBePreparedBeforeBeingAttached()
 {
     const QList<QString> words = {QStringLiteral("Only"), QStringLiteral("one"), QStringLiteral("column"), QStringLiteral("here")};
@@ -712,46 +847,167 @@ void SearchTest::testTextPageSnapshotMatchesLiveGeometry()
     QVERIFY(narrowResult);
     delete narrowResult;
     delete narrowText;
-void SearchTest::testFindAllReportsTheLineOfEachMatch()
-{
-    const QList<QString> text = {QStringLiteral("The"), QStringLiteral("quick"), QStringLiteral("brown"), QStringLiteral("fox"), QStringLiteral("over"), QStringLiteral("the"), QStringLiteral("lazy"), QStringLiteral("dog")};
-    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10),
-                                                Okular::NormalizedRect(0.25, 0.00, 0.45, 0.10),
-                                                Okular::NormalizedRect(0.55, 0.00, 0.75, 0.10),
-                                                Okular::NormalizedRect(0.85, 0.00, 1.00, 0.10),
-                                                Okular::NormalizedRect(0.00, 0.15, 0.15, 0.25),
-                                                Okular::NormalizedRect(0.25, 0.15, 0.40, 0.25),
-                                                Okular::NormalizedRect(0.50, 0.15, 0.65, 0.25),
-                                                Okular::NormalizedRect(0.75, 0.15, 0.90, 0.25)};
-    CREATE_PAGE
-
-    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("brown"), Qt::CaseSensitive);
-    QCOMPARE(matches.count(), 1);
-    QCOMPARE(matches.at(0).lineText, QStringLiteral("The quick brown fox"));
-    QCOMPARE(matches.at(0).lineText.mid(matches.at(0).offsetInLine, matches.at(0).length), QStringLiteral("brown"));
-    QCOMPARE(matches.at(0).boundingRect, rect.at(2));
-
-    const QList<Okular::SearchMatch> lazy = tp->findAll(0, QStringLiteral("lazy"), Qt::CaseSensitive);
-    QCOMPARE(lazy.count(), 1);
-    QCOMPARE(lazy.at(0).lineText, QStringLiteral("over the lazy dog"));
-
-    delete page;
 }
 
-void SearchTest::testFindAllLocatesARepeatedWordInItsLine()
+void SearchTest::testParallelExtractionGivesTheSameResults()
 {
-    const QList<QString> text = {QStringLiteral("one"), QStringLiteral("two"), QStringLiteral("one"), QStringLiteral("three")};
-    const QList<Okular::NormalizedRect> rect = {Okular::NormalizedRect(0.00, 0.00, 0.15, 0.10), Okular::NormalizedRect(0.25, 0.00, 0.40, 0.10), Okular::NormalizedRect(0.50, 0.00, 0.65, 0.10), Okular::NormalizedRect(0.75, 0.00, 0.95, 0.10)};
-    CREATE_PAGE
+    auto runSearch = [](int workers) {
+        Okular::SettingsCore::self()->setEnableThreading(workers > 1);
+        Okular::Document document(nullptr);
+        [&] { QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40)); }();
 
-    const QList<Okular::SearchMatch> matches = tp->findAll(0, QStringLiteral("one"), Qt::CaseSensitive);
-    QCOMPARE(matches.count(), 2);
-    QCOMPARE(matches.at(0).lineText, QStringLiteral("one two one three"));
-    QCOMPARE(matches.at(0).offsetInLine, 0);
-    QCOMPARE(matches.at(1).offsetInLine, 8);
-    QCOMPARE(matches.at(1).lineText.mid(matches.at(1).offsetInLine, matches.at(1).length), QStringLiteral("one"));
+        QList<QPair<int, int>> reported; // page number, match count
+        QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int, int page, const QList<Okular::SearchMatch> &matches) { reported.append({page, matches.count()}); });
+        QSignalSpy finished(&document, &Okular::Document::searchFinished);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+        [&] { QVERIFY(finished.wait(60000)); }();
+        return reported;
+    };
 
-    delete page;
+    const QList<QPair<int, int>> single = runSearch(1);
+    const QList<QPair<int, int>> parallel = runSearch(8);
+
+    QCOMPARE(single.count(), 40);
+    QCOMPARE(parallel, single);
+}
+
+void SearchTest::testThreadingOffKeepsExtractionOnTheMainThread()
+{
+    // nothing exposes the pool, so count the process's threads: a scan on the pool
+    // leaves its idle workers behind
+#ifndef Q_OS_LINUX
+    QSKIP("counts the process's threads through /proc");
+#endif
+    auto threadCount = [] { return QDir(QStringLiteral("/proc/self/task")).entryList(QDir::Dirs | QDir::NoDotAndDotDot).count(); };
+    auto threadsStartedByAScan = [&](bool threading) {
+        Okular::SettingsCore::self()->setEnableThreading(threading);
+        Okular::Document document(nullptr);
+        [&] { QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40)); }();
+        const int before = threadCount();
+        QSignalSpy finished(&document, &Okular::Document::searchFinished);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+        [&] { QVERIFY(finished.wait(60000)); }();
+        return threadCount() - before;
+    };
+
+    QVERIFY(threadsStartedByAScan(true) > 0);
+    QCOMPARE(threadsStartedByAScan(false), 0);
+}
+
+void SearchTest::testDocumentCanBeClosedWhileAScanIsRunning()
+{
+    Okular::SettingsCore::self()->setEnableThreading(true);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString pdfPath = tempDir.path() + QStringLiteral("/closing-many-pages.pdf");
+    constexpr int pageCount = 500;
+    writeManyPagePdf(pdfPath, pageCount);
+
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, pdfPath, uint(pageCount)));
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("this text does not appear anywhere"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QCoreApplication::processEvents(); // lets the scan submit its first jobs
+    document.closeDocument();
+
+    QCOMPARE(document.pages(), uint(0));
+}
+
+void SearchTest::testClosingBeforeTheScanStartsDoesNotUseTheFreedScan()
+{
+    // the scan's first tick fires after the scan was freed; ASan or valgrind catch the wrong form
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    document.closeDocument();
+    QCOMPARE(document.pages(), uint(0));
+
+    QTest::qWait(50);
+}
+
+void SearchTest::testBackingFileCanBeSwappedWhileAScanIsRunning()
+{
+    Okular::SettingsCore::self()->setEnableThreading(true);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString pdfPath = tempDir.path() + QStringLiteral("/swap-many-pages-1.pdf");
+    const QString pdfPath2 = tempDir.path() + QStringLiteral("/swap-many-pages-2.pdf");
+    constexpr int pageCount = 500;
+    writeManyPagePdf(pdfPath, pageCount);
+    writeManyPagePdf(pdfPath2, pageCount);
+
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, pdfPath, uint(pageCount)));
+    QVERIFY(document.canSwapBackingFile());
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("this text does not appear anywhere"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QCoreApplication::processEvents(); // lets the scan submit its first jobs
+    QVERIFY(document.swapBackingFile(pdfPath2, QUrl::fromLocalFile(pdfPath2)));
+
+    QCOMPARE(document.pages(), uint(pageCount));
+}
+
+void SearchTest::testTextPageCacheStaysWithinTheMemoryCap()
+{
+    // Low keeps the text page cache below this page count on any machine
+    Okular::SettingsCore::self()->setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Low);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString pdfPath = tempDir.path() + QStringLiteral("/many-pages.pdf");
+    constexpr int pageCount = 2000;
+    writeManyPagePdf(pdfPath, pageCount);
+
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, pdfPath, uint(pageCount)));
+
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+    document.searchText(allDocumentTestSearchID, QStringLiteral("this text does not appear anywhere"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QVERIFY(finishedSpy.wait(120000));
+
+    int pagesWithTextPage = 0;
+    for (uint i = 0; i < document.pages(); ++i) {
+        if (document.page(i)->hasTextPage()) {
+            ++pagesWithTextPage;
+        }
+    }
+    QVERIFY2(pagesWithTextPage < pageCount, qPrintable(QStringLiteral("%1 of %2 pages still hold a text page: nothing is being evicted").arg(pagesWithTextPage).arg(pageCount)));
+
+    Okular::SettingsCore::self()->setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Normal);
+}
+
+void SearchTest::testRotatingWhileAScanIsRunningDoesNotCorruptResults()
+{
+    // only a TSan build can catch the race itself; this checks that rotating
+    // mid-scan is otherwise clean
+    Okular::SettingsCore::self()->setEnableThreading(true);
+
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, QStringLiteral(KDESRCDIR "data/simple-multipage.pdf"), 40));
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    int rotations = 0;
+    QObject::connect(&document, &Okular::Document::searchPageScanned, &document, [&](int, int, const QList<Okular::SearchMatch> &) {
+        if (rotations < 4) {
+            ++rotations;
+            document.setRotation((document.rotation() + 1) % 4);
+        }
+    });
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+
+    QVERIFY(finishedSpy.wait(30000));
+
+    QCOMPARE(scannedSpy.count(), 40);
+    QCOMPARE(rotations, 4);
+    for (uint i = 0; i < document.pages(); ++i) {
+        QVERIFY(document.page(i)->hasTextPage());
+    }
 }
 
 int main(int argc, char *argv[])

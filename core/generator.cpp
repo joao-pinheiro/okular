@@ -22,6 +22,7 @@
 #include <QDebug>
 #include <QIcon>
 #include <QMimeDatabase>
+#include <QThread>
 #include <QTimer>
 
 #if HAVE_KWALLET
@@ -31,6 +32,7 @@
 #include "document_p.h"
 #include "page.h"
 #include "page_p.h"
+#include "settings_core.h"
 #include "textpage.h"
 #include "utils.h"
 
@@ -834,3 +836,33 @@ QDebug operator<<(QDebug str, const Okular::PixmapRequest &req)
 }
 
 /* kate: replace-tabs on; indent-width 4; */
+
+int Okular::maxConcurrentTextExtractions(qint64 documentSize)
+{
+    // past this many, measured gains are marginal and backend contention grows
+    constexpr int HardCap = 8;
+    const int machineCap = qMax(1, qMin(HardCap, QThread::idealThreadCount()));
+
+    qint64 budget = -1;
+    switch (SettingsCore::memoryLevel()) {
+    case SettingsCore::EnumMemoryLevel::Low:
+        budget = 256LL * 1024 * 1024;
+        break;
+    case SettingsCore::EnumMemoryLevel::Normal:
+        budget = 1024LL * 1024 * 1024;
+        break;
+    case SettingsCore::EnumMemoryLevel::Aggressive:
+        budget = 2048LL * 1024 * 1024;
+        break;
+    case SettingsCore::EnumMemoryLevel::Greedy:
+        break;
+    }
+    if (budget < 0 || documentSize <= 0) {
+        return machineCap;
+    }
+
+    // one extraction context measured at ~0.6x the file size for a PDF handle;
+    // counted at 0.75x for margin, with an 8 MiB floor
+    const qint64 perContext = qMax<qint64>(8LL * 1024 * 1024, documentSize * 3 / 4);
+    return int(qBound<qint64>(1, budget / perContext, qint64(machineCap)));
+}

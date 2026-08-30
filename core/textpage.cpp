@@ -642,6 +642,9 @@ static int stringLengthAdaptedWithHyphen(const QString &str, TextEntity::List::C
 
 QTransform TextPagePrivate::searchMatrix() const
 {
+    if (m_matrixOverride) {
+        return *m_matrixOverride;
+    }
     const PagePrivate *pagePrivate = PagePrivate::get(m_page);
     return pagePrivate ? pagePrivate->rotationMatrix() : QTransform();
 }
@@ -1972,20 +1975,6 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
     return ret;
 }
 
-void TextPage::prepareForPage(const Page *page)
-{
-    prepareForPage(page, page->width(), page->height());
-}
-
-void TextPage::prepareForPage(const Page *page, double width, double height)
-{
-    d->m_page = page;
-    d->correctTextOrder(width, height);
-}
-
-bool TextPage::isPreparedFor(const Page *page) const
-{
-    return d->m_page == page;
 QList<SearchMatch> TextPage::findAll(int searchID, const QString &text, Qt::CaseSensitivity caseSensitivity)
 {
     QList<SearchMatch> matches;
@@ -2017,11 +2006,8 @@ QList<TextMatch> TextPage::findAllWithAreas(int searchID, const QString &text, Q
         return found;
     }
 
-    // The line context is built in the coordinate space the areas are in, the
-    // page's rotated one. Every word is transformed once, then indexed by the
-    // height of its centre, so that the words whose centre falls in a match's
-    // vertical band form one contiguous run found by bisection, however many
-    // matches the page holds.
+    // index the words by the height of their centre, so that the words on a
+    // match's line form one contiguous run found by bisection
     const QTransform matrix = d->searchMatrix();
 
     const int wordCount = d->m_words.count();
@@ -2109,4 +2095,20 @@ QList<TextMatch> TextPage::findAllWithAreas(int searchID, const QString &text, Q
     }
 
     return found;
+}
+
+void TextPage::prepareForPage(const Page *page)
+{
+    prepareForPage(page, page->width(), page->height());
+}
+
+void TextPage::prepareForPage(const Page *page, double width, double height)
+{
+    d->m_page = page;
+    d->correctTextOrder(width, height);
+}
+
+bool TextPage::isPreparedFor(const Page *page) const
+{
+    return d->m_page == page;
 }
