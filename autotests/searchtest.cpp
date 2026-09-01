@@ -8,7 +8,6 @@
 
 #include <QApplication>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QMimeDatabase>
 #include <QPageSize>
@@ -107,6 +106,7 @@ private Q_SLOTS:
     void testBackingFileCanBeSwappedWhileAScanIsRunning();
     void testTextPageCacheStaysWithinTheMemoryCap();
     void testRotatingWhileAScanIsRunningDoesNotCorruptResults();
+    void testDocumentWideSearchOnEncryptedPdfWithUtf8Password();
 };
 
 void SearchTest::initTestCase()
@@ -1007,6 +1007,39 @@ void SearchTest::testRotatingWhileAScanIsRunningDoesNotCorruptResults()
     QCOMPARE(rotations, 4);
     for (uint i = 0; i < document.pages(); ++i) {
         QVERIFY(document.page(i)->hasTextPage());
+    }
+}
+
+void SearchTest::testDocumentWideSearchOnEncryptedPdfWithUtf8Password()
+{
+    // Exercises the pool borrow()'s toUtf8() password fallback on the project's
+    // first encrypted fixture; textPage() falls back to the primary handle
+    // either way, so this asserts correctness, not the pool fix itself.
+    //
+    // encrypted-utf8-password.pdf is simple-multipage.pdf re-saved with pikepdf
+    // (AES-256) under the password "паrole中文123", which survives toUtf8() but
+    // not toLatin1().
+    Okular::SettingsCore::self()->setEnableThreading(true);
+
+    Okular::Document document(nullptr);
+    const QString testFile = QStringLiteral(KDESRCDIR "data/encrypted-utf8-password.pdf");
+    const QString password = QString::fromUtf8("паrole中文123");
+    QMimeDatabase db;
+    QCOMPARE(document.openDocument(testFile, QUrl::fromLocalFile(testFile), db.mimeTypeForFile(testFile), password), Okular::Document::OpenSuccess);
+    QCOMPARE(document.pages(), 40u);
+
+    QSignalSpy scannedSpy(&document, &Okular::Document::searchPageScanned);
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("Page"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QVERIFY(finishedSpy.wait(30000));
+
+    QCOMPARE(scannedSpy.count(), 40);
+    for (int i = 0; i < scannedSpy.count(); ++i) {
+        const QList<QVariant> args = scannedSpy.at(i);
+        QCOMPARE(args.at(0).toInt(), allDocumentTestSearchID);
+        QCOMPARE(args.at(1).toInt(), i);
+        QCOMPARE(args.at(2).value<QList<Okular::SearchMatch>>().count(), 1);
     }
 }
 

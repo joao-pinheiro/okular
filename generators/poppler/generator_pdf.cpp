@@ -10,7 +10,13 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
+#include <atomic>
 #include <memory>
+
+#include "config-okular.h"
+#if HAVE_MALLOC_TRIM
+#include "malloc.h"
+#endif
 
 #include "generator_pdf.h"
 
@@ -20,13 +26,17 @@
 #include <QComboBox>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
 #include <QLayout>
 #include <QMutex>
+#include <QMutexLocker>
 #include <QPainter>
 #include <QPrinter>
+#include <QSemaphore>
 #include <QStack>
 #include <QTemporaryFile>
 #include <QTextStream>
@@ -63,6 +73,7 @@
 #include "pdfsignatureutils.h"
 #include "popplerembeddedfile.h"
 #include "popplerversion.h"
+#include "settings_core.h"
 
 #include <functional>
 
@@ -659,6 +670,148 @@ static void PDFGeneratorPopplerDebugFunction(const QString &message, const QVari
     qCDebug(OkularPdfDebug) << "[Poppler]" << message;
 }
 
+class PDFGenerator::TextHandlePool : public QObject
+{
+public:
+    // unused handles are released this long after the last borrow, and reopened lazily
+    static constexpr int IdleReleaseMs = 5000;
+
+    TextHandlePool(const QString &filePath, const QByteArray &fileData, const QString &password, int maxHandles)
+        : m_filePath(filePath)
+        , m_fileData(fileData)
+        , m_password(password)
+        , m_available(maxHandles)
+        , m_maxHandles(maxHandles)
+    {
+        m_idleTrim.setSingleShot(true);
+        connect(&m_idleTrim, &QTimer::timeout, this, &TextHandlePool::releaseIdleHandles);
+    }
+
+    ~TextHandlePool() override
+    {
+        qDeleteAll(m_free);
+    }
+
+    // Scoped access to a document handle: a pooled read-only one when available,
+    // otherwise the primary handle under its mutex.
+    class Borrowed
+    {
+    public:
+        Borrowed(TextHandlePool *pool, Poppler::Document *pooled, QMutex *fallbackMutex, Poppler::Document *fallbackDoc)
+            : m_pool(pool)
+            , m_doc(pooled ? pooled : fallbackDoc)
+            , m_pooled(pooled != nullptr)
+            , m_fallbackMutex(fallbackMutex)
+        {
+            if (!m_pooled) {
+                m_fallbackMutex->lock();
+            }
+        }
+        ~Borrowed()
+        {
+            if (m_pooled) {
+                m_pool->giveBack(m_doc);
+            } else {
+                m_fallbackMutex->unlock();
+            }
+        }
+        Borrowed(const Borrowed &) = delete;
+        Borrowed &operator=(const Borrowed &) = delete;
+        Poppler::Document *document() const
+        {
+            return m_doc;
+        }
+
+    private:
+        TextHandlePool *m_pool;
+        Poppler::Document *m_doc;
+        bool m_pooled;
+        QMutex *m_fallbackMutex;
+    };
+
+    Borrowed borrow(QMutex *fallbackMutex, Poppler::Document *fallbackDoc)
+    {
+        return Borrowed(this, takePooledHandle(), fallbackMutex, fallbackDoc);
+    }
+
+private:
+    Poppler::Document *takePooledHandle()
+    {
+        // latched off once no handle can ever be opened, so that is found out once, not per page
+        if (m_maxHandles.load() <= 0) {
+            return nullptr;
+        }
+        m_available.acquire();
+
+        QMutexLocker locker(&m_mutex);
+        m_lastUse.start();
+        if (!m_free.isEmpty()) {
+            return m_free.takeLast();
+        }
+        std::unique_ptr<Poppler::Document> doc = m_fileData.isEmpty() ? Poppler::Document::load(m_filePath) : Poppler::Document::loadFromData(m_fileData);
+        if (doc && doc->isLocked() && !m_password.isEmpty()) {
+            // the same Latin-1 then UTF-8 fallback as init()
+            doc->unlock(m_password.toLatin1(), m_password.toLatin1());
+            if (doc->isLocked()) {
+                doc->unlock(m_password.toUtf8(), m_password.toUtf8());
+            }
+        }
+        if (!doc || doc->isLocked()) {
+            // latch off only if no handle ever opened: the document can then never be
+            // served; otherwise the failure is more likely transient (EMFILE, ENOMEM)
+            if (!m_openedAny) {
+                m_maxHandles.store(0);
+            }
+            locker.unlock();
+            m_available.release();
+            return nullptr;
+        }
+        m_openedAny = true;
+        return doc.release();
+    }
+
+    void giveBack(Poppler::Document *doc)
+    {
+        {
+            QMutexLocker locker(&m_mutex);
+            m_free.append(doc);
+            m_lastUse.start();
+        }
+        m_available.release();
+        // a QTimer can only be started from its own thread
+        QMetaObject::invokeMethod(this, [this] { m_idleTrim.start(IdleReleaseMs); }, Qt::QueuedConnection);
+    }
+
+    void releaseIdleHandles()
+    {
+        QMutexLocker locker(&m_mutex);
+        // a borrow since the timer was armed pushes the release back
+        if (m_lastUse.isValid() && m_lastUse.elapsed() < IdleReleaseMs) {
+            m_idleTrim.start(IdleReleaseMs - int(m_lastUse.elapsed()));
+            return;
+        }
+        // handles still out come back through giveBack(), which re-arms this
+        qDeleteAll(m_free);
+        m_free.clear();
+#if HAVE_MALLOC_TRIM
+        // as Document::closeDocument() does, hand the freed pages back to the system,
+        // see https://sourceware.org/bugzilla/show_bug.cgi?id=14827
+        malloc_trim(0);
+#endif
+    }
+
+    QString m_filePath;
+    QByteArray m_fileData;
+    QString m_password;
+    QSemaphore m_available;
+    std::atomic<int> m_maxHandles;
+    QMutex m_mutex;
+    QList<Poppler::Document *> m_free;
+    bool m_openedAny = false;
+    QElapsedTimer m_lastUse;
+    QTimer m_idleTrim;
+};
+
 PDFGenerator::PDFGenerator(QObject *parent, const QVariantList &args)
     : Generator(parent, args)
     , pdfdoc(nullptr)
@@ -724,6 +877,7 @@ Okular::Document::OpenResult PDFGenerator::loadDocumentWithPassword(const QStrin
     // create PDFDoc for the given file
     pdfdoc = Poppler::Document::load(filePath, nullptr, nullptr);
     documentFilePath = filePath;
+    m_documentFileData.clear();
     return init(pagesVector, password);
 }
 
@@ -738,6 +892,7 @@ Okular::Document::OpenResult PDFGenerator::loadDocumentFromDataWithPassword(cons
     // create PDFDoc for the given file
     pdfdoc = Poppler::Document::loadFromData(fileData, nullptr, nullptr);
     documentFilePath = QString();
+    m_documentFileData = fileData;
     return init(pagesVector, password);
 }
 
@@ -806,6 +961,11 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     setAdditionalDocumentAction(Okular::Document::PrintDocumentStart, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::PrintDocumentStart)));
     setAdditionalDocumentAction(Okular::Document::PrintDocumentFinish, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::PrintDocumentFinish)));
 
+    // as many read-only handles as the document runs search workers; none when
+    // threading is off, so borrow() falls back to the primary handle
+    const int maxHandles = Okular::SettingsCore::self()->enableThreading() ? Okular::maxConcurrentTextExtractions(m_documentFileData.isEmpty() ? QFileInfo(documentFilePath).size() : qint64(m_documentFileData.size())) : 0;
+    m_textHandles = std::make_unique<TextHandlePool>(documentFilePath, m_documentFileData, password, maxHandles);
+
     // the file has been loaded correctly
     return Okular::Document::OpenSuccess;
 }
@@ -862,6 +1022,9 @@ bool PDFGenerator::doCloseDocument()
     delete annotProxy;
     annotProxy = nullptr;
     pdfdoc = nullptr;
+    // closeDocument() waited for the text extraction jobs first, so no handle is out
+    m_textHandles.reset();
+    m_documentFileData.clear();
     userMutex()->unlock();
     docSynopsisDirty = true;
     docSyn.clear();
@@ -1447,23 +1610,25 @@ Okular::TextPage *PDFGenerator::textPage(Okular::TextRequest *request)
     // build a TextList...
     std::vector<std::unique_ptr<Poppler::TextBox>> textList;
     double pageWidth, pageHeight;
-    userMutex()->lock();
-    if (request->shouldAbortExtraction()) {
-        userMutex()->unlock();
-        return nullptr;
+
+    {
+        // released before abstractTextPage(): the layout analysis needs no handle
+        const auto handle = m_textHandles->borrow(userMutex(), pdfdoc.get());
+        if (request->shouldAbortExtraction()) {
+            return nullptr;
+        }
+        std::unique_ptr<Poppler::Page> pp = handle.document()->page(page->number());
+        if (pp) {
+            TextExtractionPayload payload(request);
+            textList = pp->textList(Poppler::Page::Rotate0, shouldAbortTextExtractionCallback, QVariant::fromValue(&payload));
+            const QSizeF s = pp->pageSizeF();
+            pageWidth = s.width();
+            pageHeight = s.height();
+        } else {
+            pageWidth = defaultPageWidth;
+            pageHeight = defaultPageHeight;
+        }
     }
-    std::unique_ptr<Poppler::Page> pp = pdfdoc->page(page->number());
-    if (pp) {
-        TextExtractionPayload payload(request);
-        textList = pp->textList(Poppler::Page::Rotate0, shouldAbortTextExtractionCallback, QVariant::fromValue(&payload));
-        const QSizeF s = pp->pageSizeF();
-        pageWidth = s.width();
-        pageHeight = s.height();
-    } else {
-        pageWidth = defaultPageWidth;
-        pageHeight = defaultPageHeight;
-    }
-    userMutex()->unlock();
 
     if (textList.empty() && request->shouldAbortExtraction()) {
         return nullptr;
