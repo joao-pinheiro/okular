@@ -1796,16 +1796,15 @@ void DocumentPrivate::doContinueAllDocumentSearch(AllDocumentScan *scan)
         return;
     }
 
-    // Walk outward from startPage (see pageAtScanIndex()), keeping up to
-    // m_textPageWorkers extractions on the pool; cached pages are handled
-    // inline, the rest report back through textPageJobFinished(). With no
-    // workers, extraction happens right here, one page per event-loop tick.
+    // Walk outward from startPage, keeping up to m_textPageWorkers extractions
+    // on the pool; with no workers, extract here, one page per event-loop tick.
+    // Cached pages are handled inline, a bounded number per call.
     const int pageCount = m_pagesVector.count();
+    constexpr int maxCachedPagesPerPass = 100;
+    int cachedThisCall = 0;
     const bool extractHere = m_textPageWorkers == 0;
-    while (scan->scannedPages < pageCount && (extractHere || scan->inFlight < m_textPageWorkers)) {
-        // pageReady() below emits searchPageScanned(), which can reenter and
-        // cancel or restart this search id mid-loop. Abandon on the spot: with
-        // nothing in flight, no completion would ever come back to clean up.
+    while (scan->scannedPages < pageCount && cachedThisCall < maxCachedPagesPerPass && (extractHere || scan->inFlight < m_textPageWorkers)) {
+        // reporting a page can reenter and cancel or restart this search
         if (abandonIfStale(scan)) {
             return;
         }
@@ -1815,29 +1814,28 @@ void DocumentPrivate::doContinueAllDocumentSearch(AllDocumentScan *scan)
         if (m_pagesVector.at(currentPage)->hasTextPage()) {
             findMatchesForPage(currentPage, scan);
             pageReady(currentPage, scan);
+            ++cachedThisCall;
         } else if (extractHere) {
             m_parent->requestTextPage(currentPage);
             findMatchesForPage(currentPage, scan);
             pageReady(currentPage, scan);
-            if (scan->scannedPages < pageCount) {
-                scheduleAllDocumentScan(scan->searchID, scan->generation);
-                return;
-            }
+            break; // one extraction per tick
         } else {
             submitTextPageJob(currentPage, scan);
         }
     }
 
-    if (scan->reportedPages < pageCount) {
-        // still walking the document, or waiting on a page that finished out of
-        // turn to reach the front of the line: textPageJobFinished() resumes
-        // this scan as each submitted job completes
+    if (scan->scannedPages < pageCount && scan->inFlight == 0) {
+        scheduleAllDocumentScan(scan->searchID, scan->generation);
         return;
     }
 
-    // The last synchronously drained page can have re-entered and cancelled or
-    // restarted this search id, with the loop exiting through its page count
-    // rather than its stale check - so check once more before finishing.
+    if (scan->reportedPages < pageCount) {
+        // textPageJobFinished() resumes the scan as jobs complete
+        return;
+    }
+
+    // the last reported page can have cancelled or restarted this search
     if (abandonIfStale(scan)) {
         return;
     }

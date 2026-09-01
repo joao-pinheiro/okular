@@ -106,6 +106,7 @@ private Q_SLOTS:
     void testBackingFileCanBeSwappedWhileAScanIsRunning();
     void testTextPageCacheStaysWithinTheMemoryCap();
     void testRotatingWhileAScanIsRunningDoesNotCorruptResults();
+    void testCachedSearchYieldsToTheEventLoop();
     void testDocumentWideSearchOnEncryptedPdfWithUtf8Password();
 };
 
@@ -1010,15 +1011,69 @@ void SearchTest::testRotatingWhileAScanIsRunningDoesNotCorruptResults()
     }
 }
 
+void SearchTest::testCachedSearchYieldsToTheEventLoop()
+{
+    // a zero-delay timer posted right after searchText() must fire before searchFinished()
+    Okular::SettingsCore::self()->setEnableThreading(true);
+    // Greedy keeps at least 1250 pages cached on any machine, above pageCount
+    Okular::SettingsCore::self()->setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Greedy);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString pdfPath = tempDir.path() + QStringLiteral("/cached-many-pages.pdf");
+    constexpr int pageCount = 1000;
+    {
+        QPdfWriter writer(pdfPath);
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        QPainter painter(&writer);
+        for (int i = 0; i < pageCount; ++i) {
+            if (i > 0) {
+                writer.newPage();
+            }
+            for (int line = 0; line < 20; ++line) {
+                painter.drawText(50, 50 + line * 30, QStringLiteral("the quick brown fox jumps over the lazy dog %1 %2").arg(i).arg(line));
+            }
+        }
+    }
+
+    Okular::Document document(nullptr);
+    QVERIFY(openForSearch(document, pdfPath, uint(pageCount)));
+
+    // prime the cache
+    {
+        QSignalSpy primingFinishedSpy(&document, &Okular::Document::searchFinished);
+        document.searchText(allDocumentTestSearchID, QStringLiteral("this text does not appear anywhere"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+        QVERIFY(primingFinishedSpy.wait(120000));
+    }
+    document.resetSearch(allDocumentTestSearchID);
+    for (uint i = 0; i < document.pages(); ++i) {
+        QVERIFY(document.page(i)->hasTextPage());
+    }
+
+    bool timerFired = false;
+    bool searchFinishedBeforeTimer = false;
+    QSignalSpy finishedSpy(&document, &Okular::Document::searchFinished);
+    QObject::connect(&document, &Okular::Document::searchFinished, &document, [&] {
+        if (!timerFired) {
+            searchFinishedBeforeTimer = true;
+        }
+    });
+
+    document.searchText(allDocumentTestSearchID, QStringLiteral("this text does not appear anywhere"), true, Qt::CaseSensitive, Okular::Document::AllDocument, false, Qt::yellow);
+    QTimer::singleShot(0, &document, [&] { timerFired = true; });
+
+    QVERIFY(finishedSpy.wait(120000));
+
+    QVERIFY2(timerFired, "the zero-delay timer posted right after searchText() never fired before searchFinished(): nothing to compare, this run doesn't prove anything either way");
+    QVERIFY2(!searchFinishedBeforeTimer, "searchFinished() fired before the zero-delay timer queued right after searchText() - the whole cached scan ran synchronously with no return to the event loop");
+
+    Okular::SettingsCore::self()->setMemoryLevel(Okular::SettingsCore::EnumMemoryLevel::Normal);
+}
+
 void SearchTest::testDocumentWideSearchOnEncryptedPdfWithUtf8Password()
 {
-    // Exercises the pool borrow()'s toUtf8() password fallback on the project's
-    // first encrypted fixture; textPage() falls back to the primary handle
-    // either way, so this asserts correctness, not the pool fix itself.
-    //
-    // encrypted-utf8-password.pdf is simple-multipage.pdf re-saved with pikepdf
-    // (AES-256) under the password "паrole中文123", which survives toUtf8() but
-    // not toLatin1().
+    // simple-multipage.pdf encrypted (AES-256) under a password that survives
+    // toUtf8() but not toLatin1()
     Okular::SettingsCore::self()->setEnableThreading(true);
 
     Okular::Document document(nullptr);
