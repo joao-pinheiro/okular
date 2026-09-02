@@ -31,20 +31,17 @@
 #include "searchresultsmodel.h"
 #include "settings.h"
 
-// Highlights are composited onto the page with CompositionMode_Multiply, so laid over
-// the shared SearchMatchColor this leaves the picked result reading as orange against
-// the pale yellow of the others.
+// composited with Multiply over SearchMatchColor, this reads as orange against the pale yellow
 static const QColor CurrentMatchColor(255, 138, 0);
 
 namespace
 {
 
-/**
- * Draws a result as two lines: its page number, then the line of text it was found
- * on with the match itself in bold.
- */
+// Draws a result as two lines: its page number, then the line it was found on, match in bold.
 class SearchResultDelegate : public QStyledItemDelegate
 {
+    Q_OBJECT
+
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
 
@@ -102,7 +99,7 @@ private:
         return pageFont;
     }
 
-    static void drawSnippet(QPainter *painter, const QRect &rect, const QFont &font, const SearchResult &result)
+    static void drawSnippet(QPainter *painter, QRect rect, const QFont &font, const SearchResult &result)
     {
         QTextLayout layout(result.snippet, font, painter->device());
 
@@ -507,3 +504,5 @@ void SearchResultsPanel::updateStatus()
 
     m_status->setText(i18ncp("%1 is a number of matches", "%1 match", "%1 matches", count));
 }
+
+#include "searchresultspanel.moc"

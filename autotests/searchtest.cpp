@@ -492,8 +492,8 @@ void SearchTest::testReportedRectIsTheMatchNotTheStartOfThePage()
     std::unique_ptr<Okular::RegularAreaRect> match(page->findText(0, QStringLiteral("nice"), Okular::FromTop, Qt::CaseInsensitive));
     QVERIFY(match);
     QVERIFY(!match->isEmpty());
-    Okular::NormalizedRect expected = match->first();
-    for (const Okular::NormalizedRect &part : *match) {
+    Okular::NormalizedRect expected = match->constFirst();
+    for (const Okular::NormalizedRect &part : std::as_const(*match)) {
         expected |= part;
     }
 
