@@ -2028,18 +2028,16 @@ QList<TextMatch> TextPage::findAllWithAreas(int searchID, const QString &text, Q
         centreYs.append(centres.at(index).y);
     }
 
-    // The line most recently assembled: consecutive matches mostly sit on the
-    // same line, and its word order and text need building only once.
+    // consecutive matches mostly share a line: build it once
     int cachedFirst = -1;
     int cachedPast = -1;
     QList<int> lineWords;
     QString lineText;
 
     for (TextMatch &textMatch : found) {
-        // Seed the union with a real part: a default NormalizedRect is (0,0,0,0),
-        // and uniting with it would pin the result to the top left of the page.
-        NormalizedRect bounding = textMatch.area->first();
-        for (const NormalizedRect &part : *textMatch.area) {
+        // a default NormalizedRect is (0,0,0,0), so seed the union with a real part
+        NormalizedRect bounding = textMatch.area->constFirst();
+        for (const NormalizedRect &part : std::as_const(*textMatch.area)) {
             bounding |= part;
         }
         textMatch.match.boundingRect = bounding;
