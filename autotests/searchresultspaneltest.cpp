@@ -134,13 +134,11 @@ struct PanelFixture {
     }
 };
 
-// Records the page number shown in the results view's top row every time its viewport
-// actually paints. With insertion and scroll correction done in one indivisible pass
-// (see SearchResultsPanel::slotFlushPendingResults()), no paint should ever catch the
-// list mid-shift; this filter is how a test proves that on every frame, not just the
-// final settled one.
+// Records the page number of the results view's top row on every paint of its viewport.
 class TopRowPaintRecorder : public QObject
 {
+    Q_OBJECT
+
 public:
     explicit TopRowPaintRecorder(QListView *view)
         : QObject(view)
