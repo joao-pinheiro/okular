@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits.h>
 #include <memory>
+#include <qhashfunctions.h>
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #elif defined(Q_OS_FREEBSD)
@@ -693,6 +694,12 @@ bool DocumentPrivate::loadDocumentInfo(QFile &infoFile, LoadDocumentInfoFlags lo
                         }
                         viewNode = viewNode.nextSibling();
                     }
+                } else if (infoElement.tagName() == QLatin1String("sidebarTab")) {
+                    const QString tab = infoElement.attribute(QStringLiteral("name"));
+                    if (!tab.isEmpty()) {
+                        m_sidebarTab = tab;
+                        loadedAnything = true;
+                    }
                 }
                 infoNode = infoNode.nextSibling();
             }
@@ -1269,6 +1276,12 @@ void DocumentPrivate::saveDocumentInfo() const
         QDomElement rotationNode = doc.createElement(QStringLiteral("rotation"));
         generalInfo.appendChild(rotationNode);
         rotationNode.appendChild(doc.createTextNode(QString::number((int)m_rotation)));
+    }
+    // save sidebar tab
+    if (!m_sidebarTab.isEmpty()) {
+        QDomElement sidebarTabNode = doc.createElement(QStringLiteral("sidebarTab"));
+        sidebarTabNode.setAttribute(QStringLiteral("name"), m_sidebarTab);
+        generalInfo.appendChild(sidebarTabNode);
     }
     // <general info><history> ... </history> save history up to OKULAR_HISTORY_SAVEDSTEPS viewports
     const auto currentViewportIterator = std::list<DocumentViewport>::const_iterator(m_viewportIterator);
@@ -2671,6 +2684,7 @@ void Document::closeDocument()
     d->m_fontsCached = false;
     d->m_fontsCache.clear();
     d->m_rotation = Rotation0;
+    d->m_sidebarTab = QString();
 
     // send an empty list to observers (to free their data)
     foreachObserver(notifySetup({}, DocumentObserver::DocumentChanged | DocumentObserver::UrlChanged));
@@ -3153,6 +3167,16 @@ QSizeF Document::allPagesSize() const
         }
     }
     return QSizeF();
+}
+
+QString Document::sidebarTab() const
+{
+    return d->m_sidebarTab;
+}
+
+void Document::setSidebarTab(const QString &tab)
+{
+    d->m_sidebarTab = tab;
 }
 
 QString Document::pageSizeString(int page) const

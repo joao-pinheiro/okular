@@ -403,16 +403,19 @@ Part::Part(QObject *parent, const QVariantList &args)
     thumbsBox->layout()->addWidget(m_thumbnailList);
     //	ThumbnailController * m_tc = new ThumbnailController( thumbsBox, m_thumbnailList );
     connect(m_thumbnailList.data(), &ThumbnailList::rightClick, this, &Part::slotShowMenu);
+    thumbsBox->setObjectName(QStringLiteral("thumbnail"));
     m_sidebar->addItem(thumbsBox, QIcon::fromTheme(QStringLiteral("view-preview")), i18n("Thumbnails"));
 
     m_sidebar->setCurrentItem(thumbsBox);
 
     // [left toolbox: Reviews] | []
     m_reviewsWidget = new Reviews(nullptr, m_document);
+    m_reviewsWidget->setObjectName(QStringLiteral("annotations"));
     m_sidebar->addItem(m_reviewsWidget, QIcon::fromTheme(QStringLiteral("draw-freehand")), i18n("Annotations"));
 
     // [left toolbox: Bookmarks] | []
     m_bookmarkList = new BookmarkList(m_document, nullptr);
+    m_bookmarkList->setObjectName(QStringLiteral("bookmarks"));
     m_sidebar->addItem(m_bookmarkList, QIcon::fromTheme(QStringLiteral("bookmarks")), i18n("Bookmarks"));
 
     // [left toolbox optional item: Signature Panel] | []
@@ -1765,6 +1768,13 @@ bool Part::openFile()
     } else if (m_cliPrintAndExit) {
         slotPrint();
     }
+    // restore sidebar tab from xml file
+    if (m_sidebar) {
+        const QString savedTab = m_document->sidebarTab();
+        if (!savedTab.isEmpty() && m_sidebar->currentItemName() != savedTab) {
+            m_sidebar->setCurrentItemByName(savedTab);
+        }
+    }
     return true;
 }
 
@@ -1974,6 +1984,9 @@ bool Part::closeUrl(bool promptToSave)
         factory()->removeClient(m_generatorGuiClient);
     }
     m_generatorGuiClient = nullptr;
+    if (!m_swapInsteadOfOpening && m_document->pages() > 0 && m_sidebar) {
+        m_document->setSidebarTab(m_sidebar->currentItemName());
+    }
     m_document->closeDocument();
     m_fileLastModified = QDateTime();
     updateViewActions();
@@ -2307,7 +2320,7 @@ void Part::enableTOC(bool enable)
         m_tocEnabled = false;
         return;
     }
-
+    m_toc->setObjectName(QStringLiteral("contents"));
     m_sidebar->addItem(m_toc, QIcon::fromTheme(QApplication::isLeftToRight() ? QStringLiteral("format-justify-left") : QStringLiteral("format-justify-right")), i18n("Contents"));
     m_tocEnabled = true;
 
@@ -2328,6 +2341,7 @@ void Part::enableLayers(bool enable)
         return;
     }
 
+    m_layers->setObjectName(QStringLiteral("layers"));
     m_sidebar->addItem(m_layers, QIcon::fromTheme(QStringLiteral("format-list-unordered")), i18n("Layers"));
 }
 
@@ -2337,6 +2351,7 @@ void Part::enableSidebarSignaturesItem(bool enable)
         return;
     }
 
+    m_signaturePanel->setObjectName(QStringLiteral("signatures"));
     m_sidebar->addItem(m_signaturePanel, QIcon::fromTheme(QStringLiteral("application-pkcs7-signature")), i18n("Signatures"));
 }
 

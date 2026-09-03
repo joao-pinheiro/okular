@@ -404,6 +404,17 @@ public:
     Rotation rotation() const;
 
     /**
+     * Returns the name of sidebar that was active when document
+     * was last closed or returns an empty string.
+     */
+    QString sidebarTab() const;
+
+    /**
+     * Set the sidebar tab name to be persisted when document reopens
+     */
+    void setSidebarTab(const QString &tabName);
+
+    /**
      * If all pages have the same size this method returns it, if the page sizes
      * differ an empty size object is returned.
      */

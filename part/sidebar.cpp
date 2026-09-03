@@ -144,6 +144,28 @@ QWidget *Sidebar::currentItem() const
     return d->viewChooserTabs->currentWidget();
 }
 
+QString Sidebar::currentItemName() const
+{
+    QWidget *w = currentItem();
+    return w ? w->objectName() : QString();
+}
+
+void Sidebar::setCurrentItemByName(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    const int count = d->viewChooserTabs->count();
+    for (int i = 0; i < count; ++i) {
+        QWidget *w = d->viewChooserTabs->widget(i);
+        if (w && w->objectName() == name) {
+            d->viewChooserTabs->setCurrentIndex(i);
+            return;
+        }
+    }
+}
+
 void Sidebar::setSidebarVisibility(bool visible)
 {
     d->sideContainer->setHidden(!visible);
