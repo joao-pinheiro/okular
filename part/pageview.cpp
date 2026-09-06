@@ -63,6 +63,7 @@
 // system includes
 #include <array>
 #include <math.h>
+#include <qnamespace.h>
 #include <stdlib.h>
 
 // local includes
@@ -70,6 +71,7 @@
 #include "annotwindow.h"
 #include "colormodemenu.h"
 #include "core/annotations.h"
+#include "core/document.h"
 #include "cursorwraphelper.h"
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
@@ -2135,6 +2137,14 @@ void PageView::keyPressEvent(QKeyEvent *e)
     case Qt::Key_PageUp:
     case Qt::Key_Backspace:
         slotScrollUp();
+        break;
+
+    case Qt::Key_Home:
+        slotGotoPageStart();
+        break;
+
+    case Qt::Key_End:
+        slotGotoPageEnd();
         break;
 
     case Qt::Key_Left:
@@ -5629,6 +5639,23 @@ void PageView::slotRefreshPage()
         QTimer::singleShot(0, this, [this, req] { d->document->refreshPixmaps(req); });
     }
     d->refreshPages.clear();
+}
+
+
+void PageView::slotGotoPageStart(){
+    qDebug("HOME Pressed");
+    const int currentPage = d->document->currentPage();
+    Okular::DocumentViewport startViewport;
+    startViewport.pageNumber=currentPage;
+    startViewport.rePos.enabled=true;
+    startViewport.rePos.normalizedX = 0;
+    startViewport.rePos.normalizedY = 0;
+    startViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
+    d->document->setViewport(startViewport,nullptr,true);
+}
+
+void PageView::slotGotoPageEnd(){
+    qDebug("END Pressed");
 }
 
 #if HAVE_SPEECH
