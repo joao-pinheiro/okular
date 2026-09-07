@@ -1574,6 +1574,36 @@ Okular::Document::PrintError PDFGenerator::print(QPrinter &printer)
         return Okular::Document::NoPrintError;
     }
 
+    // Toggle OCG visibility using PrintState flags
+    std::unique_ptr<OCGOriginalVisibility> OCGState;
+    if (pdfdoc->hasOptionalContent()) {
+        Poppler::OptContentModel *model = pdfdoc->optionalContentModel();
+        OCGState = std::make_unique<OCGOriginalVisibility>(model);
+        
+        std::function<void(const QModelIndex&)> togglePrintVisibility = [&](const QModelIndex &parent) {
+            int rows = model->rowCount(parent);
+            for (int i = 0; i < rows; ++i) {
+                const QModelIndex idx = model->index(i,0,parent);
+                const int printState = model->data(idx,Qt::UserRole+1).toInt();
+                const QVariant currentVis = model->data(idx,Qt::CheckStateRole);
+                switch (printState) {
+                    case 2:
+                        OCGState->add(QPersistentModelIndex(idx),currentVis);
+                        model->setData(idx,Qt::Checked,Qt::CheckStateRole);
+                        break;
+                    case 0:
+                        OCGState->add(QPersistentModelIndex(idx),currentVis);
+                        model->setData(idx,Qt::Unchecked,Qt::CheckStateRole);
+                        break;
+                    default:
+                        togglePrintVisibility(idx);
+                        break;
+                }
+            }
+        };
+        togglePrintVisibility(QModelIndex());
+    }
+
     // Check if we can send the PDF directly to the printer or need to convert to PS first
     // We need PS if:
     // - we are printing with annotations
