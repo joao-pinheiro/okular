@@ -220,7 +220,7 @@ DlgGeneral::DlgGeneral(QWidget *parent, Okular::EmbedMode embedMode)
     // Spinbox: page up/down overlap
     QSpinBox *pageUpDownOverlap = new QSpinBox(this);
     pageUpDownOverlap->setMinimum(0);
-    pageUpDownOverlap->setMaximum(50);
+    pageUpDownOverlap->setMaximum(99);
     pageUpDownOverlap->setSingleStep(5);
     KLocalization::setupSpinBoxFormatString(pageUpDownOverlap, ki18nc("@item:spinbox Config dialog, general page, page overlap factor", "%v%"));
     pageUpDownOverlap->setToolTip(i18nc("@info:tooltip Config dialog, general page", "Defines how much of the current viewing area will still be visible when pressing the Page Up/Down keys."));
