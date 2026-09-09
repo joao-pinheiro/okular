@@ -47,6 +47,9 @@
 #include <QToolBar>
 #include <QTreeView>
 #include <QUrl>
+#include <qtestcase.h>
+#include <qtestsupport_core.h>
+#include <qtestsupport_widgets.h>
 
 namespace Okular
 {
@@ -98,6 +101,7 @@ private Q_SLOTS:
     void testRClickWhileLinkTextIsSelected();
     void testRClickOverLinkWhileLinkTextIsSelected();
     void testRClickOnSelectionModeShoulShowFollowTheLinkMenu();
+    void testRClickOnTextSelectionModeWoutTextSelectedShowBookmarkMenu();
     void testClickAnywhereAfterSelectionShouldUnselect();
     void testeRectSelectionStartingOnLinks();
     void testCheckBoxReadOnly();
@@ -759,6 +763,71 @@ void PartTest::testClickUrlLinkWhileLinkTextIsSelected()
     QCOMPARE(arguments.at(0).value<QUrl>(), QUrl(QStringLiteral("mailto:foo@foo.bar")));
 }
 
+void PartTest::testRClickOnTextSelectionModeWoutTextSelectedShowBookmarkMenu()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    // resize window to avoid problem with selection areas
+    part.widget()->resize(800, 600);
+    part.widget()->show();
+    if (qgetenv("KDECI_CANNOT_CREATE_WINDOWS") == "1") {
+        QSKIP("KDE CI can't create a window on this platform, skipping some gui tests");
+    }
+
+    QVERIFY(QTest::qWaitForWindowExposed(part.widget()));
+
+    part.m_document->setViewportPage(0);
+
+    // wait for pixmap
+    QTRY_VERIFY(part.m_document->page(0)->hasPixmap(part.m_pageView));
+
+    const int width = part.m_pageView->horizontalScrollBar()->maximum() + part.m_pageView->viewport()->width();
+    const int height = part.m_pageView->verticalScrollBar()->maximum() + part.m_pageView->viewport()->height();
+
+    // enter text-selection mode
+    QVERIFY(QMetaObject::invokeMethod(part.m_pageView, "slotSetMouseTextSelect"));
+
+    // Need to do this because the pop-menu will have his own mainloop and will block tests until
+    // the menu disappear
+    PageView *view = part.m_pageView;
+    bool menuClosed = false;
+    QTimer::singleShot(2000, view, [&menuClosed]() {
+        // check if popup menu is active and visible
+        QWidget *activePopup = QApplication::activePopupWidget();
+        QMenu *menu = qobject_cast<QMenu *>(activePopup);
+        QVERIFY2(menu != nullptr, "Context menu was not found");
+        QVERIFY(menu->isVisible());
+
+        const auto hasActionText = [](const QMenu *menu, const QString &text) {
+            for (QAction *action : menu->actions()) {
+                if (action && action->text() == text) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        QVERIFY2(hasActionText(menu, i18n("Add Bookmark")), "Add Bookmark action missing");
+        QVERIFY2(hasActionText(menu, i18n("Previous Bookmark")), "Previous Bookmark action missing");
+        QVERIFY2(hasActionText(menu, i18n("Next Bookmark")), "Next Bookmark action missing");
+
+        // close menu to continue test
+        menu->close();
+        menuClosed = true;
+    });
+
+    // click on url
+    const double mouseClickX = width * 0.525;
+    const double mouseClickY = height * 0.262;
+
+    QTest::mouseMove(part.m_pageView->viewport(), QPoint(mouseClickX, mouseClickY));
+    QTest::mouseClick(part.m_pageView->viewport(), Qt::RightButton, Qt::NoModifier, QPoint(mouseClickX, mouseClickY), 1000);
+
+    // will continue after pop-menu get closed
+    QTRY_VERIFY(menuClosed);
+}
+
 // r-click on the selected text gives the "Go To:" content menu option
 void PartTest::testRClickWhileLinkTextIsSelected()
 {
@@ -818,7 +887,7 @@ void PartTest::testRClickWhileLinkTextIsSelected()
         menuClosed = true;
     });
 
-    // click on url
+    // click
     const double mouseClickX = width * 0.425;
     const double mouseClickY = height * 0.162;
 
