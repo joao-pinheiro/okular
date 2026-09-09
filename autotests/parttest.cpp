@@ -800,7 +800,8 @@ void PartTest::testRClickOnTextSelectionModeWoutTextSelectedShowBookmarkMenu()
         QVERIFY(menu->isVisible());
 
         const auto hasActionText = [](const QMenu *menu, const QString &text) {
-            for (QAction *action : menu->actions()) {
+            const QList<QAction *> actions = menu->actions();
+            for (QAction *action : actions) {
                 if (action && action->text() == text) {
                     return true;
                 }
