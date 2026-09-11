@@ -429,6 +429,7 @@ private:
     QAction *m_showEmbeddedFiles;
     QAction *m_exportAs;
     QAction *m_exportAsText;
+    QAction *m_exportAsImage;
     QAction *m_exportAsDocArchive;
 #if HAVE_PURPOSE
     QAction *m_share;
