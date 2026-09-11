@@ -308,8 +308,7 @@ void BookmarkList::contextMenuForFileItem(const QPoint p, FileItem *fItem)
     } else if (res == collapseall) {
         m_tree->collapseAll();
     } else if (res == open) {
-        Okular::GotoAction action(itemurl.toDisplayString(QUrl::PreferLocalFile), Okular::DocumentViewport());
-        m_document->processAction(&action);
+        Q_EMIT openUrl(itemurl);
     } else if (res == editbm) {
         m_tree->editItem(fItem, 0);
     } else if (res == removebm) {
@@ -410,8 +409,7 @@ void BookmarkList::goTo(BookmarkItem *item)
     if (item->url() == m_document->currentDocument()) {
         m_document->setViewport(item->viewport(), nullptr, true);
     } else {
-        Okular::GotoAction action(item->url().toDisplayString(QUrl::PreferLocalFile), item->viewport());
-        m_document->processAction(&action);
+        Q_EMIT openUrl(item->bookmark().url());
     }
 }
 

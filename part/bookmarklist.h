@@ -47,6 +47,12 @@ private Q_SLOTS:
     void slotBookmarksChanged(const QUrl &url);
     void saveSearchOptions();
 
+Q_SIGNALS:
+    /**
+     * The bookmark list is requesting to open the specified url.
+     */
+    void openUrl(const QUrl &);
+
 private:
     void rebuildTree(bool showAll);
     void goTo(BookmarkItem *item);

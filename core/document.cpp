@@ -5733,25 +5733,43 @@ DocumentViewport::DocumentViewport(const QString &xmlDesc)
 
     // decode the string
     bool ok;
+    int parsedPageNumber = -1;
+
+    bool isValid = true;
     int field = 0;
     QString token = xmlDesc.section(QLatin1Char(';'), field, field);
-    while (!token.isEmpty()) {
+    while (!token.isEmpty() && isValid) {
         // decode the current token
         if (field == 0) {
-            pageNumber = token.toInt(&ok);
+            parsedPageNumber = token.toInt(&ok);
             if (!ok) {
-                return;
+                isValid = false;
             }
         } else if (token.startsWith(QLatin1String("C1"))) {
             rePos.enabled = true;
-            rePos.normalizedX = token.section(QLatin1Char(':'), 1, 1).toDouble();
-            rePos.normalizedY = token.section(QLatin1Char(':'), 2, 2).toDouble();
+            rePos.normalizedX = token.section(QLatin1Char(':'), 1, 1).toDouble(&ok);
+            if (!ok) {
+                isValid = false;
+            }
+            rePos.normalizedY = token.section(QLatin1Char(':'), 2, 2).toDouble(&ok);
+            if (!ok) {
+                isValid = false;
+            }
             rePos.pos = Center;
         } else if (token.startsWith(QLatin1String("C2"))) {
             rePos.enabled = true;
-            rePos.normalizedX = token.section(QLatin1Char(':'), 1, 1).toDouble();
-            rePos.normalizedY = token.section(QLatin1Char(':'), 2, 2).toDouble();
-            if (token.section(QLatin1Char(':'), 3, 3).toInt() == 1) {
+            rePos.normalizedX = token.section(QLatin1Char(':'), 1, 1).toDouble(&ok);
+            if (!ok) {
+                isValid = false;
+            }
+            rePos.normalizedY = token.section(QLatin1Char(':'), 2, 2).toDouble(&ok);
+            if (!ok) {
+                isValid = false;
+            }
+            if (token.section(QLatin1Char(':'), 3, 3).toInt(&ok) == 1) {
+                if (!ok) {
+                    isValid = false;
+                }
                 rePos.pos = Center;
             } else {
                 rePos.pos = TopLeft;
@@ -5761,9 +5779,26 @@ DocumentViewport::DocumentViewport(const QString &xmlDesc)
             autoFit.width = token.section(QLatin1Char(':'), 1, 1) == QLatin1String("T");
             autoFit.height = token.section(QLatin1Char(':'), 2, 2) == QLatin1String("T");
         }
-        // proceed tokenizing string
-        field++;
-        token = xmlDesc.section(QLatin1Char(';'), field, field);
+
+        if (isValid) {
+            field++;
+            token = xmlDesc.section(QLatin1Char(';'), field, field);
+        }
+    }
+
+    // Only apply parsed values if everything was valid
+    if (isValid) {
+        pageNumber = parsedPageNumber;
+    } else {
+        // Reset to defaults on parse error
+        pageNumber = -1;
+        rePos.enabled = false;
+        rePos.normalizedX = 0.5;
+        rePos.normalizedY = 0.0;
+        rePos.pos = Center;
+        autoFit.enabled = false;
+        autoFit.width = false;
+        autoFit.height = false;
     }
 }
 

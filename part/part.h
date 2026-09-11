@@ -193,6 +193,7 @@ Q_SIGNALS:
     void viewerMenuStateChange(bool enabled);                                   /* NOLINT(bugprone-derived-method-shadowing-base-method) cppcheck-suppress duplInheritedMember */
     void enableCloseAction(bool enable);
     void mimeTypeChanged(const QMimeType &mimeType);
+    void openUrlFromBookmarkList(const QUrl &url);
     void urlsDropped(const QList<QUrl> &urls);
     void fitWindowToPage(const QSize pageViewPortSize, const QSize pageSize);
     void maxRecentItemsChanged(const int);
@@ -221,6 +222,7 @@ protected Q_SLOTS:
     // connected to actions
     void openUrlFromDocument(const QUrl &url);
     void openUrlFromBookmarks(const QUrl &url);
+    void handleUrlFromBookmarkList(const QUrl &url);
     void handleDroppedUrls(const QList<QUrl> &urls);
     void slotGoToPage();
     void slotHistoryBack();
