@@ -1544,7 +1544,7 @@ public:
     class Element
     {
     public:
-        explicit Element(const ElementBuilder &builder);
+        explicit OKULARCORE_EXPORT Element(const ElementBuilder &builder);
         ~Element();
         /* A named reference that must be converted by the generator using
          *      using metaData( "NamedViewport", viewport_name )
@@ -1566,7 +1566,7 @@ public:
     private:
         std::shared_ptr<ElementPrivate> d;
     };
-    class ElementBuilder
+    class OKULARCORE_EXPORT ElementBuilder
     {
     public:
         friend class Element;
