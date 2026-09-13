@@ -55,8 +55,22 @@ public:
      */
     void correctTextOrder();
 
+    /**
+     * The text entities in logical reading order, which is what string
+     * extraction and searching operate on. Falls back to the visual order when
+     * no reading order was computed.
+     */
+    const TextEntity::List &wordsInReadingOrder() const
+    {
+        return m_wordsReading.isEmpty() ? m_words : m_wordsReading;
+    }
+
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;
+    // The same entities as m_words but in logical reading order (for RTL
+    // scripts the words of each line are reversed). Only text extraction uses
+    // this; geometry/selection code keeps working on the visual m_words order.
+    TextEntity::List m_wordsReading;
     QMap<int, SearchPoint *> m_searchPoints;
     Page *m_page;
 

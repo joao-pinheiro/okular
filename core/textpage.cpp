@@ -549,8 +549,11 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
 RegularAreaRect *TextPage::findText(int searchID, const QString &query, SearchDirection direct, Qt::CaseSensitivity caseSensitivity, const RegularAreaRect *area)
 {
     SearchDirection dir = direct;
+    // Search the text in reading order, so that the match offsets and the
+    // returned area line up with the highlighted glyphs of an RTL line.
+    const TextEntity::List &words = d->wordsInReadingOrder();
     // invalid search request
-    if (d->m_words.isEmpty() || query.isEmpty() || (area && area->isNull())) {
+    if (words.isEmpty() || query.isEmpty() || (area && area->isNull())) {
         return nullptr;
     }
     TextEntity::List::ConstIterator start;
@@ -569,25 +572,25 @@ RegularAreaRect *TextPage::findText(int searchID, const QString &query, SearchDi
     bool forward = true;
     switch (dir) {
     case FromTop:
-        start = d->m_words.constBegin();
+        start = words.constBegin();
         start_offset = 0;
-        end = d->m_words.constEnd();
+        end = words.constEnd();
         break;
     case FromBottom:
-        start = d->m_words.constEnd();
+        start = words.constEnd();
         start_offset = 0;
-        end = d->m_words.constBegin();
+        end = words.constBegin();
         forward = false;
         break;
     case NextResult:
         start = (*sIt)->it_end;
         start_offset = (*sIt)->offset_end;
-        end = d->m_words.constEnd();
+        end = words.constEnd();
         break;
     case PreviousResult:
         start = (*sIt)->it_begin;
         start_offset = (*sIt)->offset_begin;
-        end = d->m_words.constBegin();
+        end = words.constBegin();
         forward = false;
         break;
     };
@@ -679,7 +682,7 @@ RegularAreaRect *TextPagePrivate::findTextInternalForward(int searchID, const QS
         const TextEntity &curEntity = *it;
         const QString &str = curEntity.text().normalized(QString::NormalizationForm_KC);
         const int strLen = str.length();
-        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, m_words.constEnd());
+        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, wordsInReadingOrder().constEnd());
         // adjustedLen <= strLen
 
         if (offset >= strLen) {
@@ -788,7 +791,7 @@ RegularAreaRect *TextPagePrivate::findTextInternalBackward(int searchID, const Q
         const TextEntity &curEntity = *it;
         const QString &str = curEntity.text().normalized(QString::NormalizationForm_KC);
         const int strLen = str.length();
-        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, m_words.constEnd());
+        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, wordsInReadingOrder().constEnd());
         // adjustedLen <= strLen
 
         if (offset <= 0) {
@@ -879,7 +882,10 @@ QString TextPage::text(const RegularAreaRect *area, TextAreaInclusionBehaviour b
         return QString();
     }
 
-    TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    // Use the logical reading order (RTL lines have their words reversed).
+    // Falls back to the visual order if no reading order was computed.
+    const TextEntity::List &words = d->wordsInReadingOrder();
+    TextEntity::List::ConstIterator it = words.constBegin(), itEnd = words.constEnd();
     QString ret;
     if (area) {
         for (; it != itEnd; ++it) {
@@ -908,6 +914,151 @@ static bool compareTinyTextEntityX(const WordWithCharacters &first, const WordWi
     QRect secondArea = second.area().roundedGeometry(1000, 1000);
 
     return firstArea.left() < secondArea.left();
+}
+
+// True if the character is a strong right-to-left character (UAX#9 class R/AL).
+static bool isStrongRtl(QChar c)
+{
+    const QChar::Direction d = c.direction();
+    return d == QChar::DirR || d == QChar::DirAL;
+}
+
+// A word belongs to a right-to-left run if it contains any RTL character.
+static bool wordIsRightToLeft(const WordWithCharacters &word)
+{
+    const QString text = word.text();
+    for (const QChar c : text) {
+        if (isStrongRtl(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Appends one entity to @p out, keeping a line break that the generator appended
+ * to the last character of a line for the caller: reordering can move that
+ * character into the middle of the line.
+ */
+static void appendEntity(const TextEntity &entity, TextEntity::List *out, bool *lineBreak)
+{
+    if (!entity.text().contains(QLatin1Char('\n'))) {
+        *out += entity;
+        return;
+    }
+
+    *lineBreak = true;
+    QString text = entity.text();
+    text.remove(QLatin1Char('\n'));
+    if (!text.isEmpty()) {
+        *out += TextEntity(text, entity.area());
+    }
+}
+
+/**
+ * Appends the entities of @p word in reading order. The producer wrote the
+ * characters of an RTL word from its right end, so the characters of such a word
+ * are appended in reverse. Words that touch are merged into one (see
+ * makeWordFromCharacters), so a single word can hold an RTL and an LTR run, e.g.
+ * "تجربةTesting"; only the RTL runs may be turned around, an LTR run was written
+ * left to right and keeps its order, exactly as poppler does it when it dumps a
+ * word.
+ */
+static void appendWordInReadingOrder(const WordWithCharacters &word, TextEntity::List *out, bool *lineBreak)
+{
+    const TextEntity::List &characters = word.characters;
+
+    if (!wordIsRightToLeft(word)) {
+        // The entities as they were found, unless one of them carries the line
+        // break the generator put on a character.
+        if (!word.text().contains(QLatin1Char('\n'))) {
+            *out += characters;
+            return;
+        }
+        for (const TextEntity &entity : characters) {
+            appendEntity(entity, out, lineBreak);
+        }
+        return;
+    }
+
+    // A character without a strong direction belongs to the run it follows
+    // (UAX#9 N1/N2).
+    const int count = characters.size();
+    QVarLengthArray<bool, 64> rtl(count);
+    bool lastStrongRtl = true;
+    for (int i = 0; i < count; ++i) {
+        const QString text = characters.at(i).text();
+        for (const QChar c : text) {
+            const QChar::Direction d = c.direction();
+            if (d == QChar::DirR || d == QChar::DirAL) {
+                lastStrongRtl = true;
+                break;
+            }
+            if (d == QChar::DirL) {
+                lastStrongRtl = false;
+                break;
+            }
+        }
+        rtl[i] = lastStrongRtl;
+    }
+
+    // Append the runs from the right end of the word: an RTL run is read
+    // backwards, an LTR run forwards.
+    for (int runEnd = count; runEnd > 0;) {
+        const bool runRtl = rtl[runEnd - 1];
+        int runBegin = runEnd - 1;
+        while (runBegin > 0 && rtl[runBegin - 1] == runRtl) {
+            --runBegin;
+        }
+        if (runRtl) {
+            for (int i = runEnd - 1; i >= runBegin; --i) {
+                appendEntity(characters.at(i), out, lineBreak);
+            }
+        } else {
+            for (int i = runBegin; i < runEnd; ++i) {
+                appendEntity(characters.at(i), out, lineBreak);
+            }
+        }
+        runEnd = runBegin;
+    }
+}
+
+/**
+ * Words within a line are collected left-to-right (see makeAndSortLines), that
+ * is in visual order. This appends them to @p out in logical reading order.
+ *
+ * An RTL line is laid out from its right end, so its words come out in the
+ * reverse of the order in which they were found. The characters of each word are
+ * put in reading order by appendWordInReadingOrder().
+ */
+static void appendLineInReadingOrder(const WordsWithCharacters &lineWords, TextEntity::List *out)
+{
+    bool anyRtl = false;
+    for (const WordWithCharacters &word : lineWords) {
+        if (wordIsRightToLeft(word)) {
+            anyRtl = true;
+            break;
+        }
+    }
+
+    // Nothing to reorder: keep the entities, including their spaces, untouched.
+    if (!anyRtl) {
+        for (const WordWithCharacters &word : lineWords) {
+            *out += word.characters;
+        }
+        return;
+    }
+
+    bool lineBreak = false;
+    for (int k = lineWords.size() - 1; k >= 0; --k) {
+        appendWordInReadingOrder(lineWords.at(k), out, &lineBreak);
+    }
+
+    if (lineBreak) {
+        // The generator ends a line by appending '\n' to the last character of
+        // the line's last word, so it belongs at the end of the line.
+        out->append(TextEntity(QStringLiteral("\n"), lineWords.constFirst().area()));
+    }
 }
 
 static bool compareTinyTextEntityY(const WordWithCharacters &first, const WordWithCharacters &second)
@@ -1555,7 +1706,7 @@ static RegionTextList XYCutForBoundingBoxes(const QList<WordWithCharacters> &wor
 /**
  * Add spaces in between words in a line. It reuses the pointers passed in tree and might add new ones. You will need to take care of deleting them if needed
  */
-TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageHeight)
+TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageHeight, TextEntity::List *readingOrderWords)
 {
     /**
      * 1. Call makeAndSortLines before adding spaces in between words in a line
@@ -1604,11 +1755,17 @@ TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageH
             counter += list.length();
         }
         res.reserve(res.length() + counter);
+        readingOrderWords->reserve(readingOrderWords->length() + counter);
 
         for (const QPair<WordsWithCharacters, QRect> &sortedLine : std::as_const(sortedLines)) {
-            for (const WordWithCharacters &word : sortedLine.first) {
+            const WordsWithCharacters &lineWords = sortedLine.first;
+            // res keeps the visual (left-to-right) order the selection code
+            // relies on; the reading order is collected separately for text
+            // extraction.
+            for (const WordWithCharacters &word : lineWords) {
                 res += word.characters;
             }
+            appendLineInReadingOrder(lineWords, readingOrderWords);
         }
     }
 
@@ -1650,9 +1807,11 @@ void TextPagePrivate::correctTextOrder()
     /**
      * Add spaces to the word
      */
-    const auto listOfCharacters = addNecessarySpace(std::move(tree), pageWidth, pageHeight);
+    TextEntity::List readingOrderWords;
+    const auto listOfCharacters = addNecessarySpace(std::move(tree), pageWidth, pageHeight, &readingOrderWords);
 
     setWordList(listOfCharacters);
+    m_wordsReading = std::move(readingOrderWords);
 }
 
 TextEntity::List TextPage::words(const RegularAreaRect *area, TextAreaInclusionBehaviour b) const
