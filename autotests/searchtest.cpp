@@ -50,6 +50,11 @@ private Q_SLOTS:
     void testHyphenAtEndOfPage();
     void testOneColumn();
     void testTwoColumns();
+    void testRtlText();
+    void testRtlMixedRunsText();
+    void testRtlLineText();
+    void testRtlSubWordSearchArea();
+    void testLtrTextUnchanged();
 };
 
 void SearchTest::initTestCase()
@@ -422,6 +427,158 @@ void SearchTest::testTwoColumns()
     Okular::RegularAreaRect *result = tp->findText(0, QStringLiteral("This text in"), Okular::FromTop, Qt::CaseSensitive, nullptr);
     QVERIFY(!result);
     delete result;
+
+    delete page;
+}
+
+// The generators hand the characters of a word over in the order the producer
+// wrote them, which is the visual order (leftmost character first) for the usual
+// PDF text operators. Reading such a page back therefore has to turn every RTL
+// run around, while an LTR run must keep its order. The layout analysis cannot
+// tell the two orders apart by itself, so these tests pin the behaviour down.
+
+// Bounds of all the rectangles of a match.
+static Okular::NormalizedRect areaBounds(const Okular::RegularAreaRect *area)
+{
+    Okular::NormalizedRect bounds;
+    bool first = true;
+    for (const Okular::NormalizedRect &rect : *area) {
+        if (first) {
+            bounds = rect;
+            first = false;
+        } else {
+            bounds |= rect;
+        }
+    }
+    return bounds;
+}
+
+void SearchTest::testRtlText()
+{
+    // "مرحبا" as the producer wrote it, i.e. in visual order.
+    QList<QString> text;
+    text << QStringLiteral("ا") << QStringLiteral("ب") << QStringLiteral("ح") << QStringLiteral("ر") << QStringLiteral("م");
+
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < text.size(); i++) {
+        rect << Okular::NormalizedRect(0.1 * i, 0.0, 0.1 * (i + 1), 0.1);
+    }
+
+    CREATE_PAGE;
+
+    QCOMPARE(tp->text(nullptr), QStringLiteral("مرحبا"));
+
+    delete page;
+}
+
+void SearchTest::testRtlMixedRunsText()
+{
+    // "تجربةTesting" holds an RTL and an LTR run with no space in between. The
+    // characters are all emitted left to right, so the Arabic run is stored in
+    // visual order and the Latin one is already in reading order.
+    QList<QString> text;
+    text << QStringLiteral("T") << QStringLiteral("e") << QStringLiteral("s") << QStringLiteral("t") << QStringLiteral("i") << QStringLiteral("n") << QStringLiteral("g") << QStringLiteral("ة") << QStringLiteral("ب") << QStringLiteral("ر")
+         << QStringLiteral("ج") << QStringLiteral("ت");
+
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < text.size(); i++) {
+        rect << Okular::NormalizedRect(0.1 + 0.01 * i, 0.0, 0.1 + 0.01 * (i + 1), 0.1);
+    }
+
+    CREATE_PAGE;
+
+    // The two runs touch, so they are one word, and only the Arabic run is
+    // turned around.
+    QCOMPARE(tp->text(nullptr), QStringLiteral("تجربةTesting"));
+
+    delete page;
+}
+
+void SearchTest::testRtlLineText()
+{
+    // "مرحبا بالعالم": the logically first word is the rightmost one.
+    QList<QString> text;
+    // "بالعالم" in visual order
+    text << QStringLiteral("م") << QStringLiteral("ل") << QStringLiteral("ا") << QStringLiteral("ع") << QStringLiteral("ل") << QStringLiteral("ا") << QStringLiteral("ب");
+    // "مرحبا" in visual order
+    text << QStringLiteral("ا") << QStringLiteral("ب") << QStringLiteral("ح") << QStringLiteral("ر") << QStringLiteral("م");
+
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 7; i++) {
+        rect << Okular::NormalizedRect(0.01 * i, 0.0, 0.01 * (i + 1), 0.1);
+    }
+    for (int i = 0; i < 5; i++) {
+        rect << Okular::NormalizedRect(0.09 + 0.01 * i, 0.0, 0.09 + 0.01 * (i + 1), 0.1);
+    }
+
+    CREATE_PAGE;
+
+    QCOMPARE(tp->text(nullptr), QStringLiteral("مرحبا بالعالم"));
+
+    delete page;
+}
+
+void SearchTest::testRtlSubWordSearchArea()
+{
+    QList<QString> text;
+    // "بالعالم" in visual order
+    text << QStringLiteral("م") << QStringLiteral("ل") << QStringLiteral("ا") << QStringLiteral("ع") << QStringLiteral("ل") << QStringLiteral("ا") << QStringLiteral("ب");
+    // "مرحبا" in visual order
+    text << QStringLiteral("ا") << QStringLiteral("ب") << QStringLiteral("ح") << QStringLiteral("ر") << QStringLiteral("م");
+
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 7; i++) {
+        rect << Okular::NormalizedRect(0.01 * i, 0.0, 0.01 * (i + 1), 0.1);
+    }
+    for (int i = 0; i < 5; i++) {
+        rect << Okular::NormalizedRect(0.09 + 0.01 * i, 0.0, 0.09 + 0.01 * (i + 1), 0.1);
+    }
+
+    CREATE_PAGE;
+
+    // A whole word matches the glyphs of that word, whichever side it is on.
+    {
+        Okular::RegularAreaRect *result = tp->findText(0, QStringLiteral("مرحبا"), Okular::FromTop, Qt::CaseSensitive, nullptr);
+        QVERIFY(result);
+        QVERIFY(areaBounds(result) == Okular::NormalizedRect(0.09, 0.0, 0.14, 0.1));
+        delete result;
+    }
+    {
+        Okular::RegularAreaRect *result = tp->findText(0, QStringLiteral("بالعالم"), Okular::FromTop, Qt::CaseSensitive, nullptr);
+        QVERIFY(result);
+        QVERIFY(areaBounds(result) == Okular::NormalizedRect(0.00, 0.0, 0.07, 0.1));
+        delete result;
+    }
+    // One character in the middle of the word: the highlight is the rectangle of
+    // that character, not of any other one of the word.
+    {
+        Okular::RegularAreaRect *result = tp->findText(0, QStringLiteral("ح"), Okular::FromTop, Qt::CaseSensitive, nullptr);
+        QVERIFY(result);
+        QVERIFY(areaBounds(result) == Okular::NormalizedRect(0.11, 0.0, 0.12, 0.1));
+        delete result;
+    }
+
+    delete page;
+}
+
+void SearchTest::testLtrTextUnchanged()
+{
+    // The order of a left to right line is already its reading order.
+    QList<QString> text;
+    text << QStringLiteral("H") << QStringLiteral("e") << QStringLiteral("l") << QStringLiteral("l") << QStringLiteral("o");
+    text << QStringLiteral("W") << QStringLiteral("o") << QStringLiteral("r") << QStringLiteral("l") << QStringLiteral("d");
+
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 5; i++) {
+        rect << Okular::NormalizedRect(0.01 * i, 0.0, 0.01 * (i + 1), 0.1);
+    }
+    for (int i = 0; i < 5; i++) {
+        rect << Okular::NormalizedRect(0.07 + 0.01 * i, 0.0, 0.07 + 0.01 * (i + 1), 0.1);
+    }
+
+    CREATE_PAGE;
+
+    QCOMPARE(tp->text(nullptr), QStringLiteral("Hello World"));
 
     delete page;
 }
