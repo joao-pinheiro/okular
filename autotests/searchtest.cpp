@@ -55,6 +55,11 @@ private Q_SLOTS:
     void testRtlLineText();
     void testRtlSubWordSearchArea();
     void testLtrTextUnchanged();
+    void testRtlMarkFollowsItsBase();
+    void testRtlMarkInsideWord();
+    void testWordPartsWrittenAsSeparateRuns();
+    void testRtlWordWithMarksWrittenAsRuns();
+    void testArabicLettersFoldedInSearch();
 };
 
 void SearchTest::initTestCase()
@@ -431,11 +436,9 @@ void SearchTest::testTwoColumns()
     delete page;
 }
 
-// The generators hand the characters of a word over in the order the producer
-// wrote them, which is the visual order (leftmost character first) for the usual
-// PDF text operators. Reading such a page back therefore has to turn every RTL
-// run around, while an LTR run must keep its order. The layout analysis cannot
-// tell the two orders apart by itself, so these tests pin the behaviour down.
+// The generators hand over the characters of a word in the order of the glyphs on
+// the page, so reading an RTL line back has to turn its runs around, while an LTR
+// run keeps its order.
 
 // Bounds of all the rectangles of a match.
 static Okular::NormalizedRect areaBounds(const Okular::RegularAreaRect *area)
@@ -581,6 +584,242 @@ void SearchTest::testLtrTextUnchanged()
     QCOMPARE(tp->text(nullptr), QStringLiteral("Hello World"));
 
     delete page;
+}
+
+void SearchTest::testRtlMarkFollowsItsBase()
+{
+    // 0628 BEH and 064E FATHA: reading the word from its right end must not move
+    // the mark in front of the base it belongs to.
+    const ushort storedCodes[] = {0x0628, 0x064e};
+
+    QList<QString> text;
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 2; i++) {
+        text << QString(QChar(storedCodes[i]));
+        rect << Okular::NormalizedRect(0.10 + 0.02 * i, 0.10, 0.10 + 0.02 * (i + 1), 0.20);
+    }
+
+    CREATE_PAGE;
+
+    QString expected;
+    for (const ushort code : storedCodes) {
+        expected += QChar(code);
+    }
+    QCOMPARE(tp->text(nullptr), expected);
+
+    delete page;
+}
+
+void SearchTest::testRtlMarkInsideWord()
+{
+    // 0644 LAM, 062A TEH, 0651 SHADDA, 0643 KAF and 0645 MEEM: the mark must stay
+    // behind its letter when the word is read back.
+    const ushort storedCodes[] = {0x0644, 0x062a, 0x0651, 0x0643, 0x0645};
+
+    QList<QString> text;
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 5; i++) {
+        text << QString(QChar(storedCodes[i]));
+        rect << Okular::NormalizedRect(0.10 + 0.02 * i, 0.10, 0.10 + 0.02 * (i + 1), 0.20);
+    }
+
+    CREATE_PAGE;
+
+    const ushort expectedCodes[] = {0x0645, 0x0643, 0x062a, 0x0651, 0x0644};
+    QString expected;
+    for (const ushort code : expectedCodes) {
+        expected += QChar(code);
+    }
+    QCOMPARE(tp->text(nullptr), expected);
+
+    delete page;
+}
+
+void SearchTest::testWordPartsWrittenAsSeparateRuns()
+{
+    // 0627 ALEF, 0642 QAF and 0645 MEEM, in the order a producer writes a word it
+    // splits into two runs, the gap between them being narrower than a space.
+    QList<QString> text;
+    text << QString(QChar(0x0627)) << QString(QChar(0x0642)) << QString(QChar(0x0645));
+
+    {
+        QList<Okular::NormalizedRect> rect;
+        rect << Okular::NormalizedRect(0.300, 0.100, 0.320, 0.200) << Okular::NormalizedRect(0.320, 0.100, 0.340, 0.200) << Okular::NormalizedRect(0.341, 0.100, 0.361, 0.200);
+
+        CREATE_PAGE;
+
+        // 0645 0642 0627, i.e. "مقا", with no space in it.
+        const ushort expectedCodes[] = {0x0645, 0x0642, 0x0627};
+        QString expected;
+        for (const ushort code : expectedCodes) {
+            expected += QChar(code);
+        }
+        QCOMPARE(tp->text(nullptr), expected);
+
+        // The gap between the runs is not a word break: the word is one area,
+        // not one area per run.
+        std::unique_ptr<Okular::RegularAreaRect> word = tp->wordAt(Okular::NormalizedPoint(0.315, 0.150));
+        QVERIFY(word);
+        QCOMPARE(word->count(), 1);
+        QCOMPARE(word->first(), Okular::NormalizedRect(0.300, 0.100, 0.361, 0.200));
+
+        delete page;
+    }
+
+    {
+        QList<Okular::NormalizedRect> rect;
+        rect << Okular::NormalizedRect(0.300, 0.100, 0.320, 0.200) << Okular::NormalizedRect(0.320, 0.100, 0.340, 0.200) << Okular::NormalizedRect(0.365, 0.100, 0.385, 0.200);
+
+        CREATE_PAGE;
+
+        // The same characters with a real space between the two runs.
+        const ushort expectedCodes[] = {0x0645, 0x0020, 0x0642, 0x0627};
+        QString expected;
+        for (const ushort code : expectedCodes) {
+            expected += QChar(code);
+        }
+        QCOMPARE(tp->text(nullptr), expected);
+
+        delete page;
+    }
+}
+
+void SearchTest::testRtlWordWithMarksWrittenAsRuns()
+{
+    // A word written by LibreOffice as three runs, with the characters and the
+    // rectangles (normalized to the page of the document) the generator hands
+    // over for them, including the 0020 spaces it adds after each run.
+    const ushort storedCodes[] = {0x0627, 0x062f, 0x064b, 0x0020, 0x0631, 0x0651, 0x064e, 0x0634, 0x0020, 0x0645, 0x064f};
+    const double storedRects[][4] = {
+        {0.865356, 0.0678126, 0.870144, 0.0837197}, // 0627
+        {0.870144, 0.0678126, 0.873246, 0.0837197}, // 062F
+        {0.873246, 0.0678126, 0.876349, 0.0837197}, // 064B
+        {0.876349, 0.0678126, 0.879383, 0.0837197}, // space
+        {0.879383, 0.0678126, 0.881682, 0.0846699}, // 0631
+        {0.881682, 0.0678126, 0.883992, 0.0846699}, // 0651
+        {0.883992, 0.0678126, 0.886270, 0.0846699}, // 064E
+        {0.886270, 0.0678126, 0.896954, 0.0846699}, // 0634
+        {0.896954, 0.0678126, 0.898281, 0.0846699}, // space
+        {0.898281, 0.0693568, 0.901538, 0.0852639}, // 0645
+        {0.901538, 0.0693568, 0.904795, 0.0852639}, // 064F
+    };
+
+    QList<QString> text;
+    QList<Okular::NormalizedRect> rect;
+    for (int i = 0; i < 11; i++) {
+        text << QString(QChar(storedCodes[i]));
+        rect << Okular::NormalizedRect(storedRects[i][0], storedRects[i][1], storedRects[i][2], storedRects[i][3]);
+    }
+    // The generator puts the end of the line on the last character of the line.
+    text[10] += QLatin1Char('\n');
+
+    // The rectangles are normalized to the page of the document, and the space
+    // heuristic compares a horizontal gap with a vertical height, so the page of
+    // the text page has to have the size of the document's page; the square page
+    // the other tests use would distort the comparison.
+    auto page = std::make_unique<Okular::Page>(1, 595.303937, 841.889764, Okular::Rotation0);
+    auto *tp = new Okular::TextPage();
+    for (int i = 0; i < text.size(); i++) {
+        tp->append(text[i], rect[i]);
+    }
+    page->setTextPage(tp);
+
+    // 0645 064F 0634 0631 064E 0651 062F 064B 0627 and the end of the line, i.e.
+    // "مُشَرَّدًا", with no space in it: the gaps between the runs are too small
+    // to be spaces, and the marks of the reh keep their place behind the reh.
+    const ushort expectedCodes[] = {0x0645, 0x064f, 0x0634, 0x0631, 0x064e, 0x0651, 0x062f, 0x064b, 0x0627, 0x000a};
+    QString expected;
+    for (const ushort code : expectedCodes) {
+        expected += QChar(code);
+    }
+    QCOMPARE(tp->text(nullptr), expected);
+
+    // The three runs are one word: a click on any of them selects all of them.
+    std::unique_ptr<Okular::RegularAreaRect> word = tp->wordAt(Okular::NormalizedPoint(0.890, 0.075));
+    QVERIFY(word);
+    const Okular::NormalizedRect wordBounds = areaBounds(word.get());
+    QVERIFY(wordBounds.left <= 0.865356);
+    QVERIFY(wordBounds.top <= 0.0678126);
+    QVERIFY(wordBounds.right >= 0.904795);
+    QVERIFY(wordBounds.bottom >= 0.0852639);
+
+    // The word is found without writing the diacritics.
+    const ushort queryCodes[] = {0x0645, 0x0634, 0x0631, 0x062f, 0x0627}; // م ش ر د ا
+    QString query;
+    for (const ushort code : queryCodes) {
+        query += QChar(code);
+    }
+    {
+        std::unique_ptr<Okular::RegularAreaRect> result(tp->findText(0, query, Okular::FromTop, Qt::CaseInsensitive, nullptr));
+        QVERIFY(result);
+        QCOMPARE(areaBounds(result.get()), Okular::NormalizedRect(0.865356, 0.0678126, 0.904795, 0.0852639));
+    }
+    {
+        // A case sensitive search is exact, so this one has no match.
+        std::unique_ptr<Okular::RegularAreaRect> result(tp->findText(0, query, Okular::FromTop, Qt::CaseSensitive, nullptr));
+        QVERIFY(!result);
+    }
+
+    // The first letters too. The area of a match is the area of every character
+    // from the first to the last one, and in reading order the damma of the meem
+    // lies between the meem and the sheen, so the area reaches its right edge.
+    {
+        const ushort prefixCodes[] = {0x0645, 0x0634}; // م ش
+        QString prefix;
+        for (const ushort code : prefixCodes) {
+            prefix += QChar(code);
+        }
+
+        std::unique_ptr<Okular::RegularAreaRect> result(tp->findText(0, prefix, Okular::FromTop, Qt::CaseInsensitive, nullptr));
+        QVERIFY(result);
+        QCOMPARE(areaBounds(result.get()), Okular::NormalizedRect(0.886270, 0.0678126, 0.904795, 0.0852639));
+    }
+}
+
+void SearchTest::testArabicLettersFoldedInSearch()
+{
+    // The word on the page and the word as a reader types it: the hamza is often
+    // left out, a final taa marbuta is typed as a heh, an alef maksura as a yeh,
+    // and an elongation is not typed at all.
+    const QList<QPair<QString, QString>> foldings = {
+        {QStringLiteral("مكتبة"), QStringLiteral("مكتبه")}, // 0629 TEH MARBUTA and 0647 HEH
+        {QStringLiteral("أحمد"), QStringLiteral("احمد")},   // 0623 ALEF WITH HAMZA ABOVE and 0627 ALEF
+        {QStringLiteral("مسؤول"), QStringLiteral("مسوول")}, // 0624 WAW WITH HAMZA ABOVE and 0648 WAW
+        {QStringLiteral("قائل"), QStringLiteral("قايل")},   // 0626 YEH WITH HAMZA ABOVE and 064A YEH
+        {QStringLiteral("مصطفى"), QStringLiteral("مصطفي")}, // 0649 ALEF MAKSURA and 064A YEH
+        {QStringLiteral("كتـاب"), QStringLiteral("كتاب")},  // 0640 ARABIC TATWEEL
+    };
+
+    for (const auto &[written, typed] : foldings) {
+        QList<QString> text;
+        text << written;
+
+        QList<Okular::NormalizedRect> rect;
+        rect << Okular::NormalizedRect(0.1, 0.1, 0.2, 0.2);
+
+        CREATE_PAGE;
+
+        std::unique_ptr<Okular::RegularAreaRect> result(tp->findText(0, typed, Okular::FromTop, Qt::CaseInsensitive, nullptr));
+        QVERIFY(result);
+
+        delete page;
+    }
+
+    // A case sensitive search is exact and does not fold anything.
+    {
+        QList<QString> text;
+        text << QStringLiteral("مكتبة");
+
+        QList<Okular::NormalizedRect> rect;
+        rect << Okular::NormalizedRect(0.1, 0.1, 0.2, 0.2);
+
+        CREATE_PAGE;
+
+        std::unique_ptr<Okular::RegularAreaRect> result(tp->findText(0, QStringLiteral("مكتبه"), Okular::FromTop, Qt::CaseSensitive, nullptr));
+        QVERIFY(!result);
+
+        delete page;
+    }
 }
 
 QTEST_MAIN(SearchTest)
