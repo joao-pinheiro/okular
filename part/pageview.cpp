@@ -1613,8 +1613,7 @@ void PageView::notifyCurrentPageChanged(int previous, int current)
         const Okular::Page *page = d->document->page(previous);
         const QList<Okular::Annotation *> annotations = page->annotations();
         for (Okular::Annotation *annotation : annotations) {
-            if (annotation->subType() == Okular::Annotation::AWidget) {
-                Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
+            if (auto *widgetAnnotation = dynamic_cast<Okular::WidgetAnnotation *>(annotation)) {
                 d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageClosing));
             }
         }
@@ -1638,8 +1637,7 @@ void PageView::notifyCurrentPageChanged(int previous, int current)
         const Okular::Page *page = d->document->page(current);
         const QList<Okular::Annotation *> annotations = page->annotations();
         for (Okular::Annotation *annotation : annotations) {
-            if (annotation->subType() == Okular::Annotation::AWidget) {
-                Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
+            if (auto *widgetAnnotation = dynamic_cast<Okular::WidgetAnnotation *>(annotation)) {
                 d->document->processAction(widgetAnnotation->additionalAction(Okular::Annotation::PageOpening));
             }
         }
