@@ -41,8 +41,10 @@ public:
     TextPagePrivate();
     ~TextPagePrivate();
 
-    RegularAreaRect *findTextInternalForward(int searchID, const QString &query, TextComparisonFunction comparer, const TextEntity::List::ConstIterator start, int start_offset, const TextEntity::List::ConstIterator end);
-    RegularAreaRect *findTextInternalBackward(int searchID, const QString &query, TextComparisonFunction comparer, const TextEntity::List::ConstIterator start, int start_offset, const TextEntity::List::ConstIterator end);
+    RegularAreaRect *
+    findTextInternalForward(int searchID, const QString &query, TextComparisonFunction comparer, bool matchDiacritics, const TextEntity::List::ConstIterator start, int start_offset, const TextEntity::List::ConstIterator end);
+    RegularAreaRect *
+    findTextInternalBackward(int searchID, const QString &query, TextComparisonFunction comparer, bool matchDiacritics, const TextEntity::List::ConstIterator start, int start_offset, const TextEntity::List::ConstIterator end);
 
     /**
      * Copy a TextList to m_words, the pointers of list are adopted
