@@ -124,6 +124,8 @@ public:
     QPoint contentAreaPosition() const;
     QPoint contentAreaPoint(const QPoint pos) const;
     QPointF contentAreaPoint(const QPointF pos) const;
+    // get correct X pos in LTR & RTL
+    int mapHScrollX(int x) const;
 
     Okular::Annotation *focusedAnnotation() const;
     int focusedAnnotationPageNumber() const;
