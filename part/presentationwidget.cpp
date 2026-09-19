@@ -1616,12 +1616,7 @@ void PresentationWidget::slotDelayedEvents()
         connect(m_screenSelect->selectableActionGroup(), &QActionGroup::triggered, this, &PresentationWidget::chooseScreen);
     }
 
-    // inform user on how to exit from presentation mode
-    KMessageBox::information(
-        this,
-        i18n("There are two ways of exiting presentation mode, you can press either ESC key or click with the quit button that appears when placing the mouse in the top-right corner. Of course you can cycle windows (Alt+TAB by default)"),
-        QString(),
-        QStringLiteral("presentationInfo"));
+    KMessageBox::information(this, i18nc("how to exit presentation mode", "Exit presentation mode by pressing ESC or clicking the button in the top-right corner."), QString(), QStringLiteral("presentationInfo"));
 }
 
 void PresentationWidget::slotPageChanged()
