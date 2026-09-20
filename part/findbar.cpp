@@ -43,7 +43,7 @@ FindBar::FindBar(Okular::Document *document, QWidget *parent)
     m_search->lineEdit()->setSearchMinimumLength(0);
     m_search->lineEdit()->setSearchType(Okular::Document::NextMatch);
     m_search->lineEdit()->setSearchId(PART_SEARCH_ID);
-    m_search->lineEdit()->setSearchColor(qRgb(255, 255, 64));
+    m_search->lineEdit()->setSearchColor(SearchMatchColor);
     m_search->lineEdit()->setSearchMoveViewport(true);
     m_search->lineEdit()->setFindAsYouType(false);
     m_search->lineEdit()->setToolTip(i18n("Text to search for"));

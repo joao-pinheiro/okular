@@ -17,6 +17,7 @@
 #include <poppler-version.h>
 
 #include <QBitArray>
+#include <QByteArray>
 #include <QPointer>
 
 #include <core/annotations.h>
@@ -146,6 +147,13 @@ private:
 
     // poppler dependent stuff
     std::unique_ptr<Poppler::Document> pdfdoc;
+
+    // Read-only document handles for extracting several pages at once: a Poppler
+    // document is not thread safe, so each worker gets one of its own.
+    class TextHandlePool;
+    std::unique_ptr<TextHandlePool> m_textHandles;
+
+    QByteArray m_documentFileData; // when opened from memory, so the pool can reopen the same data
 
     void xrefReconstructionHandler();
 

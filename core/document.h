@@ -16,6 +16,7 @@
 #include "okularcore_export.h"
 #include "pagesize.h"
 #include "signatureutils.h"
+#include "textpage.h"
 
 #include <QDomDocument>
 #include <QList>
@@ -68,6 +69,8 @@ class SignatureInfo;
 #define PAGEVIEW_SEARCH_ID 2
 #define SW_SEARCH_ID 3
 #define PRESENTATION_SEARCH_ID 4
+#define SEARCH_PANEL_SEARCH_ID 5
+#define SEARCH_PANEL_CURRENT_MATCH_ID 6
 
 /**
  * The DocumentInfo structure can be filled in by generators to display
@@ -639,6 +642,24 @@ public:
      * @param color The highlighting color of the matches.
      */
     void searchText(int searchID, const QString &text, bool fromStart, Qt::CaseSensitivity caseSensitivity, SearchType type, bool moveViewport, const QColor &color);
+
+    /**
+     * Highlights @p rect on page @p pageNumber under @p searchID with @p color, after
+     * removing every highlight previously set under that same @p searchID.
+     *
+     * Use it to single one area out among the matches of a search, such as the result
+     * the reader has just picked, by giving it a colour of its own.
+     *
+     * @since 26.12
+     */
+    void setHighlightedArea(int searchID, int pageNumber, const NormalizedRect &rect, const QColor &color);
+
+    /**
+     * Removes every highlight set under @p searchID.
+     *
+     * @since 26.12
+     */
+    void clearHighlightedAreas(int searchID);
 
     /**
      * Continues the search for the given @p searchID.
@@ -1347,6 +1368,18 @@ Q_SIGNALS:
      * Reports that the current search finished
      */
     void searchFinished(int searchID, Okular::Document::SearchStatus endStatus);
+
+    /**
+     * Reports that an AllDocument search has finished scanning one page.
+     *
+     * Emitted for every page as the scan progresses, so that a caller can display
+     * results and progress while the search is still running. @p matches holds every
+     * match found on that page, each with its bounding rectangle and the line it
+     * sits on, and is empty for a page with no match.
+     *
+     * @since 26.12
+     */
+    void searchPageScanned(int searchID, int pageNumber, const QList<Okular::SearchMatch> &matches);
 
     /**
      * This signal is emitted whenever a source reference with the given parameters has been

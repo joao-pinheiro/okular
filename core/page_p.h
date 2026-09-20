@@ -61,6 +61,7 @@ public:
     ~PagePrivate();
 
     static PagePrivate *get(Page *page);
+    static const PagePrivate *get(const Page *page);
 
     void imageRotationDone(RotationJob *job);
     QTransform rotationMatrix() const;

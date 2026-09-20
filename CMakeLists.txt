@@ -352,6 +352,7 @@ set(okularcore_SRCS
    core/textdocumentgenerator.cpp
    core/textdocumentsettings.cpp
    core/textpage.cpp
+   core/textpagejob.cpp
    core/tilesmanager.cpp
    core/utils.cpp
    core/view.cpp
@@ -551,6 +552,8 @@ if(BUILD_DESKTOP)
     part/revisionviewer.cpp
     part/searchlineedit.cpp
     part/searchwidget.cpp
+    part/searchresultsmodel.cpp
+    part/searchresultspanel.cpp
     part/sidebar.cpp
     part/side_reviews.cpp
     part/snapshottaker.cpp

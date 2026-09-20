@@ -14,6 +14,8 @@
 #include <QPair>
 #include <QTransform>
 
+#include <optional>
+
 class SearchPoint;
 
 class RegionText;
@@ -35,6 +37,12 @@ typedef bool (*TextComparisonFunction)(QStringView from, const QStringView to);
  */
 typedef QList<RegionText> RegionTextList;
 
+// A match with the area findText() returned; the area is owned by whoever holds the TextMatch.
+struct TextMatch {
+    RegularAreaRect *area = nullptr;
+    SearchMatch match;
+};
+
 class TextPagePrivate
 {
 public:
@@ -51,14 +59,21 @@ public:
 
     /**
      * Make necessary modifications in the TextList to make the text order correct, so
-     * that textselection works fine
+     * that textselection works fine. Width and height are passed in: this can run
+     * off the main thread, where m_page's geometry may change concurrently.
      */
-    void correctTextOrder();
+    void correctTextOrder(double pageWidth, double pageHeight);
+
+    /** The matrix search results are transformed with: m_matrixOverride when set, else the page's rotation, else the identity. */
+    QTransform searchMatrix() const;
 
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;
     QMap<int, SearchPoint *> m_searchPoints;
-    Page *m_page;
+    const Page *m_page = nullptr; // set by TextPage::prepareForPage()
+    // Set by a worker searching a TextPage not attached yet: it must not read the
+    // page's geometry, so results stay unrotated and the main thread rotates them.
+    std::optional<QTransform> m_matrixOverride;
 
 private:
     RegularAreaRect *searchPointToArea(const SearchPoint *sp);

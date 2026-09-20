@@ -12,6 +12,7 @@
 #include "script/event_p.h"
 
 #include "synctex/synctex_parser.h"
+#include "textpage_p.h"
 #include <memory>
 
 // qt/kde/system includes
@@ -21,6 +22,7 @@
 #include <QMap>
 #include <QMutex>
 #include <QPointer>
+#include <QThreadPool>
 #include <QUrl>
 
 // local includes
@@ -45,6 +47,7 @@ class ConfigInterface;
 class PageController;
 class SaveInterface;
 class Scripter;
+class TextPageJob;
 class View;
 }
 
@@ -69,6 +72,39 @@ struct DoContinueDirectionMatchSearchStruct {
     RegularAreaRect *match;
     int currentPage;
     int searchID;
+};
+
+/**
+ * One running document-wide search. Freed by whichever of
+ * doContinueAllDocumentSearch() or textPageJobFinished() finds it fully walked
+ * with nothing in flight; a superseded scan lives on until its jobs are done,
+ * reporting nothing further.
+ */
+struct AllDocumentScan {
+    AllDocumentScan(int startPage, int generation, int searchID)
+        : startPage(startPage)
+        , generation(generation)
+        , searchID(searchID)
+    {
+    }
+    ~AllDocumentScan()
+    {
+        for (const QList<TextMatch> &matches : std::as_const(pageMatches)) {
+            for (const TextMatch &match : matches) {
+                delete match.area;
+            }
+        }
+    }
+
+    const int startPage;
+    const int generation;
+    const int searchID;
+    int scannedPages = 0;
+    int inFlight = 0;
+    int reportedPages = 0;
+    QSet<int> readyPages;                        // extracted before their turn in the walk
+    QHash<Page *, QList<TextMatch>> pageMatches; // of the pages not reported yet
+    bool foundAMatch = false;
 };
 
 enum LoadDocumentInfoFlag {
@@ -175,10 +211,30 @@ public:
 
     typedef std::pair<RegularAreaRect *, QColor> MatchColor;
     void doContinueDirectionMatchSearch(DoContinueDirectionMatchSearchStruct *searchStruct);
-    void doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID);
+    void doContinueAllDocumentSearch(AllDocumentScan *scan);
     void doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words);
 
     void doProcessSearchMatch(RegularAreaRect *match, RunningSearch *search, QSet<int> *pagesToNotify, int currentPage, int searchID, bool moveViewport, const QColor &color);
+
+    // The page at position @p index of the scan's walk: startPage, then alternating
+    // a page after with a page before until one side runs out.
+    int pageAtScanIndex(const AllDocumentScan *scan, int index) const;
+    // Cancelled, reset, or superseded by a newer scan under the same id.
+    bool scanIsStale(const AllDocumentScan *scan) const;
+    // Returns true if the scan is stale; frees it once nothing is in flight.
+    bool abandonIfStale(AllDocumentScan *scan);
+    // Collects the page's matches while its TextPage is still attached.
+    void findMatchesForPage(int pageNumber, AllDocumentScan *scan);
+    // Highlights and reports the collected matches of a page.
+    void reportPage(int pageNumber, AllDocumentScan *scan);
+    // Reports the page and any page waiting behind it, in scan order.
+    void pageReady(int pageNumber, AllDocumentScan *scan);
+    void submitTextPageJob(int pageNumber, AllDocumentScan *scan);
+    void textPageJobFinished(TextPageJob *job);
+    // nullptr once discardAllDocumentScans() freed the scan
+    AllDocumentScan *findAllDocumentScan(int searchID, int generation) const;
+    // Resumes the scan on the next event-loop tick, if it still exists by then.
+    void scheduleAllDocumentScan(int searchID, int generation);
 
     /**
      * Executes a JavaScript script from the setInterval function.
@@ -216,6 +272,9 @@ public:
 
     void clearAndWaitForRequests();
 
+    // Only after clearAndWaitForRequests(), so that no TextPageJob still runs.
+    void discardAllDocumentScans();
+
     OKULARCORE_EXPORT static QString evaluateKeystrokeEventChange(const QString &oldVal, const QString &newVal, int selStart, int selEnd);
 
     /*
@@ -236,6 +295,17 @@ public:
     // find descriptors, mapped by ID (we handle multiple searches)
     QMap<int, RunningSearch *> m_searches;
     bool m_searchCancelled;
+
+    // normally one; briefly two while a superseded scan drains
+    QList<AllDocumentScan *> m_allDocumentScans;
+    int m_textPageWorkers = 0; // 0 keeps extraction on the main thread
+    // this document's own pool, so clearAndWaitForRequests() waits on its jobs only
+    QThreadPool m_textPageJobPool;
+    // per search id; kept here rather than in RunningSearch, which resetSearch() deletes
+    QHash<int, int> m_searchGenerations;
+    int m_nextSearchGeneration = 0;
+    // pages highlighted through setHighlightedArea(), per search id
+    QHash<int, QSet<int>> m_pagesWithHighlightedAreas;
 
     // needed because for remote documents docFileName is a local file and
     // we want the remote url when the document refers to relativeNames
