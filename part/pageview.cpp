@@ -19,6 +19,10 @@
 #include "pageview.h"
 
 // qt/kde includes
+#include <QAccessible>
+#include <QAccessibleEvent>
+#include <QAccessibleTextCursorEvent>
+#include <QAccessibleTextSelectionEvent>
 #include <QActionGroup>
 #include <QApplication>
 #include <QClipboard>
@@ -242,6 +246,9 @@ public:
     KActionMenu *aTrimMode = nullptr;
     KToggleAction *aTrimMargins = nullptr;
     KToggleAction *aReadingDirection = nullptr;
+    KToggleAction *aCaretMode = nullptr;
+    QAction *aAutoScrollUp = nullptr;
+    QAction *aAutoScrollDown = nullptr;
     QAction *aMouseNormal = nullptr;
     QAction *aMouseZoom = nullptr;
     QAction *aMouseSelect = nullptr;
@@ -275,6 +282,9 @@ public:
 
     int setting_viewCols = 0;
     bool rtl_Mode = false;
+    // settings for accessibility and caret mode
+    bool caretMode = false;
+
     // Keep track of whether tablet pen is currently pressed down
     bool penDown = false;
 
@@ -349,6 +359,13 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
     d->messageWindow = new PageViewMessage(this);
     d->setting_viewCols = Okular::Settings::viewColumns();
     d->rtl_Mode = Okular::Settings::rtlReadingDirection();
+    d->caretMode = Okular::Settings::caretMode();
+    if (d->caretMode) {
+        // make sure the config settings are consistent
+        Okular::Settings::setViewContinuous(false);
+        Okular::Settings::setViewMode(Okular::Settings::EnumViewMode::Single);
+        Okular::Settings::self()->save();
+    }
 
     d->trimBoundingBox = Okular::NormalizedRect(); // Null box
 
@@ -470,6 +487,10 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
 
     // schedule the welcome message
     QMetaObject::invokeMethod(this, "slotShowWelcome", Qt::QueuedConnection);
+
+    // ACCESSIBILITY
+    // This is just a placeholder to kick off the accessibility
+    setAccessibleName(QStringLiteral("Document"));
 }
 
 PageView::~PageView()
@@ -523,6 +544,109 @@ bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular
         *point = Okular::NormalizedPoint(pageItem->absToPageX(contentPos.x()), pageItem->absToPageY(contentPos.y()));
     }
     return true;
+}
+
+void PageView::updateTextCursor(int p, bool withSelection)
+{
+    if (!d->caretMode) {
+        return;
+    }
+
+    // checking for out-of-bounds page, or mismatch with current offset
+    if ((p < 0) || (p >= ((int)d->document->pages()))) {
+        // invalid page
+        return;
+    } else if ((d->document->offset() < d->document->page(p)->start()) || (d->document->offset() > d->document->page(p)->end())) {
+        // the cursor is lost - This might happen with some determined mangling of the configuration/viewoptions
+        d->document->syncCursorToPage();
+        p = d->document->cPageNum();
+    }
+
+    // now find the right position on the relevant page
+    // this is used for i) scrolling, ii) caret position on the screen
+    std::unique_ptr<Okular::NormalizedRect> cb = d->document->page(p)->charBoxAtOffset(d->document->offset());
+    double nX = cb->left;
+    double nY = (cb->top + cb->bottom) / 2;
+    int scaleX = contentAreaWidth();
+    int scaleY = contentAreaHeight();
+    QPoint contentPos = QPoint(nX * scaleX, nY * scaleY);
+    QPoint viewportPos = contentPos - contentAreaPosition();
+    QPoint absPos = mapToGlobal(viewportPos);
+
+    // clear selections that are now over through a cursor move
+    if (d->document->anchorTextCursor() == d->document->offset()) {
+        // This can happen when selecting reverses direction and leave artefacts on the screen
+        unsetTextSelection();
+    }
+    if ((d->document->anchorTextCursor() > -1) && !withSelection) {
+        unsetTextSelection();
+    } else if (!d->mouseSelecting && withSelection) {
+        // clear any mouse selections
+        selectionClear();
+        textSelectionClear();
+    }
+
+    // new page or current page?
+    if (p != d->document->cPageNum()) {
+        double yPos = (p == d->document->cPageNum() - 1) ? 1.0 : 0.0;
+        Okular::DocumentViewport newViewport = d->document->viewport();
+        newViewport.pageNumber = p;
+        newViewport.rePos.enabled = true;
+        newViewport.rePos.normalizedX = 0; // nX;
+        newViewport.rePos.normalizedY = yPos;
+        d->document->setViewport(newViewport);
+        viewport()->update();
+    } else {
+        // scroll to the correct position
+        QRect cRect = cb->geometry(scaleX, scaleY);
+        d->scroller->ensureVisible(cRect, 0.0, 0.0);
+        setCursor(QCursor(Qt::IBeamCursor));
+        QCursor::setPos(absPos);
+        viewport()->update();
+    }
+
+    // Update the selection
+    if ((d->document->anchorTextCursor() > -1) && (d->document->offset() > d->document->cPage()->start())) {
+        // we only need to show selections on the current page
+        // but no selections are shown if at the start of the page
+        // the code in updateSelection is more complex because of continuous view
+        // and being graphics-driven rather than text-driven (using the cursor)
+        // Note that the cursor goes past the last selected item, which is different from the reading practice
+        // Also note, that the code here does not cater fully for rtl.
+        // Since it follows the underlying sorting in TextPage, it may be functional to a degree.
+        // the function in Page handles the order of anchor and offset
+        std::unique_ptr<Okular::RegularAreaRect> r = d->document->cPage()->selectArea(d->document->anchorTextCursor(), d->document->offset());
+        d->document->setPageTextSelection(p, std::move(r), palette().color(QPalette::Active, QPalette::Highlight));
+    } // end of selection
+
+    // let QAccessible know that the cursor has changed - it also checks for selection when nudged
+    QAccessibleTextCursorEvent e(this, d->document->offset());
+    QAccessible::updateAccessibility(&e);
+}
+
+void PageView::unsetTextSelection() const
+{
+    // remove any graphics
+    int pNum1;
+    int pNum2;
+    if (d->document->anchorTextCursor() < d->document->offset()) {
+        pNum1 = d->document->pageAtOffset(d->document->anchorTextCursor());
+        pNum2 = d->document->cPageNum();
+    } else {
+        pNum1 = d->document->cPageNum();
+        pNum2 = d->document->pageAtOffset(d->document->anchorTextCursor());
+    }
+    for (; pNum1 <= pNum2; pNum1++) {
+        d->document->setPageTextSelection(pNum1, nullptr, QColor());
+    }
+    // now unset the snchor
+    d->document->setAnchorTextCursor(-1);
+}
+
+void PageView::setupViewport(QWidget *viewport)
+{
+    notifyAnnotationWindowsAboutViewportBoundsChange();
+    QAbstractScrollArea::setupViewport(viewport);
 }
 
 void PageView::setupBaseActions(KActionCollection *ac)
@@ -646,6 +770,15 @@ void PageView::setupViewerActions(KActionCollection *ac)
     ac->addAction(QStringLiteral("rtl_page_layout"), d->aReadingDirection);
     connect(d->aReadingDirection, &QAction::toggled, this, &PageView::slotReadingDirectionToggled);
     connect(Okular::SettingsCore::self(), &Okular::SettingsCore::configChanged, this, &PageView::slotUpdateReadingDirectionAction);
+
+    // Caret Mode toggle action
+    d->aCaretMode = new KToggleAction(QIcon::fromTheme(QStringLiteral("Caret Mode")), i18nc("@action Caret Mode", "Use caret Browsing mode"), this);
+    d->aCaretMode->setChecked(Okular::Settings::caretMode());
+    ac->addAction(QStringLiteral("caret_mode"), d->aCaretMode);
+    connect(d->aCaretMode, &QAction::toggled, this, &PageView::slotCaretModeToggled);
+    // evince is F7 without modifier, but that toggles the sidebar in okular, go figure.
+    ac->setDefaultShortcut(d->aCaretMode, QKeySequence(Qt::CTRL | Qt::Key_F7));
+    connect(Okular::SettingsCore::self(), &Okular::SettingsCore::configChanged, this, &PageView::slotUpdateCaretModeAction);
 
     // Mouse mode actions for viewer mode
     d->mouseModeActionGroup = new QActionGroup(this);
@@ -772,17 +905,18 @@ void PageView::setupActions(KActionCollection *ac)
 #endif
 
     // Other actions
-    QAction *su = new QAction(i18n("Scroll Up"), this);
-    ac->addAction(QStringLiteral("view_scroll_up"), su);
-    connect(su, &QAction::triggered, this, &PageView::slotAutoScrollUp);
-    ac->setDefaultShortcut(su, QKeySequence(Qt::SHIFT | Qt::Key_Up));
-    addAction(su);
+    // Note that the default shortcuts have been disabled as conflicting with the usual caret browsing select up/down
+    d->aAutoScrollUp = new QAction(i18n("Scroll Up"), this);
+    ac->addAction(QStringLiteral("view_scroll_up"), d->aAutoScrollUp);
+    connect(d->aAutoScrollUp, &QAction::triggered, this, &PageView::slotAutoScrollUp);
+    ac->setDefaultShortcut(d->aAutoScrollUp, QKeySequence(Qt::SHIFT | Qt::Key_Up));
+    addAction(d->aAutoScrollUp);
 
-    QAction *sd = new QAction(i18n("Scroll Down"), this);
-    ac->addAction(QStringLiteral("view_scroll_down"), sd);
-    connect(sd, &QAction::triggered, this, &PageView::slotAutoScrollDown);
-    ac->setDefaultShortcut(sd, QKeySequence(Qt::SHIFT | Qt::Key_Down));
-    addAction(sd);
+    d->aAutoScrollDown = new QAction(i18n("Scroll Down"), this);
+    ac->addAction(QStringLiteral("view_scroll_down"), d->aAutoScrollDown);
+    connect(d->aAutoScrollDown, &QAction::triggered, this, &PageView::slotAutoScrollDown);
+    ac->setDefaultShortcut(d->aAutoScrollDown, QKeySequence(Qt::SHIFT | Qt::Key_Down));
+    addAction(d->aAutoScrollDown);
 
     QAction *spu = new QAction(i18n("Scroll Page Up"), this);
     ac->addAction(QStringLiteral("view_scroll_page_up"), spu);
@@ -1109,6 +1243,25 @@ QMimeData *PageView::getTableContents() const
 
 void PageView::copyTextSelection(TextCopyMode mode) const
 {
+    // code borrowed from the text selection below
+    // checking for a text cursor selection should allow mouse selection still to work
+    //
+    // this does not use d->selectedText()
+    if (d->caretMode && (d->document->anchorTextCursor() > -1)) {
+        QString text = d->document->selectedText();
+        if (!text.isEmpty()) {
+            QClipboard *cb = QApplication::clipboard();
+            if (mode == TextCopyMode::WithoutLineBreaks) {
+                // copy the text without line breaks
+                cb->setText(Okular::removeLineBreaks(text), QClipboard::Clipboard);
+            } else {
+                // Copy the original text without any modifications
+                cb->setText(text, QClipboard::Clipboard);
+            }
+            return;
+        }
+    }
+
     switch (d->mouseMode) {
     case Okular::Settings::EnumMouseMode::Browse: {
         if (auto *annotation = d->mouseAnnotation->annotation()) {
@@ -1394,6 +1547,15 @@ void PageView::updateActionState(bool haspages, bool hasformwidgets)
     }
     if (d->aFitWindowToPage) {
         d->aFitWindowToPage->setEnabled(haspages && !getContinuousMode());
+    }
+
+    if (d->aCaretMode && d->caretMode) {
+        d->aViewContinuous->setEnabled(false);
+        d->viewModeActionGroup->setEnabled(false);
+        d->aViewModeMenu->setEnabled(false);
+        d->aTrimMode->setEnabled(false);
+        d->aAutoScrollUp->setEnabled(false);
+        d->aAutoScrollDown->setEnabled(false);
     }
 }
 
@@ -2115,52 +2277,115 @@ void PageView::keyPressEvent(QKeyEvent *e)
     }
 
     // move/scroll page by using keys
-    // When the shift key is held down, scroll ten times faster
-    int stepsize = (e->modifiers() & Qt::ShiftModifier) ? 10 : 1;
+    // modifiers
+    int stepsize = 1;
+    bool selecting = false;
+    bool skipping = false;
+    if (d->caretMode) {
+        if (e->modifiers() & Qt::ShiftModifier) {
+            selecting = true;
+            // let's initialise the cursor; we can clean up failure at end of function
+            if (d->document->anchorTextCursor() < 0) {
+                d->document->setAnchorTextCursor(document()->offset());
+            }
+        }
+        if (e->modifiers() & Qt::ControlModifier) {
+            skipping = true;
+        }
+    } else {
+        // When the shift key is held down, scroll ten times faster
+        stepsize = (e->modifiers() & Qt::ShiftModifier) ? 10 : 1;
+    }
+
     switch (e->key()) {
     case Qt::Key_J:
     case Qt::Key_Down:
-        slotScrollDown(stepsize /* go down 1 step */);
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorLinesDown(1), selecting);
+        } else {
+            slotScrollDown(stepsize /* go down 1 step */);
+        }
         break;
 
     case Qt::Key_PageDown:
-        slotScrollDown();
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorLinesDown(10), selecting);
+        } else {
+            slotScrollDown();
+        }
         break;
 
     case Qt::Key_K:
     case Qt::Key_Up:
-        slotScrollUp(stepsize /* go up 1 step */);
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorLinesUp(1), selecting);
+        } else {
+            slotScrollUp(stepsize /* go up 1 step */);
+        }
         break;
 
     case Qt::Key_PageUp:
     case Qt::Key_Backspace:
-        slotScrollUp();
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorLinesUp(10), selecting);
+        } else {
+            slotScrollUp();
+        }
         break;
 
     case Qt::Key_Left:
     case Qt::Key_H:
-        if (horizontalScrollBar()->maximum() == 0) {
-            // if we cannot scroll we go to the previous page vertically
-            int next_page = d->document->currentPage() - viewColumns();
-            d->document->setViewportPage(next_page);
+        if (d->caretMode) {
+            if (skipping) {
+                updateTextCursor(d->document->cursorToPrevWord(), selecting);
+            } else {
+                updateTextCursor(d->document->cursorBackward(), selecting);
+            }
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            if (horizontalScrollBar()->maximum() == 0) {
+                // if we cannot scroll we go to the previous page vertically
+                int next_page = d->document->currentPage() - viewColumns();
+                d->document->setViewportPage(next_page);
+            } else {
+                d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            }
         }
         break;
     case Qt::Key_Right:
     case Qt::Key_L:
-        if (horizontalScrollBar()->maximum() == 0) {
-            // if we cannot scroll we advance the page vertically
-            int next_page = d->document->currentPage() + viewColumns();
-            d->document->setViewportPage(next_page);
+        if (d->caretMode) {
+            if (skipping) {
+                updateTextCursor(d->document->cursorToNextWord(), selecting);
+            } else {
+                updateTextCursor(d->document->cursorForward(), selecting);
+            }
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            if (horizontalScrollBar()->maximum() == 0) {
+                // if we cannot scroll we advance the page vertically
+                int next_page = d->document->currentPage() + viewColumns();
+                d->document->setViewportPage(next_page);
+            } else {
+                d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            }
+        }
+        break;
+    case Qt::Key_Home:
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorToLineStart(), selecting);
+        }
+        break;
+    case Qt::Key_End:
+        if (d->caretMode) {
+            updateTextCursor(d->document->cursorToLineEnd(), selecting);
         }
         break;
     case Qt::Key_Escape:
         Q_EMIT escPressed();
         selectionClear(d->tableDividersGuessed ? ClearOnlyDividers : ClearAllSelection);
         textSelectionClear();
+        if (d->document->anchorTextCursor() > -1) {
+            unsetTextSelection();
+        }
         d->mousePressPos = QPointF();
         if (d->aPrevAction) {
             d->aPrevAction->trigger();
@@ -2190,6 +2415,10 @@ void PageView::keyPressEvent(QKeyEvent *e)
     if (d->autoScrollTimer) {
         d->scrollIncrement = 0;
         d->autoScrollTimer->stop();
+    }
+    if (d->document->anchorTextCursor() == d->document->offset()) {
+        // something went wrong with the attempted select
+        d->document->setAnchorTextCursor(-1);
     }
 }
 
@@ -3899,6 +4128,11 @@ QPoint PageView::viewportToContentArea(const Okular::DocumentViewport &vp) const
 
 void PageView::updateSelection(const QPoint pos)
 {
+    // if caret browsing, clear the anchor
+    if (d->mouseSelecting && (d->document->anchorTextCursor() > -1)) {
+        unsetTextSelection();
+    }
+
     if (d->mouseSelecting) {
         scrollPosIntoView(pos);
         // update the selection rect
@@ -5251,6 +5485,49 @@ void PageView::slotReadingDirectionToggled(bool leftToRight)
 void PageView::slotUpdateReadingDirectionAction()
 {
     d->aReadingDirection->setChecked(Okular::Settings::rtlReadingDirection());
+}
+
+void PageView::slotCaretModeToggled(bool caretMode)
+{
+    Okular::Settings::setCaretMode(caretMode);
+    if (caretMode) {
+        // Caret mode requires single page, non-continuous mode; also turning off trim margins for simplicity
+        Okular::Settings::setViewContinuous(false);
+        Okular::Settings::setViewMode(Okular::Settings::EnumViewMode::Single);
+        Okular::Settings::setTrimMargins(false);
+    }
+    Okular::Settings::self()->save();
+    // Whichever way this toggles, there may be a need to relayout everything
+    slotRelayoutPages();
+}
+
+void PageView::slotUpdateCaretModeAction()
+{
+    d->aCaretMode->setChecked(Okular::Settings::caretMode());
+    if (Okular::Settings::caretMode() != d->caretMode) {
+        d->caretMode = Okular::Settings::caretMode();
+        if (d->caretMode) {
+            // disable the View options
+            d->viewModeActionGroup->setEnabled(false);
+            d->aViewModeMenu->setEnabled(false);
+            d->aViewContinuous->setEnabled(false);
+            d->aTrimMode->setEnabled(false);
+            d->aAutoScrollUp->setEnabled(false);
+            d->aAutoScrollDown->setEnabled(false);
+            if (d->document->pages()) {
+                d->document->syncCursorToPage();
+                updateTextCursor(d->document->cPageNum());
+            }
+        } else {
+            // enable the View options
+            d->viewModeActionGroup->setEnabled(true);
+            d->aViewModeMenu->setEnabled(true);
+            d->aViewContinuous->setEnabled(true);
+            d->aTrimMode->setEnabled(true);
+            d->aAutoScrollUp->setEnabled(true);
+            d->aAutoScrollDown->setEnabled(true);
+        }
+    }
 }
 
 void PageView::slotSetMouseNormal()

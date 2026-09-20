@@ -130,6 +130,20 @@
 #include <memory>
 #include <type_traits>
 
+#include "accessiblepageview.h"
+#include "accessiblepresentationwidget.h"
+QAccessibleInterface *pageViewFactory(const QString &classname, QObject *object)
+{
+    if (classname == QLatin1String("PageView") && object) {
+        // create an accessible interface for PageView widgets
+        return new AccessiblePageView(qobject_cast<QWidget *>(object));
+    } else if (classname == QLatin1String("PresentationWidget") && object) {
+        // create an accessible interface for PresentationWidget
+        return new AccessiblePresentationWidget(qobject_cast<QWidget *>(object));
+    }
+    return nullptr;
+}
+
 #ifdef OKULAR_KEEP_FILE_OPEN
 class FileKeeper
 {
@@ -484,6 +498,10 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_signatureInProgressMessage->addAction(finishSigningAction);
     rightLayout->addWidget(m_signatureInProgressMessage);
 #endif
+
+    // Install the PageView Accessibility Interface
+    QAccessible::installFactory(pageViewFactory);
+
     m_pageView = new PageView(rightContainer, m_document);
     rightContainer->setFocusProxy(m_pageView);
     QMetaObject::invokeMethod(m_pageView, "setFocus", Qt::QueuedConnection); // usability setting
@@ -2416,7 +2434,11 @@ void Part::slotGoToPage()
 {
     GotoPageDialog pageDialog(m_pageView, m_document->currentPage() + 1, m_document->pages());
     if (pageDialog.exec() == QDialog::Accepted) {
-        m_document->setViewportPage(pageDialog.getPage() - 1, nullptr, true);
+        if (Okular::Settings::caretMode()) {
+            m_pageView->updateTextCursor(m_document->cursorToPage(pageDialog.getPage() - 1));
+        } else {
+            m_document->setViewportPage(pageDialog.getPage() - 1, nullptr, true);
+        }
     }
 }
 
@@ -2437,7 +2459,11 @@ void Part::slotNextPage()
 void Part::slotGotoFirst()
 {
     if (m_document->isOpened()) {
-        m_document->setViewportPage(0, nullptr, true);
+        if (Okular::Settings::caretMode()) {
+            m_pageView->updateTextCursor(m_document->cursorToDocumentStart());
+        } else {
+            m_document->setViewportPage(0, nullptr, true);
+        }
         m_beginningOfDocument->setEnabled(false);
     }
 }
@@ -2445,12 +2471,16 @@ void Part::slotGotoFirst()
 void Part::slotGotoLast()
 {
     if (m_document->isOpened()) {
-        DocumentViewport endPage(m_document->pages() - 1);
-        endPage.rePos.enabled = true;
-        endPage.rePos.normalizedX = 0;
-        endPage.rePos.normalizedY = 1;
-        endPage.rePos.pos = Okular::DocumentViewport::TopLeft;
-        m_document->setViewport(endPage, nullptr, true);
+        if (Okular::Settings::caretMode()) {
+            m_pageView->updateTextCursor(m_document->cursorToDocumentEnd());
+        } else {
+            DocumentViewport endPage(m_document->pages() - 1);
+            endPage.rePos.enabled = true;
+            endPage.rePos.normalizedX = 0;
+            endPage.rePos.normalizedY = 1;
+            endPage.rePos.pos = Okular::DocumentViewport::TopLeft;
+            m_document->setViewport(endPage, nullptr, true);
+        }
         m_endOfDocument->setEnabled(false);
     }
 }
@@ -3423,6 +3453,10 @@ void Part::slotUpdateHamburgerMenu()
     }
     curatedViewMenu->addAction(findActionInKPartHierarchy(QStringLiteral("view_trim_mode")));
     curatedViewMenu->addSeparator();
+    // CARET BROWSING
+    curatedViewMenu->addAction(findActionInKPartHierarchy(QStringLiteral("view_caret_mode")));
+    curatedViewMenu->addSeparator();
+
     curatedViewMenu->addAction(ac->action(QStringLiteral("view_toggle_forms")));
     m_hamburgerMenuAction->hideActionsOf(curatedViewMenu);
 

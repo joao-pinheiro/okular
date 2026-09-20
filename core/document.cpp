@@ -2213,6 +2213,382 @@ Document::Document(QWidget *widget)
     qRegisterMetaType<Okular::FontInfo>();
 }
 
+// Accessibility
+QString Document::text() const
+{
+    QString t;
+    for (const Page *p : std::as_const(d->m_pagesVector)) {
+        t.append(p->caretText());
+    }
+    return t;
+}
+
+QString Document::textBetween(int offset1, int offset2) const
+{
+    QString t;
+    if ((end() < offset1) || (end() < offset2) || (offset2 < offset1)) {
+        return t;
+    }
+    int p = 0;
+    bool textComplete = false;
+    while (!textComplete && (p < (int)pages())) {
+        if ((offset1 < page(p)->end()) && (offset2 >= page(p)->start())) {
+            t.append(page(p)->textBetween(offset1, offset2));
+            if (offset2 <= page(p)->end()) {
+                textComplete = true;
+            }
+        }
+        p++;
+    }
+    return t;
+}
+
+int Document::cursorLinesUp(int linesUp) const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+
+    int l = page(cPageNum())->line(d->currentOffset);
+    int charOffset = d->currentOffset - page(cPageNum())->lineStart(l);
+    if (linesUp <= l) {
+        setOffsetInLine(cPageNum(), l - linesUp, charOffset);
+        return cPageNum();
+    } else if (cPageNum() == 0) {
+        // start of doc and too many lines
+        setOffsetInLine(0, 0, charOffset);
+        return 0;
+    } else {
+        // go back one page
+        // Note: this does not change the viewportPage
+        // it just changes the currentOffset
+        l = linesUp - l; // residual lines
+        int prevP = cPageNum() - 1;
+        if (l > page(prevP)->lines()) {
+            // we only go max one page back
+            setOffsetInLine(prevP, 0, charOffset);
+        } else {
+            setOffsetInLine(prevP, page(prevP)->lines() - l, charOffset);
+        }
+        return prevP;
+    }
+}
+
+int Document::setTextSelection(int startIndex, int endIndex) const
+{
+    if ((startIndex < 0) || (startIndex > end()) || (endIndex < 0) || (endIndex > end()) || (endIndex >= startIndex)) {
+        return -1;
+    }
+    int p = pageAtOffset(endIndex);
+    d->anchorTextCursor = startIndex;
+    d->currentOffset = endIndex;
+    return p;
+}
+
+int Document::anchorTextCursor() const
+{
+    return d->anchorTextCursor;
+}
+
+void Document::setAnchorTextCursor(int a) const
+{
+    d->anchorTextCursor = a;
+}
+
+QString Document::selectedText() const
+{
+    if (d->anchorTextCursor < 0) {
+        return QString();
+    } else {
+        // the cursor and anchor can be reversed
+        int offset1;
+        int offset2;
+        if (d->anchorTextCursor < d->currentOffset) {
+            offset1 = d->anchorTextCursor;
+            offset2 = d->currentOffset;
+        } else {
+            offset1 = d->currentOffset;
+            offset2 = d->anchorTextCursor;
+        }
+        return textBetween(offset1, offset2 - 1);
+    }
+}
+
+int Document::cursorLinesDown(int linesDown) const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+
+    int l = page(cPageNum())->line(d->currentOffset);
+    int charOffset = d->currentOffset - page(cPageNum())->lineStart(l);
+    if ((l + linesDown) < page(cPageNum())->lines()) {
+        setOffsetInLine(cPageNum(), l + linesDown, charOffset);
+        return cPageNum();
+    } else if (cPageNum() == ((int)pages() - 1)) {
+        // final page: only go to final line
+        setOffsetInLine(cPageNum(), page(cPageNum())->lines() - 1, charOffset);
+        return (int)pages() - 1;
+    } else {
+        // remainder of lines on next page, but only advance one page max
+        l = linesDown + l - page(cPageNum())->lines();
+        int nextP = cPageNum() + 1;
+        setOffsetInLine(nextP, l - 1, charOffset);
+        return nextP;
+    }
+}
+
+int Document::cursorBackward() const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+    if (d->currentOffset == 0) {
+        return 0;
+    }
+    d->currentOffset--;
+    // this does not change the viewport page
+    return (d->currentOffset < page(cPageNum())->start()) ? cPageNum() - 1 : cPageNum();
+}
+
+int Document::cursorForward() const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+    if (d->currentOffset == end()) {
+        return ((int)pages()) - 1;
+    }
+    d->currentOffset++;
+    return (d->currentOffset > page(cPageNum())->end()) ? cPageNum() + 1 : cPageNum();
+}
+
+int Document::wordStart(int offset) const
+{
+    int pNum = pageAtOffset(offset);
+    return page(pNum)->wordStart(offset);
+}
+
+int Document::prevWordStart(int offset) const
+{
+    int wStart = wordStart(offset);
+    if (wStart > 0) {
+        int pNum = pageAtOffset(offset);
+        if (wStart == page(pNum)->start()) {
+            return page(pNum - 1)->wordStart(page(pNum - 1)->end());
+        } else {
+            return page(pNum)->wordStart(wStart - 1);
+        }
+    } else {
+        return -1;
+    }
+}
+
+QString Document::wordAtOffset(int offset) const
+{
+    // probably ought to create a Word class, or at least a struct, but it seems excessive for a couple of calls
+    int wStart = wordStart(offset);
+    if (wStart >= -1) {
+        int pNum = pageAtOffset(offset);
+        return page(pNum)->wordAtOffset(wStart);
+    } else {
+        return QString();
+    }
+}
+
+int Document::nextWordStart(int offset) const
+{
+    int wStart = wordStart(offset);
+    const QString w = wordAtOffset(wStart);
+    int nextStart = wStart + w.size();
+    return (nextStart <= end()) ? nextStart : -1;
+}
+
+QString Document::charAtOffset(int offset) const
+{
+    if ((offset < 0) || (offset > end())) {
+        return QString();
+    }
+    int p = pageAtOffset(offset);
+    return page(p)->textBetween(offset, offset);
+}
+
+int Document::pageAtOffset(int off) const
+{
+    int p = 0;
+    bool pageFound = false;
+    while (!pageFound && (p < (int)pages())) {
+        if (page(p)->start() <= off && page(p)->end() >= off) {
+            pageFound = true;
+        } else {
+            p++;
+        }
+    }
+    return p;
+}
+
+QString Document::lineAtOffset(int offset) const
+{
+    int pNum = pageAtOffset(offset);
+    int l = page(pNum)->line(offset);
+    return page(pNum)->textBetween(page(pNum)->lineStart(l), page(pNum)->lineEnd(l));
+}
+
+int Document::lineStart(int offset) const
+{
+    int pNum = pageAtOffset(offset);
+    if (pNum < 0) {
+        return -1;
+    }
+    int l = page(pNum)->line(offset);
+    return page(pNum)->lineStart(l);
+}
+
+int Document::prevLineStart(int offset) const
+{
+    int pNum = pageAtOffset(offset);
+    if (pNum < 0) {
+        return -1;
+    }
+    int l = page(pNum)->line(offset);
+    // as these are lookaround functions, we don't change page
+    if (l == 0) {
+        return -1;
+    }
+    return page(pNum)->lineStart(l - 1);
+}
+
+int Document::nextLineStart(int offset) const
+{
+    int pNum = pageAtOffset(offset);
+    if (pNum < 0) {
+        return -1;
+    }
+    int l = page(pNum)->line(offset);
+    // no changing page (see above)
+    if (l == page(pNum)->lines() - 1) {
+        return -1;
+    }
+    return page(pNum)->lineStart(l + 1);
+}
+
+void Document::cursorToPageStart() const
+{
+    d->currentOffset = page(cPageNum())->start();
+}
+
+void Document::cursorToPageEnd() const
+{
+    d->currentOffset = page(cPageNum())->end();
+}
+
+int Document::cursorToDocumentStart() const
+{
+    d->currentOffset = 0;
+    return 0;
+}
+
+int Document::cursorToDocumentEnd() const
+{
+    d->currentOffset = end();
+    return ((int)pages()) - 1;
+}
+
+int Document::cursorToPage(const int p) const
+{
+    if ((p < 0) || (p >= d->m_pagesVector.size())) {
+        return -1;
+    } else {
+        d->currentOffset = page(p)->start();
+        return p;
+    }
+}
+
+int Document::cursorToPrevWord() const
+{
+    int offset = prevWordStart(d->currentOffset);
+    if (offset >= 0) {
+        d->currentOffset = offset;
+        return (offset < cPage()->start()) ? cPageNum() - 1 : cPageNum();
+    } else {
+        return -1;
+    }
+}
+
+int Document::cursorToNextWord() const
+{
+    int offset = nextWordStart(d->currentOffset);
+
+    if (offset >= 0) {
+        d->currentOffset = offset;
+        return (offset > cPage()->end()) ? cPageNum() + 1 : cPageNum();
+    } else {
+        return -1;
+    }
+}
+
+int Document::cursorToLineEnd() const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+    int l = cPage()->line(d->currentOffset);
+    d->currentOffset = cPage()->lineEnd(l);
+    return cPageNum();
+}
+
+int Document::cursorToLineStart() const
+{
+    if (!isOpened()) {
+        return -1;
+    }
+
+    int l = page(cPageNum())->line(d->currentOffset);
+    d->currentOffset = cPage()->lineStart(l);
+    return cPageNum();
+}
+
+int Document::end() const
+{
+    return page(pages() - 1)->end();
+}
+
+void Document::setOffsetInLine(const int pNum, const int l, const int cOff) const
+{
+    int off = page(pNum)->lineStart(l) + cOff;
+    if (page(pNum)->lineEnd(l) < off) {
+        d->currentOffset = page(pNum)->lineEnd(l);
+    } else {
+        d->currentOffset = off;
+    }
+}
+
+int Document::offset() const
+{
+    return d->currentOffset;
+}
+
+int Document::setOffset(const int offset) const
+{
+    int p = pageAtOffset(offset);
+    if (p >= 0) {
+        d->currentOffset = offset;
+    }
+    return p;
+}
+
+void Document::syncCursorToPage()
+{
+    if ((d->currentOffset < cPage()->start()) || (d->currentOffset > cPage()->end())) {
+        d->currentOffset = cPage()->start();
+    }
+}
+
+int Document::length() const
+{
+    return end() + 1;
+}
+
 Document::~Document()
 {
     // delete generator, pages, and related stuff
@@ -2495,6 +2871,20 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
     }
     setViewport(loadedViewport);
 
+    // generate offsets
+    int offset = 0;
+    for (Page *p : std::as_const(d->m_pagesVector)) {
+        if (!p->hasTextPage()) {
+            requestTextPage(p->number());
+        }
+        p->setOffsets(offset);
+        offset = p->end() + 1;
+    }
+
+    // set a sane value for the text cursor
+    d->currentOffset = page(cPageNum())->start();
+    // clear the anchor
+    d->anchorTextCursor = -1;
     // start bookmark saver timer
     if (!d->m_saveBookmarksTimer) {
         d->m_saveBookmarksTimer = new QTimer(this);
@@ -2526,7 +2916,6 @@ Document::OpenResult Document::openDocument(const QString &docFile, const QUrl &
             d->executeScriptEvent(event, Okular::JavaScript, docscript);
         }
     }
-
     return OpenSuccess;
 }
 
@@ -2940,6 +3329,16 @@ const QList<EmbeddedFile *> *Document::embeddedFiles() const
 const Page *Document::page(int n) const
 {
     return (n >= 0 && n < d->m_pagesVector.count()) ? d->m_pagesVector.at(n) : nullptr;
+}
+
+int Document::cPageNum() const
+{
+    return (int)currentPage();
+}
+
+const Page *Document::cPage() const
+{
+    return d->m_pagesVector.at(cPageNum());
 }
 
 const DocumentViewport &Document::viewport() const

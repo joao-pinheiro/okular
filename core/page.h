@@ -217,6 +217,72 @@ public:
      */
     std::unique_ptr<RegularAreaRect> wordAt(const NormalizedPoint &p) const;
 
+    // The following functions are for caret browsing
+    // returns a notional box for a char at a given offset
+    std::unique_ptr<NormalizedRect> charBoxAtOffset(const int offset, const bool rtl = false) const;
+
+    /*
+     * Returns a text offset at the normalised point or -1
+     */
+    int offsetAtPoint(const NormalizedPoint &nP) const;
+
+    /*
+     * wraps text to make the output more convenient for caret browsing
+     * it may be elaborated, if formats demand it
+     */
+    QString caretText() const;
+
+    /*
+     * sets up doc offsets for page start, end and lines
+     * Needs to know he docOffset of the previous page...)
+     */
+    void setOffsets(const int docOffset);
+
+    /*
+     * various positions and quantities we might want to know about a page
+     * for caret browsing in particular.
+     * Note: the offsets are all in relation to the document
+     * These functions may convert to internal page offsets
+     * for interacting with TextPage.
+     *  For caret browsing, a '\n' is included at page end
+     *
+     * First the start of the page.
+     */
+    int start() const;
+
+    /*Page end */
+    int end() const;
+
+    /* start of a given line ("Home") */
+    int lineStart(const int l) const;
+
+    /* End of a given line */
+    int lineEnd(const int l) const;
+
+    /* number of lines on the page */
+    int lines() const;
+
+    /* returns the line for a given document offset */
+    int line(const int docOffset) const;
+
+    /*
+     * returns the text between two document offsets
+     *  Note that the function converts to internal page offsets
+     */
+    QString textBetween(int docOffset1, int docOffset2) const;
+
+    /*
+     * Finds the opening position of a word that contains the given offset
+     * these two functions might be combined with a small class
+     */
+    int wordStart(int offset) const;
+
+    /*
+     * returns the text of a word starting at a given offset
+     */
+    QString wordAtOffset(int offset) const;
+    std::unique_ptr<RegularAreaRect> selectArea(int offset1, int offset2) const;
+
     /**
      * Returns the area and text of the line at the given point
      * Note that ownership of the returned area belongs to the caller.

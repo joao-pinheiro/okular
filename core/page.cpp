@@ -1120,3 +1120,162 @@ FormField *PagePrivate::findEquivalentForm(const Page *p, FormField *oldField)
     }
     return nullptr;
 }
+
+std::unique_ptr<NormalizedRect> Page::charBoxAtOffset(const int docOffset, const bool rtl) const
+{
+    if ((docOffset < start()) || (docOffset > end())) {
+        return nullptr;
+    } else if (!hasTextPage()) {
+        // empty (non-text) page: put the cursor at top left
+        return std::make_unique<NormalizedRect>(0, 0, 0.005, 0.01);
+    } else {
+        // convert doc offset to page offset and get the box
+        return d->m_text->charBoxAtOffset(docOffset - d->m_start, rtl);
+    }
+}
+
+int Page::offsetAtPoint(const NormalizedPoint &nP) const
+{
+    if (!hasTextPage()) {
+        return -1;
+    } else {
+        return d->m_text->offsetAtPoint(nP);
+    }
+}
+
+int Page::start() const
+{
+    return d->m_start;
+}
+
+int Page::end() const
+{
+    return d->m_end;
+}
+
+int Page::lineStart(const int l) const
+{
+    if ((l < 0) || (l >= lines())) {
+        // There will always be a page start, so this is less insane a value than  anything else.
+        return start();
+    }
+    return d->m_lineOffsets.at(l);
+}
+
+int Page::lineEnd(const int l) const
+{
+    if ((l < 0) || (l >= lines())) {
+        // there will be a page end, at least
+        return end();
+    } else if (l == lines() - 1) {
+        // this is a valid line, and is being kept separate from the above for debugging purposes at present
+        // line end for the last line cannot be determined from the start of the next
+        return end();
+    } else {
+        return lineStart(l + 1) - 1;
+    }
+}
+
+int Page::lines() const
+{
+    return d->m_lineOffsets.size();
+}
+
+int Page::line(const int docOffset) const
+{
+    int l = 0;
+    bool lineFound = false;
+    while (!lineFound && (l < lines())) {
+        if ((docOffset >= lineStart(l)) && (docOffset <= lineEnd(l))) {
+            lineFound = true;
+        } else {
+            l++;
+        }
+    }
+    return lineFound ? l : 0;
+}
+
+QString Page::caretText() const
+{
+    // empty pages exist with a single carriage return
+    if (!hasTextPage()) {
+        return QString(QLatin1Char('\n'));
+    }
+    return d->m_text->caretText();
+}
+
+void Page::setOffsets(const int docOffset)
+{
+    const QString t = caretText();
+    int i = 0;
+    int lastLineStart = docOffset;
+    while (i < t.size()) {
+        if (t.at(i) == QLatin1Char('\n')) {
+            d->m_lineOffsets.append(lastLineStart);
+            lastLineStart = docOffset + i + 1;
+        }
+        i++;
+    }
+    d->m_start = docOffset;
+    d->m_end = docOffset + i - 1;
+    qDebug() << " page start " << d->m_start << " page end " << d->m_end;
+}
+
+QString Page::textBetween(int docOffset1, int docOffset2) const
+{
+    if (docOffset2 < docOffset1) {
+        return QString();
+    } else if ((docOffset1 > end()) || (docOffset2 < start())) {
+        return QString();
+    }
+    // whole page or part
+    if ((docOffset1 <= start()) && (docOffset2 >= end())) {
+        return caretText();
+    }
+    int pOffset1 = (docOffset1 <= start()) ? 0 : docOffset1 - start();
+    int pOffset2 = (docOffset2 >= end()) ? end() - start() : docOffset2 - start();
+    return caretText().sliced(pOffset1, (pOffset2 - pOffset1 + 1));
+}
+
+QString Page::wordAtOffset(int offset) const
+{
+    // NOTE: this assumes the opening position has already been found with the wordStart function
+    if (!hasTextPage()) {
+        return QString(QLatin1Char('\n'));
+    }
+    if (offset >= start()) {
+        return d->m_text->wordAtOffset(offset - start());
+    } else {
+        return QString();
+    }
+}
+
+int Page::wordStart(int offset) const
+{
+    if ((offset < start()) || (offset > end())) {
+        return -1;
+    } else if (!hasTextPage()) {
+        return start();
+    } else {
+        return start() + d->m_text->wordStart(offset - start());
+    }
+}
+
+std::unique_ptr<RegularAreaRect> Page::selectArea(int offset1, int offset2) const
+{
+    if ((offset1 < 0) || (offset2 < 0)) {
+        return nullptr;
+    }
+    // restrict the offsets to this page only
+    if (offset2 < offset1) {
+        int tmpOff = offset1;
+        offset1 = offset2;
+        offset2 = tmpOff;
+    }
+    if (offset2 < start()) {
+        return nullptr;
+    }
+    offset1 = (offset1 < start()) ? 0 : offset1 - start();
+    offset2 -= start();
+    return d->m_text->selectArea(offset1, offset2);
+}
