@@ -138,3 +138,4 @@ bool PresentationSearchBar::eventFilter(QObject *obj, QEvent *e)
 }
 
 #include "presentationsearchbar.moc"
+#include "moc_presentationsearchbar.cpp"

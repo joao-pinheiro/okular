@@ -1018,3 +1018,4 @@ ThumbnailController::ThumbnailController(QWidget *parent, ThumbnailList *list)
 }
 
 #include "thumbnaillist.moc"
+#include "moc_thumbnaillist.cpp"

@@ -4019,3 +4019,4 @@ QAbstractItemModel *Part::annotationsModel() const
 } // namespace Okular
 
 #include "part.moc"
+#include "moc_part.cpp"

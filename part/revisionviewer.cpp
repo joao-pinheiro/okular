@@ -81,3 +81,4 @@ void RevisionViewer::viewRevision()
 }
 
 #include "revisionviewer.moc"
+#include "moc_revisionviewer.cpp"

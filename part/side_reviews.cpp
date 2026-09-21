@@ -365,3 +365,4 @@ QAbstractItemModel *Reviews::annotationsModel() const
 }
 
 #include "side_reviews.moc"
+#include "moc_side_reviews.cpp"

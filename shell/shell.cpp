@@ -1204,3 +1204,4 @@ void Shell::readRecentFilesSettings()
 }
 
 #include "shell.moc"
+#include "moc_shell.cpp"
