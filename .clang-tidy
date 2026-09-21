@@ -35,6 +35,8 @@ Checks:   >
     -bugprone-implicit-widening-of-multiplication-result,
     -performance-unnecessary-copy-initialization,
     -performance-enum-size
+Exclude:
+  - "moc_.+\.cpp"
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/okular/.*'
 FormatStyle:     none
