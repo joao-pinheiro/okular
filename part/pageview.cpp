@@ -507,7 +507,7 @@ int PageView::focusedAnnotationPageNumber() const
     return d->mouseAnnotation ? d->mouseAnnotation->pageNumber() : -1;
 }
 
-bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular::NormalizedPoint *point) const
+bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *no, Okular::NormalizedPoint *point) const
 {
     const QPoint viewportPos = viewport()->mapFromGlobal(globalPos);
     const QPoint contentPos = contentAreaPoint(viewportPos);
@@ -516,8 +516,8 @@ bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular
         return false;
     }
 
-    if (pageNumber) {
-        *pageNumber = pageItem->pageNumber();
+    if (no) {
+        *no = pageItem->pageNumber();
     }
     if (point) {
         *point = Okular::NormalizedPoint(pageItem->absToPageX(contentPos.x()), pageItem->absToPageY(contentPos.y()));
