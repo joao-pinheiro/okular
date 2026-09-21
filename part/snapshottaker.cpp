@@ -43,3 +43,5 @@ void SnapshotTaker::stateChanged(Phonon::State newState, Phonon::State)
     }
 }
 #endif
+
+#include "moc_snapshottaker.cpp"
