@@ -469,3 +469,5 @@ void fontPool::mf_output_receiver()
         MetafontOutput = MetafontOutput.remove(0, numleft + 1);
     }
 }
+
+#include "moc_fontpool.cpp"
