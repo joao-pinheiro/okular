@@ -2270,7 +2270,20 @@ KPluginMetaData DocumentPrivate::generatorForMimeType(const QMimeType &type, QWi
 
     QMimeDatabase mimeDatabase;
 
+    auto includeInContentLookup = [] (const KPluginMetaData& md) {
+        QJsonObject rawJson = md.rawData();
+        auto value = rawJson.constFind(QStringLiteral("X-KDE-okular-content-lookup"));
+        if (value == rawJson.constEnd()) {
+            return true;
+        }
+        return value->toBool();
+    };
+
     for (const KPluginMetaData &md : available) {
+        if (!includeInContentLookup(md)) {
+            qDebug() << "Excluding " << md.name() << " from mime based lookup based on plugin json";
+            continue;
+        }
         if (triedOffers.contains(md)) {
             continue;
         }
