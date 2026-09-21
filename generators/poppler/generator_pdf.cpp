@@ -58,6 +58,7 @@
 #include "annots.h"
 #include "debug_pdf.h"
 #include "formfields.h"
+#include "settings_core.h"
 #include "imagescaling.h"
 #include "pdfsettingswidget.h"
 #include "pdfsignatureutils.h"
@@ -798,7 +799,11 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     reparseConfig();
 
     // create annotation proxy
-    annotProxy = new PopplerAnnotationProxy(pdfdoc.get(), userMutex(), &annotationsOnOpenHash);
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+    annotProxy = new PopplerAnnotationProxy(pdfdoc.get(), userMutex(), &annotationsOnOpenHash, &m_pagesWithUnsavedAnnotations);
+#else
+    annotProxy = new PopplerAnnotationProxy(pdfdoc.get(), userMutex(), &annotationsOnOpenHash, nullptr);
+#endif
 
     setAdditionalDocumentAction(Okular::Document::CloseDocument, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::CloseDocument)));
     setAdditionalDocumentAction(Okular::Document::SaveDocumentStart, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::SaveDocumentStart)));
@@ -870,6 +875,12 @@ bool PDFGenerator::doCloseDocument()
     docEmbeddedFiles.clear();
     nextFontPage = 0;
     rectsGenerated.clear();
+
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+    m_darkReaderRenderer.reset();
+    m_darkReaderMaskCache.clear();
+    m_pagesWithUnsavedAnnotations.clear();
+#endif
 
     return true;
 }
@@ -1319,6 +1330,20 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     // 2. Take data from outputdev and attach it to the Page
     QImage img;
     if (p) {
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+        // Dark Reader wants an exact "this pixel belongs to an embedded
+        // image" mask, so it can recolor everything else without touching
+        // photos. Producing that mask requires driving the render through
+        // Poppler's core API directly (see darkreaderoutputdev.h).
+        //
+        // We call ensureDarkReaderMask unconditionally when Dark Reader is active so that
+        // the mask cache is primed even if the current request is a tile or partial update
+        // request (which cannot directly reuse the full-page bitmap). This avoids the bug
+        // where images are incorrectly inverted on the first page paint until a zoom action occurs.
+        if (Okular::SettingsCore::changeColors() && Okular::SettingsCore::renderMode() == Okular::SettingsCore::EnumRenderMode::DarkReader) {
+            ensureDarkReaderMask(page, fakeDpiX, fakeDpiY);
+        }
+#endif
         if (request->isTile()) {
             const QRect rect = request->normalizedRect().geometry(request->width(), request->height());
             if (request->partialUpdatesWanted()) {
@@ -1358,6 +1383,50 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
 
     return img;
 }
+
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+void PDFGenerator::ensureDarkReaderMask(const Okular::Page *page, double dpiX, double dpiY)
+{
+    const int pageNum = page->number();
+    auto it = m_darkReaderMaskCache.find(pageNum);
+
+    if (it == m_darkReaderMaskCache.end()) {
+        if (documentHasPassword || documentFilePath.isEmpty()) {
+            return;
+        }
+
+        if (!m_darkReaderRenderer) {
+            m_darkReaderRenderer = DarkReaderRenderer::create(documentFilePath);
+        }
+        if (!m_darkReaderRenderer) {
+            return;
+        }
+
+        QImage img;
+        QImage mask72;
+        // Generate base mask at a fixed 72 DPI (native PDF point resolution) - fast and lightweight (~5ms)
+        if (!m_darkReaderRenderer->render(pageNum, 72.0, 72.0, &img, &mask72)) {
+            m_darkReaderRenderer.reset();
+            m_darkReaderMaskCache.remove(pageNum);
+            return;
+        }
+
+        DarkReaderMaskEntry entry;
+        entry.mask72 = mask72;
+        entry.dpiX = 0;
+        entry.dpiY = 0;
+        it = m_darkReaderMaskCache.insert(pageNum, entry);
+    }
+
+    // Scale cached base mask on-the-fly to requested DPI (practically instant compared to rendering)
+    if (it.value().dpiX != dpiX || it.value().dpiY != dpiY) {
+        QSize targetSize(qRound(it.value().mask72.width() * dpiX / 72.0), qRound(it.value().mask72.height() * dpiY / 72.0));
+        it.value().scaledMask = it.value().mask72.scaled(targetSize);
+        it.value().dpiX = dpiX;
+        it.value().dpiY = dpiY;
+    }
+}
+#endif
 
 template<typename PopplerLinkType, typename OkularLinkType, typename PopplerAnnotationType, typename OkularAnnotationType>
 void resolveMediaLinks(Okular::Action *action, enum Okular::Annotation::SubType subType, QHash<Okular::Annotation *, Poppler::Annotation *> &annotationsHash)
@@ -1710,6 +1779,20 @@ QVariant PDFGenerator::metaData(const QString &key, const QVariant &option) cons
         }
     } else if (key == QLatin1String("DocumentHasPassword")) {
         return documentHasPassword ? QStringLiteral("yes") : QStringLiteral("no");
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+    } else if (key == QLatin1String("NoRecolorMask")) {
+        // Used by PagePainter to fetch the exact "exclude from recoloring"
+        // mask generated for a page by the Dark Reader render path (see
+        // renderWithDarkReaderMask() and darkreaderoutputdev.h). option is
+        // the (int) page number; returns an invalid QVariant when no mask is
+        // available for that page (Dark Reader inactive, non-PDF-core-backed
+        // build, or the page has simply not been rendered with a mask yet),
+        // in which case callers must fall back to recoloring the whole page.
+        const auto it = m_darkReaderMaskCache.constFind(option.toInt());
+        if (it != m_darkReaderMaskCache.constEnd()) {
+            return QVariant::fromValue(it.value().scaledMask);
+        }
+#endif
     }
     return QVariant();
 }
@@ -2131,6 +2214,10 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
             // the default text message is good for this case
             break;
         }
+    } else {
+#if HAVE_POPPLER_CORE_OUTPUTDEV
+        m_pagesWithUnsavedAnnotations.clear();
+#endif
     }
     return success;
 }
