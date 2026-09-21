@@ -1480,3 +1480,5 @@ DEFINE_ADDITIONAL_ACTIONS(ComboEdit, QComboBox)
 DEFINE_ADDITIONAL_ACTIONS(SignatureEdit, QAbstractButton)
 
 #undef DEFINE_ADDITIONAL_ACTIONS
+
+#include "moc_formwidgets.cpp"
