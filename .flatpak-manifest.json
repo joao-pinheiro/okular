@@ -466,6 +466,21 @@
             ]
         },
         {
+            "name": "union",
+            "buildsystem": "cmake-ninja",
+            "builddir": true,
+            "config-opts": [
+                "-DBUILD_TESTING=OFF"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://invent.kde.org/plasma/union.git",
+                    "branch": "Plasma/6.8"
+                }
+            ]
+        },
+        {
             "name": "okular",
             "buildsystem": "cmake-ninja",
             "builddir": true,
