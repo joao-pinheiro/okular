@@ -1480,24 +1480,26 @@ QByteArray PDFGenerator::requestFontData(const Okular::FontInfo &font)
     return pdfdoc->fontData(fi);
 }
 
-Poppler::SupportedSMimeSignatureTypes toPoppler(Okular::CertificateInfo::SupportedSMimeSignatures type)
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
+Poppler::SMimeSignatureType toPoppler(Okular::CertificateInfo::SMimeSignatureType type)
 {
     switch (type) {
-    case Okular::CertificateInfo::SupportedSMimeSignatures::none:
-        return Poppler::SupportedSMimeSignatureTypes::none;
-    case Okular::CertificateInfo::SupportedSMimeSignatures::adbe_pkcs7_detached:
-        return Poppler::SupportedSMimeSignatureTypes::adbe_pkcs7_detached;
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_B:
-        return Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_B;
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_T:
-        return Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_T;
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LT:
-        return Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_LT;
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LTA:
-        return Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_LTA;
+    case Okular::CertificateInfo::SMimeSignatureType::none:
+        return Poppler::SMimeSignatureType::none;
+    case Okular::CertificateInfo::SMimeSignatureType::adbe_pkcs7_detached:
+        return Poppler::SMimeSignatureType::adbe_pkcs7_detached;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_B:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_B;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_T:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_T;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LT:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_LT;
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LTA:
+        return Poppler::SMimeSignatureType::ETSI_CAdES_LTA;
     }
-    return Poppler::SupportedSMimeSignatureTypes::none;
+    return Poppler::SMimeSignatureType::none;
 }
+#endif
 
 void PDFGenerator::okularToPoppler(const Okular::NewSignatureData &oData, Poppler::PDFConverter::NewSignatureData *pData)
 {
@@ -1517,7 +1519,9 @@ void PDFGenerator::okularToPoppler(const Okular::NewSignatureData &oData, Popple
     pData->setLocation(oData.location());
     pData->setDocumentOwnerPassword(oData.documentPassword().toLatin1());
     pData->setDocumentUserPassword(oData.documentPassword().toLatin1());
+    #if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
     pData->setRequestedSignatureType(toPoppler(oData.requestedSignatureType()));
+#endif
 }
 
 #define DUMMY_QPRINTER_COPY
@@ -2186,7 +2190,7 @@ static Okular::SigningResult fromPoppler(Poppler::PDFConverter::SigningResult re
         return Okular::SignatureWriteFailed;
     case Poppler::PDFConverter::SigningSuccess:
         return Okular::SigningSuccess;
-#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(26, 07, 0)
+#if POPPLER_VERSION_MACRO > QT_VERSION_CHECK(26, 9, 50)
     case Poppler::PDFConverter::UnsupportedSignatureType:
         return Okular::UnsupportedSignatureType;
 #endif

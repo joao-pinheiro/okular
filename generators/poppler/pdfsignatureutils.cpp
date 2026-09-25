@@ -89,30 +89,30 @@ static Okular::CertificateInfo::CertificateType fromPoppler(Poppler::Certificate
 }
 #endif
 
-#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 07, 0)
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
 
-std::optional<Okular::CertificateInfo::SupportedSMimeSignatures> fromPoppler(Poppler::SupportedSMimeSignatureTypes type)
+std::optional<Okular::CertificateInfo::SMimeSignatureType> fromPoppler(Poppler::SMimeSignatureType type)
 {
     switch (type) {
-    case Poppler::SupportedSMimeSignatureTypes::none:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::none;
-    case Poppler::SupportedSMimeSignatureTypes::adbe_pkcs7_detached:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::adbe_pkcs7_detached;
-    case Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_B:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_B;
-    case Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_T:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_T;
-    case Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_LT:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LT;
-    case Poppler::SupportedSMimeSignatureTypes::ETSI_CAdES_LTA:
-        return Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LTA;
+    case Poppler::SMimeSignatureType::none:
+        return Okular::CertificateInfo::SMimeSignatureType::none;
+    case Poppler::SMimeSignatureType::adbe_pkcs7_detached:
+        return Okular::CertificateInfo::SMimeSignatureType::adbe_pkcs7_detached;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_B:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_B;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_T:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_T;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LT:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LT;
+    case Poppler::SMimeSignatureType::ETSI_CAdES_LTA:
+        return Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LTA;
     }
     return std::nullopt;
 }
 
-QVector<Okular::CertificateInfo::SupportedSMimeSignatures> fromPoppler(const QVector<Poppler::SupportedSMimeSignatureTypes> &types)
+QVector<Okular::CertificateInfo::SMimeSignatureType> fromPoppler(const QVector<Poppler::SMimeSignatureType> &types)
 {
-    QVector<Okular::CertificateInfo::SupportedSMimeSignatures> converted;
+    QVector<Okular::CertificateInfo::SMimeSignatureType> converted;
     for (auto element : types) {
         auto convert = fromPoppler(element);
         if (convert) {
@@ -120,7 +120,7 @@ QVector<Okular::CertificateInfo::SupportedSMimeSignatures> fromPoppler(const QVe
         }
     }
     if (converted.empty()) {
-        converted.push_back(Okular::CertificateInfo::SupportedSMimeSignatures::none);
+        converted.push_back(Okular::CertificateInfo::SMimeSignatureType::none);
     }
 
     return converted;
@@ -151,7 +151,7 @@ Okular::CertificateInfo fromPoppler(const Poppler::CertificateInfo &pInfo)
     oInfo.setSelfSigned(pInfo.isSelfSigned());
     oInfo.setCertificateData(pInfo.certificateData());
     oInfo.setKeyLocation(fromPoppler(pInfo.keyLocation()));
-#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 07, 0)
+#if POPPLER_VERSION_MACRO >= QT_VERSION_CHECK(26, 9, 50)
     oInfo.setSupportedSMimeSignatures(fromPoppler(pInfo.supportedSMimeSignatureTypes()));
 #endif
     oInfo.setCheckPasswordFunction([pInfo](const QString &password) {

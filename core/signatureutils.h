@@ -51,7 +51,7 @@ public:
      * 'none' is a bit special and is used for non-smime *and* 'default' type
      * \since 26.12
      */
-    enum class SupportedSMimeSignatures {
+    enum class SMimeSignatureType {
         none, /* nothing specified; do something sane, probably adbe_pkcs7_detached - this comes either from 'older software versions' or via a g10c_pgp_signature_detached signature*/
         adbe_pkcs7_detached,
         ETSI_CAdES_B,   // Simplest cades
@@ -309,13 +309,13 @@ public:
      * The supported S/Mime signature types
      * \since 26.12
      */
-    QVector<SupportedSMimeSignatures> supportedSMimeSignatures() const;
+    QVector<SMimeSignatureType> supportedSMimeSignatures() const;
 
     /**
      * sets the supported S/Mime signature types
      * \since 26.12
      */
-    void setSupportedSMimeSignatures(const QVector<SupportedSMimeSignatures> &supported);
+    void setSupportedSMimeSignatures(const QVector<SMimeSignatureType> &supported);
 
     /**
      * Checks if the given password is the correct one for this certificate

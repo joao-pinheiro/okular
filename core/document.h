@@ -1712,9 +1712,9 @@ public:
     void setLeftFontSize(double fontSize);
 
     /// @since 26.12
-    void setRequestedSignatureType(CertificateInfo::SupportedSMimeSignatures type);
+    void setRequestedSignatureType(CertificateInfo::SMimeSignatureType type);
     /// @since 26.12
-    CertificateInfo::SupportedSMimeSignatures requestedSignatureType() const;
+    CertificateInfo::SMimeSignatureType requestedSignatureType() const;
 
 private:
     NewSignatureDataPrivate *const d;
