@@ -29,7 +29,7 @@ struct SigningInformation {
     QString reason;
     QString location;
     QString backgroundImagePath;
-    Okular::CertificateInfo::SupportedSMimeSignatures type = Okular::CertificateInfo::SupportedSMimeSignatures::none;
+    Okular::CertificateInfo::SMimeSignatureType type = Okular::CertificateInfo::SMimeSignatureType::none;
 };
 
 enum class SigningInformationOption { None = 0x0, BackgroundImage = 0x1 };

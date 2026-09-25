@@ -50,20 +50,20 @@ namespace
 namespace SignaturePartUtils
 {
 
-QString signatureTypeText(Okular::CertificateInfo::SupportedSMimeSignatures type)
+QString signatureTypeText(Okular::CertificateInfo::SMimeSignatureType type)
 {
     switch (type) {
-    case Okular::CertificateInfo::SupportedSMimeSignatures::none:
+    case Okular::CertificateInfo::SMimeSignatureType::none:
         return i18nc("This string is describing a default entry that generally shouldn't be shown to the user. To a point where it would be a coding bug somewhere to have it", "NONE");
-    case Okular::CertificateInfo::SupportedSMimeSignatures::adbe_pkcs7_detached:
+    case Okular::CertificateInfo::SMimeSignatureType::adbe_pkcs7_detached:
         return i18nc("Signature type", "Adobe PKCS7 signature");
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_B:
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_B:
         return i18nc("Signature type", "Basic eIDAS signature");
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_T:
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_T:
         return i18nc("Signature type", "eIDAS signature with timestamp");
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LT:
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LT:
         return i18nc("Signature type", "eIDAS signature with timestamp for long term validation");
-    case Okular::CertificateInfo::SupportedSMimeSignatures::ETSI_CAdES_LTA:
+    case Okular::CertificateInfo::SMimeSignatureType::ETSI_CAdES_LTA:
         return i18nc("Signature type", "eIDAS signature with timestamp for long term validation and support for re-validation");
     }
     return QString();
@@ -298,10 +298,10 @@ std::optional<SigningInformation> getCertificateAndPasswordForSigning(PageView *
     }
 
     if (passok) {
-        Okular::CertificateInfo::SupportedSMimeSignatures requestedType = Okular::CertificateInfo::SupportedSMimeSignatures::none;
+        Okular::CertificateInfo::SMimeSignatureType requestedType = Okular::CertificateInfo::SMimeSignatureType::none;
         const auto supportedTypes = cert.supportedSMimeSignatures();
         if (supportedTypes.size() > 1) {
-            requestedType = dialog.ui->signatureTypeComboBox->currentData().value<Okular::CertificateInfo::SupportedSMimeSignatures>();
+            requestedType = dialog.ui->signatureTypeComboBox->currentData().value<Okular::CertificateInfo::SMimeSignatureType>();
         } else if (supportedTypes.size() == 1) {
             requestedType = supportedTypes.front();
         }
