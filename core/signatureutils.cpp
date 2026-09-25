@@ -51,7 +51,7 @@ public:
     bool isSelfSigned = false;
     QByteArray certificateData;
     CertificateInfo::Backend backend = CertificateInfo::Backend::Unknown;
-    QVector<CertificateInfo::SupportedSMimeSignatures> supportedSMimeSignatures = {CertificateInfo::SupportedSMimeSignatures::none};
+    QVector<CertificateInfo::SMimeSignatureType> supportedSMimeSignatures = {CertificateInfo::SMimeSignatureType::none};
     CertificateInfo::KeyLocation keyLocation = CertificateInfo::KeyLocation::Unknown;
     CertificateInfo::CertificateType certificateType = CertificateInfo::CertificateType::X509;
     bool isQualified = false;
@@ -290,12 +290,12 @@ void CertificateInfo::setBackend(Backend backend)
     d->backend = backend;
 }
 
-QVector<CertificateInfo::SupportedSMimeSignatures> CertificateInfo::supportedSMimeSignatures() const
+QVector<CertificateInfo::SMimeSignatureType> CertificateInfo::supportedSMimeSignatures() const
 {
     return d->supportedSMimeSignatures;
 }
 
-void CertificateInfo::setSupportedSMimeSignatures(const QVector<SupportedSMimeSignatures> &supported)
+void CertificateInfo::setSupportedSMimeSignatures(const QVector<SMimeSignatureType> &supported)
 {
     d->supportedSMimeSignatures = supported;
 }
