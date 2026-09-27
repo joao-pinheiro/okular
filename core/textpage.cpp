@@ -330,6 +330,29 @@ private:
     QRect m_area;
 };
 
+// The entities keep the areas the generator handed over, which are finer than the
+// pixels of the layout grid: two of them that touch there can be a thousandth
+// apart, and are then taken for two separate areas. A gap of one grid unit is not
+// a gap.
+static bool touchesOnLayoutGrid(const NormalizedRect &before, const NormalizedRect &after)
+{
+    constexpr double gridUnit = 1.0 / 1000;
+    return after.left - before.right <= gridUnit && before.left - after.right <= gridUnit;
+}
+
+/**
+ * Appends @p area to @p areaList, merging it with the last area when the two touch
+ * on the layout grid.
+ */
+static void appendOnLayoutGrid(RegularAreaRect *areaList, const NormalizedRect &area)
+{
+    if (!areaList->isEmpty() && touchesOnLayoutGrid(areaList->last(), area)) {
+        areaList->last() |= area;
+    } else {
+        areaList->append(area);
+    }
+}
+
 std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) const
 {
     if (d->m_words.isEmpty()) {
@@ -595,8 +618,25 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
         end--;
     }
 
+    // Build one rectangle per line. A rectangle grows to cover the entity that
+    // follows it, instead of nesting their vertical extents as appendShape() does:
+    // the characters of a word share the extent of that word (see
+    // makeWordFromCharacters), so a word carrying a mark is taller than the words
+    // next to it and the extents do not nest.
+    bool lineEnded = true;
     for (; start <= end; start++) {
-        ret->appendShape(start->transformedArea(matrix), side);
+        const NormalizedRect area = start->transformedArea(matrix);
+        if (side != MergeRight) {
+            // A rotated page: keep the merging appendShape() does along its axis.
+            ret->appendShape(area, side);
+            continue;
+        }
+        if (lineEnded || ret->isEmpty() || !touchesOnLayoutGrid(ret->last(), area) || !doesConsumeY(ret->last(), area, 70)) {
+            ret->append(area);
+        } else {
+            ret->last() |= area;
+        }
+        lineEnded = start->text().contains(QLatin1Char('\n'));
     }
 
     return ret;
@@ -1947,7 +1987,7 @@ std::unique_ptr<RegularAreaRect> TextPage::wordAt(const NormalizedPoint &p) cons
         // the gap between the runs of a word belongs to that word.
         if (!posIt->text().isEmpty() && posIt->text().simplified().isEmpty()) {
             auto ret = std::make_unique<RegularAreaRect>();
-            ret->appendShape(posIt->area());
+            appendOnLayoutGrid(ret.get(), posIt->area());
             return ret;
         }
         // Find the first TinyTextEntity of the word
@@ -1986,14 +2026,14 @@ std::unique_ptr<RegularAreaRect> TextPage::wordAt(const NormalizedPoint &p) cons
             if (itText.isEmpty()) {
                 // Include the filler, so that the runs on both sides of it are
                 // selected as one area.
-                ret->appendShape(posIt->area());
+                appendOnLayoutGrid(ret.get(), posIt->area());
                 continue;
             }
             if (itText.simplified().isEmpty()) {
                 break;
             }
 
-            ret->appendShape(posIt->area());
+            appendOnLayoutGrid(ret.get(), posIt->area());
             foundWord += posIt->text();
             if (itText.right(1).at(0).isSpace()) {
                 if (!foundWord.endsWith(QLatin1String("-\n"))) {
@@ -2196,7 +2236,7 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
         if (lineIt == buildStart && text.simplified().isEmpty()) {
             continue;
         }
-        ret->appendShape(lineIt->area());
+        appendOnLayoutGrid(ret.get(), lineIt->area());
 
         if (text.contains(QLatin1Char('\n')) && lineIt != buildStart) {
             TextEntity::List::ConstIterator afterNl = lineIt;
