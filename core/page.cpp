@@ -236,6 +236,11 @@ void Page::setBoundingBox(const NormalizedRect &bbox)
 
 bool Page::hasPixmap(DocumentObserver *observer, int width, int height, const NormalizedRect &rect) const
 {
+#ifdef Q_OS_WIN
+    if (!d || !observer) {
+        return false;
+    }
+#endif
     TilesManager *tm = d->tilesManager(observer);
     if (tm) {
         if (width != tm->width() || height != tm->height()) {

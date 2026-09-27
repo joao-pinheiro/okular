@@ -24,6 +24,12 @@
 #include <QTemporaryFile>
 #include <QTimer>
 #include <qwidget.h>
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+#include "SingleApplication/SingleApplication"
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#endif
 
 #include "../core/document_p.h"
 #include "../part/findbar.h"
@@ -720,5 +726,41 @@ void MainShellTest::testMiddleButtonCloseUndo()
     QCOMPARE(s->m_tabWidget->count(), paths.size());
 }
 
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+int main(int argc, char *argv[])
+{
+    // Use SingleApplication so that external okular.exe processes can find us
+    SingleApplication app(argc, argv, true);
+    QCoreApplication::setApplicationName(QStringLiteral("okular"));
+    QCoreApplication::setOrganizationName(QStringLiteral("KDE"));
+
+    MainShellTest tc;
+
+    // Direct messages to the active shell
+    QObject::connect(&app, &SingleApplication::receivedMessage, &app, [](quint32, QByteArray message) {
+        const QJsonDocument doc = QJsonDocument::fromJson(message);
+        if (!doc.isObject()) {
+            return;
+        }
+        const QJsonObject obj = doc.object();
+        const QJsonArray urls = obj.value(QStringLiteral("urls")).toArray();
+        const QString opts = obj.value(QStringLiteral("serializedOptions")).toString();
+
+        Shell *shell = findShell();
+        if (shell) {
+            for (const QJsonValue &urlVal : urls) {
+                const QUrl url(urlVal.toObject().value(QStringLiteral("url")).toString());
+                shell->openDocument(url, opts);
+            }
+            shell->raise();
+            shell->activateWindow();
+        }
+    });
+
+    return QTest::qExec(&tc, argc, argv);
+}
+#else
 QTEST_MAIN(MainShellTest)
+#endif
+
 #include "mainshelltest.moc"

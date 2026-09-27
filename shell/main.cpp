@@ -14,23 +14,31 @@
 #include "okular_main.h"
 #include "shellutils.h"
 #include <KAboutData>
+#include <KConfigGroup>
 #include <KCrash>
 #include <KIconTheme>
 #include <KLocalizedString>
-#include <KMessageBox>
 #include <KWindowSystem>
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileOpenEvent>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QObject>
 #include <QStringList>
-#include <QTextStream>
 #include <QtGlobal>
+
+#include "config-okular.h"
 
 #define HAVE_STYLE_MANAGER __has_include(<KStyleManager>)
 #if HAVE_STYLE_MANAGER
 #include <KStyleManager>
+#endif
+
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+#include "SingleApplication/SingleApplication"
 #endif
 
 /**
@@ -74,7 +82,18 @@ int main(int argc, char **argv)
 
     QCoreApplication::setAttribute(Qt::AA_CompressTabletEvents);
 
+    // Use SingleApplication to provide IPC for instance reuse on Windows.
+    // IMPORTANT: It exclusively replaces QApplication.
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+    // Set standard metadata BEFORE SingleApplication so it generates the right IPC key
+    QCoreApplication::setApplicationName(QStringLiteral("okular"));
+    QCoreApplication::setOrganizationName(QStringLiteral("KDE"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("kde.org"));
+
+    SingleApplication app(argc, argv, true);
+#else
     QApplication app(argc, argv);
+#endif
 
     /**
      * Install event filter to handle macOS file opening.
@@ -123,6 +142,58 @@ int main(int argc, char **argv)
 
     parser.process(app);
     aboutData.processCommandLine(&parser);
+
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+    // Primary instance: listen for URLs from secondary instances.
+    if (app.isPrimary()) {
+        QObject::connect(&app, &SingleApplication::receivedMessage, &app, [](quint32 instanceId, QByteArray message) {
+            Q_UNUSED(instanceId);
+
+            const QJsonDocument doc = QJsonDocument::fromJson(message);
+            if (!doc.isObject()) {
+                return;
+            }
+
+            const QJsonObject obj = doc.object();
+            const QJsonArray urls = obj.value(QStringLiteral("urls")).toArray();
+            const QString opts = obj.value(QStringLiteral("serializedOptions")).toString();
+
+            // Find the existing Shell window
+            Shell *shell = nullptr;
+            const auto widgets = QApplication::topLevelWidgets();
+            for (QWidget *widget : widgets) {
+                shell = qobject_cast<Shell *>(widget);
+                if (shell) {
+                    break;
+                }
+            }
+
+            if (!shell) {
+                return;
+            }
+
+            for (const QJsonValue &urlVal : urls) {
+                const QUrl url(urlVal.toObject().value(QStringLiteral("url")).toString());
+                if (!shell->openDocument(url, opts)) {
+                    // Tabs disabled or full: fallback to opening a new window.
+                    Shell *newShell = new Shell(opts);
+                    if (newShell->isValid()) {
+                        newShell->show();
+                        newShell->openDocument(url, opts);
+                        shell = newShell;
+                    } else {
+                        delete newShell;
+                    }
+                }
+            }
+
+            // Raise and activate the window
+            shell->raise();
+            shell->activateWindow();
+            KWindowSystem::activateWindow(shell->windowHandle());
+        });
+    }
+#endif // defined(Q_OS_WIN) && !HAVE_DBUS
 
     // see if we are starting with session management
     if (app.isSessionRestored()) {

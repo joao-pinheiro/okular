@@ -60,6 +60,11 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                                             const Okular::NormalizedRect &crop,
                                             Okular::NormalizedPoint *viewPortPoint)
 {
+#ifdef Q_OS_WIN
+    if (!page || !observer) {
+        return;
+    }
+#endif
     const qreal dpr = destPainter->device()->devicePixelRatioF();
 
     /* Calculate the cropped geometry of the page */

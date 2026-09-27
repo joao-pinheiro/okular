@@ -18,6 +18,16 @@ set(okular_SRCS
    shell.qrc
 )
 
+if(WIN32 AND NOT HAVE_DBUS)
+    # SingleApplication for instance reuse on Windows
+    list(APPEND okular_SRCS
+        ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication.cpp
+        ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication_p.cpp
+    )
+    include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/3rdparty)
+    add_definitions(-DQAPPLICATION_CLASS=QApplication)
+endif()
+
 ki18n_wrap_ui(okular_SRCS
     welcomescreen.ui)
 
@@ -33,6 +43,10 @@ endif()
 if (HAVE_X11)
     target_link_libraries(okular Qt6::GuiPrivate)
 endif()
+if(WIN32 AND NOT HAVE_DBUS)
+    target_link_libraries(okular Qt6::Network)
+endif()
+
 
 install(TARGETS okular ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 

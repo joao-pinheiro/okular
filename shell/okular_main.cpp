@@ -30,6 +30,14 @@
 #include <QDBusInterface>
 #endif // HAVE_DBUS
 
+#if defined(Q_OS_WIN) && !HAVE_DBUS
+#include "SingleApplication/SingleApplication"
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <windows.h>
+#endif
+
 #include <iostream>
 
 #if HAVE_DBUS
@@ -73,6 +81,39 @@ static bool attachUniqueInstance(const QStringList &paths, const QString &serial
     if (!ShellUtils::noRaise(serializedOptions)) {
         iface.call(QStringLiteral("tryRaise"), startupId());
     }
+
+    return true;
+#elif defined(Q_OS_WIN) && !HAVE_DBUS
+    if (!ShellUtils::unique(serializedOptions) || paths.count() != 1) {
+        return false;
+    }
+
+    auto *app = qobject_cast<SingleApplication *>(qApp);
+    if (!app || !app->isSecondary()) {
+        return false;
+    }
+
+    if (!ShellUtils::editorCmd(serializedOptions).isEmpty()) {
+        QString message = i18n("You cannot set the editor command in an already running okular instance. Please disable the tabs and try again.\n");
+        std::cerr << message.toStdString();
+        exit(1);
+    }
+
+    AllowSetForegroundWindow(static_cast<DWORD>(app->primaryPid()));
+
+    QJsonObject message;
+    QJsonArray urlArray;
+    const QString page = ShellUtils::page(serializedOptions);
+    const QUrl url = ShellUtils::urlFromArg(paths[0], ShellUtils::qfileExistFunc(), page);
+    QJsonObject urlObj;
+    urlObj[QStringLiteral("url")] = url.toString();
+    urlArray.append(urlObj);
+
+    message[QStringLiteral("urls")] = urlArray;
+    message[QStringLiteral("serializedOptions")] = serializedOptions;
+
+    const QByteArray data = QJsonDocument(message).toJson(QJsonDocument::Compact);
+    app->sendMessage(data, 1000);
 
     return true;
 #else  // HAVE_DBUS
@@ -174,6 +215,45 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
     }
 
     bestService->call(QStringLiteral("tryRaise"), startupId());
+
+    return true;
+#elif defined(Q_OS_WIN) && !HAVE_DBUS
+    if (paths.count() < 1) {
+        return false;
+    }
+
+    if (ShellUtils::showPrintDialogAndExit(serializedOptions)) {
+        return false;
+    }
+
+    auto *app = qobject_cast<SingleApplication *>(qApp);
+    if (!app || !app->isSecondary()) {
+        return false;
+    }
+
+    if (!ShellUtils::editorCmd(serializedOptions).isEmpty()) {
+        QString message = i18n("You cannot set the editor command in an already running okular instance. Please disable the tabs and try again.\n");
+        std::cerr << message.toStdString();
+        exit(1);
+    }
+
+    AllowSetForegroundWindow(static_cast<DWORD>(app->primaryPid()));
+
+    QJsonObject message;
+    QJsonArray urlArray;
+    for (const QString &arg : paths) {
+        const QString page = ShellUtils::page(serializedOptions);
+        const QUrl url = ShellUtils::urlFromArg(arg, ShellUtils::qfileExistFunc(), page);
+        QJsonObject urlObj;
+        urlObj[QStringLiteral("url")] = url.toString();
+        urlArray.append(urlObj);
+    }
+
+    message[QStringLiteral("urls")] = urlArray;
+    message[QStringLiteral("serializedOptions")] = serializedOptions;
+
+    const QByteArray data = QJsonDocument(message).toJson(QJsonDocument::Compact);
+    app->sendMessage(data, 1000);
 
     return true;
 #else  // HAVE_DBUS

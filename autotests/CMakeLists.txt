@@ -126,10 +126,29 @@ ecm_add_test(check_distinguished_name_parser.cpp
     LINK_LIBRARIES Qt6::Test)
 
 if(BUILD_DESKTOP)
-    ecm_add_test(mainshelltest.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp
+    set(mainshelltest_SRCS
+        mainshelltest.cpp
+        ../shell/okular_main.cpp
+        ../shell/shellutils.cpp
+        ../shell/shell.cpp
+        ../shell/welcomescreen.cpp
+        ../gui/recentitemsmodel.cpp
+        closedialoghelper.cpp
+    )
+    if(WIN32 AND NOT HAVE_DBUS)
+        list(APPEND mainshelltest_SRCS
+            ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication.cpp
+            ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication_p.cpp
+        )
+    endif()
+    ecm_add_test(${mainshelltest_SRCS}
         TEST_NAME "mainshelltest"
         LINK_LIBRARIES Qt6::Test okularpart okularcore
     )
+    if(WIN32 AND NOT HAVE_DBUS)
+        target_link_libraries(mainshelltest Qt6::Network)
+        target_include_directories(mainshelltest PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty)
+    endif()
     target_compile_definitions(mainshelltest PRIVATE OKULAR_BINARY="$<TARGET_FILE:okular>")
 
     if (HAVE_X11)
@@ -138,10 +157,30 @@ if(BUILD_DESKTOP)
 endif()
 
 if(BUILD_DESKTOP)
-    ecm_add_test(annotationtoolbartest.cpp ../shell/okular_main.cpp ../shell/shellutils.cpp ../shell/shell.cpp ../shell/welcomescreen.cpp ../gui/recentitemsmodel.cpp closedialoghelper.cpp ../shell/welcomescreen.ui
+    set(annotationtoolbartest_SRCS
+        annotationtoolbartest.cpp
+        ../shell/okular_main.cpp
+        ../shell/shellutils.cpp
+        ../shell/shell.cpp
+        ../shell/welcomescreen.cpp
+        ../gui/recentitemsmodel.cpp
+        closedialoghelper.cpp
+        ../shell/welcomescreen.ui
+    )
+    if(WIN32 AND NOT HAVE_DBUS)
+        list(APPEND annotationtoolbartest_SRCS
+            ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication.cpp
+            ${CMAKE_SOURCE_DIR}/3rdparty/SingleApplication/singleapplication_p.cpp
+        )
+    endif()
+    ecm_add_test(${annotationtoolbartest_SRCS}
         TEST_NAME "annotationtoolbartest"
         LINK_LIBRARIES Qt6::Test okularpart
     )
+    if(WIN32 AND NOT HAVE_DBUS)
+        target_link_libraries(annotationtoolbartest Qt6::Network)
+        target_include_directories(annotationtoolbartest PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty)
+    endif()
 
     if (HAVE_X11)
         target_link_libraries(annotationtoolbartest Qt6::GuiPrivate)
