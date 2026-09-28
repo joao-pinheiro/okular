@@ -1822,13 +1822,15 @@ static RegionTextList XYCutForBoundingBoxes(const QList<WordWithCharacters> &wor
 /**
  * Whether the gap between two entities of a line separates two words. The runs of
  * one word leave a narrower gap than a space, so the gap is measured against the
- * height of the characters, a space being about a seventh of it. The areas are
- * not rounded to whole pixels first: that would move a 2.5 pixel gap and its 3.3
- * pixel threshold to 3 and 3.
+ * height of the characters, a space being about a seventh of it. The smaller of the
+ * two words is used: a word that carries a mark, or that ends a line, has a box
+ * taller than its letters, and measuring the gap against that would make a real
+ * space look narrow. The areas are not rounded to whole pixels first: that would
+ * move a 2.5 pixel gap and its 3.3 pixel threshold to 3 and 3.
  */
 static bool separatesWords(const QRectF &before, const QRectF &after)
 {
-    return after.left() - before.right() >= qMax(before.height(), after.height()) / 7;
+    return after.left() - before.right() >= qMin(before.height(), after.height()) / 7;
 }
 
 /**
