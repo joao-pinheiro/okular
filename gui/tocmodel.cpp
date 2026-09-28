@@ -73,9 +73,9 @@ TOCItem::TOCItem(TOCItem *_parent, const Okular::DocumentSynopsis::Element &e)
     text = e.title();
 
     // viewport loading
-    if (auto viewportString = e.viewPort()) {
+    if (auto vp = e.viewPort()) {
         // if the node has a viewport, set it
-        viewport = Okular::DocumentViewport(viewportString.value());
+        viewport = vp.value();
     } else {
         // if the node references a viewport, get the reference and set it
         if (const auto page = e.viewPortName()) {
