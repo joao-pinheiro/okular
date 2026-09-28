@@ -125,7 +125,7 @@ got_bottom:
         }
     }
 
-    NormalizedRect bbox(QRect(left, top, (right - left + 1), (bottom - top + 1)), image->width(), image->height());
+    NormalizedRect bbox((double)left / width, (double)top / height, (double)(right + 1) / width, (double)(bottom + 1) / height);
 
 #ifdef BBOX_DEBUG
     qCDebug(OkularCoreDebug) << "Computed bounding box" << bbox << "in" << time.elapsed() << "ms";
