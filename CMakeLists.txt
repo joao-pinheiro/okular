@@ -112,6 +112,7 @@ find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Crash
     I18n
     KIO
+    Notifications
     ThreadWeaver
     WindowSystem
     XmlGui
@@ -591,6 +592,7 @@ target_link_libraries(okularpart okularcore
     KF6::IconThemes
     KF6::KIOCore
     KF6::KIOWidgets
+    KF6::Notifications
     KF6::Parts
     KF6::WindowSystem
     KF6::TextWidgets
@@ -620,6 +622,8 @@ endif()
 
 #instead install the part to this path so it can be found
 install(TARGETS okularpart DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/parts/ )
+
+install(FILES part/okular.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR})
 
 endif()# End of BUILD_DESKTOP if
 

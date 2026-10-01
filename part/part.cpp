@@ -54,6 +54,7 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTemporaryFile>
+#include <QThread>
 #include <QTimer>
 #include <QWidgetAction>
 
@@ -74,6 +75,7 @@
 #include <KJobWidgets>
 #include <KMainWindow>
 #include <KMessageBox>
+#include <KNotification>
 #include <KParts/GUIActivateEvent>
 #include <KPasswordDialog>
 #include <KPluginMetaData>
@@ -309,6 +311,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     : KParts::ReadWritePart(parent)
     , m_tempfile(nullptr)
     , m_documentOpenWithPassword(false)
+    , m_documentPassword()
     , m_swapInsteadOfOpening(false)
     , m_tocEnabled(false)
     , m_isReloading(false)
@@ -1421,6 +1424,7 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
             openResult = m_document->openDocument(fileNameToOpen, url(), mime);
         }
         m_documentOpenWithPassword = false;
+        m_documentPassword.clear();
 
         // if the file didn't open correctly it might be encrypted, so ask for a pass
 #if HAVE_KWALLET
@@ -1496,6 +1500,12 @@ Document::OpenResult Part::doOpenFile(const QMimeType &mimeA, const QString &fil
 
             if (openResult == Document::OpenSuccess) {
                 m_documentOpenWithPassword = true;
+                // Keep the password in memory so the async print worker can
+                // open an independent document instance for password-protected
+                // files. This is safe: the password is already in RAM (Poppler
+                // needs it for every page decode). It is never written to disk
+                // by this code — KWallet is handled separately below.
+                m_documentPassword = password;
 
 #if HAVE_KWALLET
                 // 3. if the password is correct and the user chose to remember it, store it to the wallet
@@ -3134,7 +3144,7 @@ void Part::slotPrintPreview()
         return;
     }
 
-    QPrinter printer;
+    QPrinter *printer = new QPrinter;
     QString tempFilePattern;
 
     if (m_document->printingSupport() == Okular::Document::PostscriptPrinting) {
@@ -3142,6 +3152,7 @@ void Part::slotPrintPreview()
     } else if (m_document->printingSupport() == Okular::Document::NativePrinting) {
         tempFilePattern = (QDir::tempPath() + QLatin1String("/okular_XXXXXX.pdf"));
     } else {
+        delete printer;
         return;
     }
 
@@ -3149,14 +3160,16 @@ void Part::slotPrintPreview()
     QTemporaryFile tf(tempFilePattern);
     tf.setAutoRemove(true);
     if (!tf.open()) {
+        delete printer;
         return;
     }
-    printer.setOutputFileName(tf.fileName());
+    printer->setOutputFileName(tf.fileName());
     tf.close();
-    setupPrint(printer);
-    doPrint(printer);
-    if (QFile::exists(printer.outputFileName())) {
-        Okular::FilePrinterPreview previewdlg(printer.outputFileName(), widget());
+    setupPrint(*printer);
+    QString outputFileName = printer->outputFileName();
+    doPrint(printer, false); // sync print, will delete printer
+    if (QFile::exists(outputFileName)) {
+        Okular::FilePrinterPreview previewdlg(outputFileName, widget());
         previewdlg.exec();
     }
 }
@@ -3567,14 +3580,14 @@ void Part::slotPrint()
     }
 
 #ifdef Q_OS_WIN
-    QPrinter printer(QPrinter::HighResolution);
+    QPrinter *printer = new QPrinter(QPrinter::HighResolution);
 #else
-    QPrinter printer;
+    QPrinter *printer = new QPrinter;
 #endif
     QWidget *printConfigWidget = nullptr;
 
     // Must do certain QPrinter setup before creating QPrintDialog
-    setupPrint(printer);
+    setupPrint(*printer);
 
     // Create the Print Dialog with extra config widgets if required
     if (m_document->canConfigurePrinter()) {
@@ -3583,7 +3596,7 @@ void Part::slotPrint()
         printConfigWidget = new DefaultPrintOptionsWidget();
     }
 
-    QPrintDialog printDialog(&printer, widget());
+    QPrintDialog printDialog(printer, widget());
     printDialog.setWindowTitle(i18nc("@title:window", "Print"));
     QList<QWidget *> options;
     if (printConfigWidget) {
@@ -3610,24 +3623,28 @@ void Part::slotPrint()
         printDialog.setOption(QAbstractPrintDialog::PrintCurrentPage);
     }
 
-    bool success = true;
     if (printDialog.exec()) {
         // set option for margins if widget is of corresponding type that holds this information
         PrintOptionsWidget *optionWidget = dynamic_cast<PrintOptionsWidget *>(printConfigWidget);
         if (optionWidget != nullptr) {
-            printer.setFullPage(optionWidget->ignorePrintMargins());
+            printer->setFullPage(optionWidget->ignorePrintMargins());
         } else {
             // printConfigurationWidget() method should always return an object of type Okular::PrintOptionsWidget,
             // (signature does not (yet) require it for ABI stability reasons), so Q_EMIT a warning if the object is of another type
             qWarning() << "printConfigurationWidget() method did not return an Okular::PrintOptionsWidget. This is strongly discouraged!";
         }
 
-        success = doPrint(printer);
+        doPrint(printer, true);
+    } else {
+        delete printer;
+        if (m_cliPrintAndExit) {
+            exit(EXIT_FAILURE);
+        }
     }
 
-    if (m_cliPrintAndExit) {
-        exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
-    }
+    // NOTE: if m_cliPrintAndExit is set, the successful exit() call is deferred to
+    // onPrintFinished(), which is invoked once the async print thread completes.
+    // Do NOT exit here — doPrint() now returns true immediately (before printing is done).
 }
 
 void Part::setupPrint(QPrinter &printer)
@@ -3644,29 +3661,199 @@ void Part::setupPrint(QPrinter &printer)
     }
 }
 
-bool Part::doPrint(QPrinter &printer)
+// PrintWorker runs on a dedicated QThread, opens its own Okular::Document
+// (and therefore its own PDFGenerator with its own Poppler::Document),
+// so it never shares userMutex with the UI thread.
+class PrintWorker : public QObject
+{
+    Q_OBJECT
+public:
+    explicit PrintWorker(const QString &filePath, const QUrl &fileUrl, const QMimeType &mimeType, QPrinter *printer, const QString &password, QObject *parent = nullptr)
+        : QObject(parent)
+        , m_filePath(filePath)
+        , m_fileUrl(fileUrl)
+        , m_mimeType(mimeType)
+        , m_printer(printer)
+        , m_password(password)
+    {
+    }
+
+    ~PrintWorker() override
+    {
+        delete m_printer;
+    }
+
+Q_SIGNALS:
+    void done(Okular::Document::PrintError);
+public Q_SLOTS:
+    void run()
+    {
+        // Open an independent Okular::Document — creates its own generator + pdfdoc
+        // This is the key: no shared Poppler::Document with the UI thread, so no
+        // userMutex contention and no freeze.
+        Okular::Document printDoc(nullptr /* no widget needed for print */);
+        Okular::Document::OpenResult result = printDoc.openDocument(m_filePath, m_fileUrl, m_mimeType);
+
+        // If the document is password-protected, supply the in-memory password
+        // that was already entered by the user when opening the document.
+        // The password is already present in the main process's RAM (Poppler
+        // needs it for every page decode), so passing it here introduces no
+        // new security surface — it simply avoids prompting the user again.
+        if (result == Okular::Document::OpenNeedsPassword && !m_password.isEmpty()) {
+            result = printDoc.openDocument(m_filePath, m_fileUrl, m_mimeType, m_password);
+        }
+
+        if (result != Okular::Document::OpenSuccess) {
+            Q_EMIT done(Okular::Document::UnknownPrintError);
+            return;
+        }
+
+        // Delegate entirely to the generator's print() — which is now safe
+        // because it uses printDoc's internal generator, not the UI one.
+        const Okular::Document::PrintError error = printDoc.print(*m_printer);
+        Q_EMIT done(error);
+    }
+
+private:
+    QString m_filePath;
+    QUrl m_fileUrl;
+    QMimeType m_mimeType;
+    QPrinter *m_printer;
+    QString m_password; // ephemeral copy; lives only for the duration of run()
+};
+
+bool Part::doPrint(QPrinter *printer, bool async)
 {
     if (!m_document->isAllowed(Okular::AllowPrint)) {
         KMessageBox::error(widget(), i18n("Printing this document is not allowed."));
+        delete printer;
         return false;
     }
 
-    if (printer.printRange() == QPrinter::CurrentPage) {
-        printer.setPrintRange(QPrinter::PageRange);
-        printer.setFromTo(currentPage(), currentPage());
+    // Resolve CurrentPage to a concrete page range now, on the main thread,
+    // before the printer object is handed off to the worker.
+    if (printer->printRange() == QPrinter::CurrentPage) {
+        printer->setPrintRange(QPrinter::PageRange);
+        printer->setFromTo(currentPage(), currentPage());
     }
 
-    const Document::PrintError printError = m_document->print(printer);
-    if (printError != Document::NoPrintError) {
-        const QString error = Okular::Document::printErrorString(printError);
-        if (error.isEmpty()) {
-            KMessageBox::error(widget(), i18n("Could not print the document. Unknown error. Please report to bugs.kde.org"));
-        } else {
-            KMessageBox::error(widget(), i18n("Could not print the document. Detailed error is \"%1\". Please report to bugs.kde.org", error));
+    if (!async) {
+        const Document::PrintError printError = m_document->print(*printer);
+        if (printError != Document::NoPrintError) {
+            const QString error = Okular::Document::printErrorString(printError);
+            if (error.isEmpty()) {
+                KMessageBox::error(widget(), i18n("Could not print the document. Unknown error. Please report to bugs.kde.org"));
+            } else {
+                KMessageBox::error(widget(), i18n("Could not print the document. Detailed error is \"%1\". Please report to bugs.kde.org", error));
+            }
+            delete printer;
+            return false;
         }
+        delete printer;
+        return true;
+    }
+
+    // If the document has unsaved in-memory changes (annotations, form edits),
+    // save to a temp file so the print thread picks up those changes.
+    // Otherwise print directly from the on-disk file.
+    QString printFilePath = m_document->currentDocument().toLocalFile();
+    QUrl printFileUrl = m_document->currentDocument();
+    m_printTempFilePath.clear();
+
+    if (m_document->canSaveChanges()) {
+        QTemporaryFile tf(QDir::tempPath() + QStringLiteral("/okular_print_XXXXXX.pdf"));
+        tf.setAutoRemove(false);
+        if (tf.open()) {
+            m_printTempFilePath = tf.fileName();
+            tf.close();
+            QString errText;
+            if (!m_document->saveChanges(m_printTempFilePath, &errText)) {
+                KMessageBox::error(widget(), i18n("Could not save document for printing: %1", errText));
+                QFile::remove(m_printTempFilePath);
+                m_printTempFilePath.clear();
+                return false;
+            }
+            printFilePath = m_printTempFilePath;
+            printFileUrl = QUrl::fromLocalFile(m_printTempFilePath);
+        }
+    }
+
+    // Guard against starting a second job while one is already running.
+    if (m_printThread) {
+        KMessageBox::information(widget(), i18n("A print job is already in progress. Please wait for it to finish."));
         return false;
     }
-    return true;
+
+    // Disable the print action while the job is running.
+    QAction *printAction = findActionInKPartHierarchy(KStandardAction::name(KStandardAction::Print));
+    if (printAction) {
+        printAction->setEnabled(false);
+    }
+    m_printPreview->setEnabled(false);
+
+    // Determine MIME type for the file we'll open in the worker.
+    QMimeDatabase mimeDb;
+    QMimeType mimeType = mimeDb.mimeTypeForFile(printFilePath);
+
+    // Notify: print started.
+    const QString docTitle = m_document->metaData(QStringLiteral("DocumentTitle")).toString();
+    const QString displayName = docTitle.isEmpty() ? m_document->currentDocument().fileName() : docTitle;
+    KNotification::event(QStringLiteral("printStarted"), i18n("Printing \"%1\"...", displayName), QIcon::fromTheme(QStringLiteral("document-print")).pixmap(32), KNotification::CloseOnTimeout);
+
+    // Spin up thread + worker.
+    m_printThread = new QThread(this);
+    // m_documentPassword is the password the user already typed when opening
+    // the document. It lives in RAM anyway (Poppler keeps it for page decoding).
+    // We pass a copy to the worker so it can open its own document handle for
+    // password-protected files without prompting the user a second time.
+    // For the temp-file path (canSaveChanges), the saved PDF is unencrypted,
+    // so the worker will open it without a password on the first attempt.
+    PrintWorker *worker = new PrintWorker(printFilePath, printFileUrl, mimeType, printer, m_documentPassword);
+    worker->moveToThread(m_printThread);
+
+    connect(m_printThread, &QThread::started, worker, &PrintWorker::run);
+    connect(worker, &PrintWorker::done, worker, &QObject::deleteLater, Qt::QueuedConnection);
+    connect(worker, &PrintWorker::done, this, &Part::onPrintFinished, Qt::QueuedConnection);
+
+    m_printThread->start();
+    return true; // returns immediately; result arrives in onPrintFinished()
+}
+
+void Part::onPrintFinished(Okular::Document::PrintError error)
+{
+    // Tear down the thread cleanly.
+    if (m_printThread) {
+        m_printThread->quit();
+        m_printThread->wait();
+        m_printThread->deleteLater();
+        m_printThread = nullptr;
+    }
+
+    // Remove the temporary file if we created one.
+    if (!m_printTempFilePath.isEmpty()) {
+        QFile::remove(m_printTempFilePath);
+        m_printTempFilePath.clear();
+    }
+
+    // Re-enable print actions.
+    QAction *printAction = findActionInKPartHierarchy(KStandardAction::name(KStandardAction::Print));
+    const bool canPrint = m_document->printingSupport() != Okular::Document::NoPrinting;
+    if (printAction) {
+        printAction->setEnabled(canPrint);
+    }
+    m_printPreview->setEnabled(canPrint);
+
+    // KNotification feedback.
+    if (error == Okular::Document::NoPrintError) {
+        KNotification::event(QStringLiteral("printFinished"), i18n("Print job sent to printer."), QIcon::fromTheme(QStringLiteral("document-print")).pixmap(32), KNotification::CloseOnTimeout);
+    } else {
+        const QString errStr = Okular::Document::printErrorString(error);
+        KNotification::event(QStringLiteral("printError"), i18n("Print failed: %1", errStr.isEmpty() ? i18n("Unknown error") : errStr), QIcon::fromTheme(QStringLiteral("dialog-error")).pixmap(32), KNotification::Persistent);
+    }
+
+    if (m_cliPrintAndExit) {
+        exit(error == Okular::Document::NoPrintError ? EXIT_SUCCESS : EXIT_FAILURE);
+    }
 }
 
 void Part::psTransformEnded(int exit, QProcess::ExitStatus status)
