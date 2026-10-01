@@ -7,6 +7,7 @@
 
 #include "js_document_p.h"
 
+#include <qjsengine.h>
 #include <qwidget.h>
 
 #include <QDebug>
@@ -83,7 +84,8 @@ QJSValue JSDocument::dataObjects() const
     if (files) {
         QList<EmbeddedFile *>::ConstIterator it = files->begin(), itEnd = files->end();
         for (int i = 0; it != itEnd; ++it, ++i) {
-            QJSValue newdata = qjsEngine(this)->newQObject(new JSData(*it));
+            QJSValue newdata = qjsEngine(this)->newQObject(new JSData(*it, qjsEngine(this)));
+            QJSEngine::setObjectOwnership(newdata.toQObject(), QJSEngine::CppOwnership);
             dataObjects.setProperty(i, newdata);
         }
     }
@@ -159,7 +161,7 @@ QJSValue JSDocument::getField(const QString &cName) const
         const QList<Okular::FormField *> pageFields = (*pIt)->formFields();
         for (FormField *form : pageFields) {
             if (form->fullyQualifiedName() == cName) {
-                return JSField::wrapField(qjsEngine(this), form, *pIt);
+                return JSField::wrapField(qjsEngine(this), form, *pIt, m_fieldCache);
             }
         }
     }
@@ -223,7 +225,8 @@ QJSValue JSDocument::getOCGs([[maybe_unused]] int nPage) const
         for (int j = 0; j < model->columnCount(); ++j) {
             const QModelIndex index = model->index(i, j);
 
-            QJSValue item = qjsEngine(this)->newQObject(new JSOCG(model, i, j));
+            QJSValue item = qjsEngine(this)->newQObject(new JSOCG(model, i, j, qjsEngine(this)));
+            QJSEngine::setObjectOwnership(item.toQObject(), QJSEngine::CppOwnership);
             item.setProperty(QStringLiteral("name"), model->data(index, Qt::DisplayRole).toString());
             item.setProperty(QStringLiteral("initState"), model->data(index, Qt::CheckStateRole).toBool());
 
@@ -234,9 +237,10 @@ QJSValue JSDocument::getOCGs([[maybe_unused]] int nPage) const
     return array;
 }
 
-JSDocument::JSDocument(DocumentPrivate *doc, QObject *parent)
+JSDocument::JSDocument(DocumentPrivate *doc, const std::shared_ptr<JSFieldCache> &cache, QObject *parent)
     : QObject(parent)
     , m_doc(doc)
+    , m_fieldCache(cache)
 {
 }
 
