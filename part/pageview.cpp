@@ -5609,6 +5609,7 @@ void PageView::slotTrimToSelectionToggled(bool on)
 void PageView::slotToggleForms()
 {
     toggleFormWidgets(!d->m_formsVisible);
+    document()->resetNameAlikeFormsCache();
 }
 
 void PageView::slotFormChanged(int pageNumber)

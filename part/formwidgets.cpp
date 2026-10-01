@@ -177,6 +177,56 @@ bool FormWidgetsController::shouldFormWidgetBeShown(Okular::FormField *form)
     return !form->isReadOnly() || form->type() == Okular::FormField::FormSignature;
 }
 
+bool FormWidgetsController::processNameAlikes(const QString &fullyQualifiedName, const QVariant &newValue, Okular::FormField *sender)
+{
+    if (sender->isReadOnly()) {
+        // Don't process name-alikes for a R/O field
+        // Instead, values for the R/O fields will be set when processing its R/W name-alike
+        return false;
+    }
+    const QList<Okular::FormField *> allFields = m_doc->findFormFieldNameAlikes(fullyQualifiedName);
+    if (allFields.isEmpty()) {
+        return false;
+    }
+    for (Okular::FormField *aField : allFields) {
+        if ((aField == sender) || (aField->value() == newValue) || (aField->type() != Okular::FormField::FormText)) {
+            continue;
+        }
+        aField->setValue(newValue);
+        Q_EMIT refreshFormWidget(aField);
+        Q_EMIT changed(aField->page()->number());
+        m_doc->queueFormForKVCFActions(aField);
+    }
+    return true;
+}
+
+bool FormWidgetsController::processNameAlikes(const QString &fullyQualifiedName, const QList<int> &newValue, Okular::FormField *sender)
+{
+    if (sender->isReadOnly()) {
+        // Don't process name-alikes for a R/O field
+        // Instead, values for the R/O fields will be set when processing its R/W name-alike
+        return false;
+    }
+    const QList<Okular::FormField *> allFields = m_doc->findFormFieldNameAlikes(fullyQualifiedName);
+    if (allFields.isEmpty()) {
+        return false;
+    }
+    for (Okular::FormField *aField : allFields) {
+        if ((aField == sender) || (aField->type() != Okular::FormField::FormChoice)) {
+            continue;
+        }
+        Okular::FormFieldChoice *fc = static_cast<Okular::FormFieldChoice *>(aField);
+        if (fc->currentChoices() == newValue) {
+            continue;
+        }
+        fc->setCurrentChoices(newValue);
+        Q_EMIT refreshFormWidget(aField);
+        Q_EMIT changed(aField->page()->number());
+        m_doc->queueFormForKVCFActions(aField);
+    }
+    return true;
+}
+
 void FormWidgetsController::slotButtonClicked(QAbstractButton *button)
 {
     int pageNumber = -1;
@@ -397,7 +447,7 @@ void FormWidgetIface::slotRefresh(Okular::FormField *form)
     if (m_ff != form) {
         return;
     }
-    setVisibility(form->isVisible() && m_controller->shouldFormWidgetBeShown(form));
+    setVisibility((form->isVisible() && m_controller->shouldFormWidgetBeShown(form)) || m_controller->document()->hasNameAlikeFormFields(form));
 
     m_widget->setEnabled(!form->isReadOnly());
 }
@@ -558,6 +608,7 @@ FormLineEdit::FormLineEdit(Okular::FormFieldText *text, PageView *pageView)
 
     connect(this, &QLineEdit::textEdited, this, &FormLineEdit::slotChanged);
     connect(this, &QLineEdit::cursorPositionChanged, this, &FormLineEdit::slotChanged);
+    connect(this, &QLineEdit::textChanged, this, &FormLineEdit::propagateChange);
 
     setVisible(text->isVisible());
 }
@@ -676,6 +727,19 @@ void FormLineEdit::slotChanged()
     }
 }
 
+///
+/// \warning This function is optimised for the condition that forms are not added/removed
+/// and will need to be changed when adding functionality to add/remove forms
+///
+void FormLineEdit::propagateChange(const QString &newText)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), newText, formField())) {
+        disconnect(this, &QLineEdit::textChanged, this, &FormLineEdit::propagateChange);
+    }
+}
+
 void FormLineEdit::slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormFieldText *textForm, const QString &contents, int cursorPos, int anchorPos)
 {
     Q_UNUSED(pageNumber);
@@ -718,6 +782,7 @@ TextAreaEdit::TextAreaEdit(Okular::FormFieldText *text, PageView *pageView)
     setUndoRedoEnabled(false);
 
     connect(this, &QTextEdit::textChanged, this, &TextAreaEdit::slotChanged);
+    connect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
     connect(this, &QTextEdit::cursorPositionChanged, this, &TextAreaEdit::slotChanged);
     connect(this, &KTextEdit::aboutToShowContextMenu, this, &TextAreaEdit::slotUpdateUndoAndRedoInContextMenu);
     m_prevCursorPos = textCursor().position();
@@ -732,6 +797,7 @@ TextAreaEdit::~TextAreaEdit()
     // that ends up calling text changed but then we go to slotChanged and we're already
     // half destructed and all is bad
     disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::slotChanged);
+    disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
 }
 
 bool TextAreaEdit::event(QEvent *e)
@@ -854,6 +920,15 @@ void TextAreaEdit::slotChanged()
     m_prevAnchorPos = textCursor().anchor();
 }
 
+void TextAreaEdit::propagateChange()
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), toPlainText(), formField())) {
+        disconnect(this, &QTextEdit::textChanged, this, &TextAreaEdit::propagateChange);
+    }
+}
+
 void TextAreaEdit::slotRefresh(Okular::FormField *form)
 {
     if (form != m_ff) {
@@ -878,6 +953,7 @@ FileEdit::FileEdit(Okular::FormFieldText *text, PageView *pageView)
     m_prevAnchorPos = lineEdit()->cursorPosition();
 
     connect(this, &KUrlRequester::textChanged, this, &FileEdit::slotChanged);
+    connect(this, &KUrlRequester::textChanged, this, &FileEdit::propagateChange);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &FileEdit::slotChanged);
     setVisible(text->isVisible());
 }
@@ -976,6 +1052,15 @@ void FileEdit::slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormField
     setFocus();
 }
 
+void FileEdit::propagateChange(const QString &newText)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), newText, formField())) {
+        disconnect(this, &KUrlRequester::textChanged, this, &FileEdit::propagateChange);
+    }
+}
+
 ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     : QListWidget(pageView->viewport())
     , FormWidgetIface(this, choice)
@@ -998,6 +1083,7 @@ ListEdit::ListEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     }
 
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
+    connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::propagateChange);
 
     setVisible(choice->isVisible());
     setCursor(Qt::ArrowCursor);
@@ -1037,6 +1123,26 @@ void ListEdit::slotHandleFormListChangedByUndoRedo(int pageNumber, Okular::FormF
     connect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::slotSelectionChanged);
 
     setFocus();
+}
+
+void ListEdit::propagateChange()
+{
+    QList<int> rows;
+    {
+        const QList<QListWidgetItem *> selection = selectedItems();
+        for (const QListWidgetItem *item : selection) {
+            rows.append(row(item));
+        }
+        Okular::FormFieldChoice *form = static_cast<Okular::FormFieldChoice *>(m_ff);
+        if (rows == form->currentChoices()) {
+            return;
+        }
+    }
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), rows, formField())) {
+        disconnect(this, &QListWidget::itemSelectionChanged, this, &ListEdit::propagateChange);
+    }
 }
 
 void ListEdit::slotRefresh(Okular::FormField *form)
@@ -1085,6 +1191,7 @@ ComboEdit::ComboEdit(Okular::FormFieldChoice *choice, PageView *pageView)
     connect(this, &QComboBox::currentIndexChanged, this, &ComboEdit::slotValueChanged);
     connect(this, &QComboBox::editTextChanged, this, &ComboEdit::slotValueChanged);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
+    connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::propagateChange);
 
     m_editing = false;
     setVisible(choice->isVisible());
@@ -1166,6 +1273,15 @@ void ComboEdit::slotHandleFormComboChangedByUndoRedo(int pageNumber, Okular::For
     lineEdit()->cursorForward(true, cursorPos - anchorPos);
     connect(lineEdit(), &QLineEdit::cursorPositionChanged, this, &ComboEdit::slotValueChanged);
     setFocus();
+}
+
+void ComboEdit::propagateChange(const int currentIndex)
+{
+    // Ask controller to propagate change to name-alikes
+    // If no name-alikes were found, disconnect this slot to stop wasting clock cycles
+    if (!m_controller->processNameAlikes(m_ff->fullyQualifiedName(), QList<int> {currentIndex}, formField())) {
+        disconnect(this, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ComboEdit::propagateChange);
+    }
 }
 
 void ComboEdit::contextMenuEvent(QContextMenuEvent *event)

@@ -334,6 +334,16 @@ public:
 
     // overrides the editor command (for example with a command from the command line)
     QString editorCommandOverride;
+
+    ///
+    /// \brief cacheFormFieldsByFullyQualifiedName cache for function findFormFieldsByFullyQualifiedName
+    /// key = fully qualified name of form fields
+    /// values = pointers to all form fields with matching fully qualified name
+    /// \warning In case form fields are being added/removed from the document, this cache needs to be cleared and/or reset
+    QMultiHash<QString, Okular::FormField *> cacheFormFieldsByFullyQualifiedName;
+
+    /// store pointers for forms that need their KVCF actions processed whenever the processing is triggered
+    QList<Okular::FormField *> pendingFormsForKVCFActions;
 };
 
 class DocumentInfoPrivate

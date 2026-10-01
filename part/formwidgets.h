@@ -73,6 +73,9 @@ public:
 
     static bool shouldFormWidgetBeShown(Okular::FormField *form);
 
+    bool processNameAlikes(const QString &fullyQualifiedName, const QVariant &newValue, Okular::FormField *sender);
+    bool processNameAlikes(const QString &fullyQualifiedName, const QList<int> &newValue, Okular::FormField *sender);
+
 Q_SIGNALS:
     void changed(int pageNumber);
     void requestUndo();
@@ -224,6 +227,7 @@ public Q_SLOTS:
     void slotHandleTextChangedByUndoRedo(int pageNumber, Okular::FormFieldText *textForm, const QString &contents, int cursorPos, int anchorPos);
 private Q_SLOTS:
     void slotChanged();
+    void propagateChange(const QString &newText);
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
@@ -251,6 +255,7 @@ public Q_SLOTS:
 
 private Q_SLOTS:
     void slotChanged();
+    void propagateChange();
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
@@ -276,6 +281,7 @@ protected:
 private Q_SLOTS:
     void slotChanged();
     void slotHandleFileChangedByUndoRedo(int pageNumber, Okular::FormFieldText *form, const QString &contents, int cursorPos, int anchorPos);
+    void propagateChange(const QString &newText);
 
 private:
     int m_prevCursorPos;
@@ -294,6 +300,7 @@ public:
 private Q_SLOTS:
     void slotSelectionChanged();
     void slotHandleFormListChangedByUndoRedo(int pageNumber, Okular::FormFieldChoice *listForm, const QList<int> &choices);
+    void propagateChange();
 
 protected:
     void slotRefresh(Okular::FormField *form) override;
@@ -313,6 +320,7 @@ public:
 private Q_SLOTS:
     void slotValueChanged();
     void slotHandleFormComboChangedByUndoRedo(int pageNumber, Okular::FormFieldChoice *comboForm, const QString &text, int cursorPos, int anchorPos);
+    void propagateChange(const int currentIndex);
 
 private:
     int m_prevCursorPos;

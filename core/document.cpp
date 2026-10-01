@@ -165,6 +165,9 @@ constexpr int kMemCheckTime = 2000; // in msec
 // getFreeMemory is called every two seconds when checking to see if the system is low on memory. If this timeout was left at kMemCheckTime, half of these checks are useless (when okular is idle) since the cache is used when the cache is
 // <=2 seconds old. This means that after the system is out of memory, up to 4 seconds (instead of 2) could go by before okular starts to free memory.
 constexpr int kFreeMemCacheTimeout = kMemCheckTime - 100;
+// Interval related to updating document parameters at UI related rates
+// pino (7/4/2006): set the polling interval from 10 to 30
+constexpr int document_backend_polling_interval = 30;
 
 /***** Document ******/
 
@@ -1501,8 +1504,7 @@ void DocumentPrivate::sendGeneratorPixmapRequest()
         m_generator->generatePixmap(request);
     } else {
         m_pixmapRequestsMutex.unlock();
-        // pino (7/4/2006): set the polling interval from 10 to 30
-        QTimer::singleShot(30, m_parent, [this] { sendGeneratorPixmapRequest(); });
+        QTimer::singleShot(document_backend_polling_interval, m_parent, [this] { sendGeneratorPixmapRequest(); });
     }
 }
 
@@ -2831,6 +2833,42 @@ void Document::setEditorCommandOverride(const QString &editCmd)
 QString Document::editorCommandOverride() const
 {
     return d->editorCommandOverride;
+}
+
+bool Document::hasNameAlikeFormFields(const FormField *field)
+{
+    return d->cacheFormFieldsByFullyQualifiedName.values(field->fullyQualifiedName()).length() > 1;
+}
+
+void Document::resetNameAlikeFormsCache()
+{
+    d->cacheFormFieldsByFullyQualifiedName.clear();
+    // Make sure pending actions are cleared only after
+    // all actions that will otherwise be completed, are done
+    QTimer::singleShot(document_backend_polling_interval, this, [this]() { d->pendingFormsForKVCFActions.clear(); });
+}
+
+///
+/// \note This function may require changing when adding the functionality to add/remove forms to Okular
+///
+QList<FormField *> Document::findFormFieldNameAlikes(const QString &fullyQualifiedName)
+{
+    QList<FormField *> ret = d->cacheFormFieldsByFullyQualifiedName.values(fullyQualifiedName);
+    if (!ret.isEmpty()) {
+        return ret;
+    }
+    const QList<Okular::Page *> pages = d->m_pagesVector;
+    for (Okular::Page *aPage : pages) {
+        const QList<FormField *> ffList = aPage->formFields();
+        for (Okular::FormField *aField : ffList) {
+            const QString fqn = aField->fullyQualifiedName();
+            d->cacheFormFieldsByFullyQualifiedName.insert(fqn, aField);
+            if (fqn == fullyQualifiedName) {
+                ret.append(aField);
+            }
+        }
+    }
+    return ret;
 }
 
 DocumentInfo Document::documentInfo() const
@@ -4557,6 +4595,18 @@ void Document::processKVCFActions(Okular::FormField *ff)
     } else {
         ff->commitFormattedValue(ff->value().toString());
     }
+
+    // Process KVCF actions for other connected form fields
+    // Since this will be run not long after the form field ff is changed, the cache is usable
+    while (!d->pendingFormsForKVCFActions.isEmpty()) {
+        Okular::FormField *aField = d->pendingFormsForKVCFActions.takeFirst();
+        processKVCFActions(aField);
+    }
+}
+
+void Document::queueFormForKVCFActions(FormField *ff)
+{
+    d->pendingFormsForKVCFActions.append(ff);
 }
 
 QList<Document::DocumentAdditionalActionType> Document::documentAdditionalActionTypes() const

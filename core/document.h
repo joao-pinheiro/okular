@@ -746,6 +746,8 @@ public:
      */
     void processKVCFActions(Okular::FormField *ff);
 
+    void queueFormForKVCFActions(Okular::FormField *ff);
+
     /**
      * Processes the mouse up @p action on @p ff.
      *
@@ -1144,6 +1146,27 @@ public:
      * @since 22.04
      */
     QString editorCommandOverride() const;
+
+    /**
+     * @brief hasNameAlikeFormFields Tell whether the given field has other form fields with the same name
+     * @param field for which to look for name-alikes
+     * @return true if a name-alike was found
+     * @note This is to be used AFTER findFormFieldNameAlikes and uses its cache
+     */
+    bool hasNameAlikeFormFields(const Okular::FormField *field);
+
+    /**
+     * @brief findFormFieldNameAlikes give all form fields matching the given fully qualified name
+     * @param fullyQualifiedName to match to return all name-alikes
+     * @return list of form fields with the same fully qualified name
+     */
+    QList<Okular::FormField *> findFormFieldNameAlikes(const QString &fullyQualifiedName);
+
+    /**
+     * @brief resetNameAlikeFormsCache clear the temporary storage used by name-alike related functions
+     * @note This is expected to be done whenever form field widgets are recreated
+     */
+    void resetNameAlikeFormsCache();
 
 public Q_SLOTS:
     /**
