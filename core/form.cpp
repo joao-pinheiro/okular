@@ -167,6 +167,12 @@ void FormField::commitFormattedValue(const QString &value)
     d->m_committedFormattedValue = value;
 }
 
+QString FormField::defaultValue() const
+{
+    Q_D(const FormField);
+    return d->m_default;
+}
+
 class Okular::FormFieldButtonPrivate : public Okular::FormFieldPrivate
 {
 public:
