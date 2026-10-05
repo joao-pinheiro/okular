@@ -990,7 +990,7 @@ int PageView::contentAreaHeight() const
 
 QPoint PageView::contentAreaPosition() const
 {
-    return QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value());
+    return QPoint(mapHScrollX(horizontalScrollBar()->value()), verticalScrollBar()->value());
 }
 
 QPoint PageView::contentAreaPoint(const QPoint pos) const
@@ -1214,7 +1214,7 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
                     aw->updateAnnotation(newA);
                 }
 
-                const QRect viewportRect(horizontalScrollBar()->value(), verticalScrollBar()->value(), viewport()->width(), viewport()->height());
+                const QRect viewportRect(mapHScrollX(horizontalScrollBar()->value()), verticalScrollBar()->value(), viewport()->width(), viewport()->height());
                 for (int i = 0; i < count; i++) {
                     PageViewItem *item = d->items[i];
                     const QSet<FormWidgetIface *> fws = item->formWidgets();
@@ -2118,6 +2118,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
     // move/scroll page by using keys
     // When the shift key is held down, scroll ten times faster
     int stepsize = (e->modifiers() & Qt::ShiftModifier) ? 10 : 1;
+    auto const dir = isRightToLeft() ? -1 : 1;
     switch (e->key()) {
     case Qt::Key_J:
     case Qt::Key_Down:
@@ -2145,7 +2146,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
             int next_page = d->document->currentPage() - viewColumns();
             d->document->setViewportPage(next_page);
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-dir * stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
         break;
     case Qt::Key_Right:
@@ -2155,7 +2156,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
             int next_page = d->document->currentPage() + viewColumns();
             d->document->setViewportPage(next_page);
         } else {
-            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
+            d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(dir * stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
         }
         break;
     case Qt::Key_Escape:
@@ -2343,8 +2344,8 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
                     Qt::Edges wrapEdges;
                     wrapEdges.setFlag(Qt::TopEdge, verticalScrollBar()->value() < verticalScrollBar()->maximum());
                     wrapEdges.setFlag(Qt::BottomEdge, verticalScrollBar()->value() > verticalScrollBar()->minimum());
-                    wrapEdges.setFlag(Qt::LeftEdge, horizontalScrollBar()->value() < horizontalScrollBar()->maximum());
-                    wrapEdges.setFlag(Qt::RightEdge, horizontalScrollBar()->value() > horizontalScrollBar()->minimum());
+                    wrapEdges.setFlag(Qt::LeftEdge, mapHScrollX(horizontalScrollBar()->value()) < horizontalScrollBar()->maximum());
+                    wrapEdges.setFlag(Qt::RightEdge, mapHScrollX(horizontalScrollBar()->value()) > horizontalScrollBar()->minimum());
 
                     d->mouseGrabOffset -= CursorWrapHelper::wrapCursor(e->pos(), wrapEdges);
                 }
@@ -3843,10 +3844,11 @@ void PageView::scrollPosIntoView(const QPoint pos)
     // this number slows the speed of the page by its value, chosen not to be too fast or too slow, the actual speed is determined from the mouse position, not critical
     const int damping = 6;
 
-    if (pos.x() < horizontalScrollBar()->value()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value()) / damping);
-    } else if (horizontalScrollBar()->value() + viewport()->width() < pos.x()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value() - viewport()->width()) / damping);
+    auto const normalizedX = mapHScrollX(horizontalScrollBar()->value());
+    if (pos.x() < normalizedX) {
+        d->dragScrollVector.setX((pos.x() - normalizedX) / damping);
+    } else if (normalizedX + viewport()->width() < pos.x()) {
+        d->dragScrollVector.setX((pos.x() - normalizedX - viewport()->width()) / damping);
     } else {
         d->dragScrollVector.setX(0);
     }
@@ -4367,7 +4369,7 @@ void PageView::moveMagnifier(const QPoint p) // non scaled point
     QPoint scroll(0, 0);
 
     if (x < 0) {
-        if (horizontalScrollBar()->value() > 0) {
+        if (mapHScrollX(horizontalScrollBar()->value()) > 0) {
             scroll.setX(x - w);
         }
         x = 0;
@@ -4381,7 +4383,7 @@ void PageView::moveMagnifier(const QPoint p) // non scaled point
     }
 
     if (p.x() + w > max_x) {
-        if (horizontalScrollBar()->value() < horizontalScrollBar()->maximum()) {
+        if (mapHScrollX(horizontalScrollBar()->value()) < horizontalScrollBar()->maximum()) {
             scroll.setX(p.x() + 2 * w - max_x);
         }
         x = max_x - d->magnifierView->width() - 1;
@@ -4435,16 +4437,16 @@ void PageView::scrollTo(int x, int y, bool smoothMove)
     bool prevState = d->blockPixmapsRequest;
 
     int newValue = -1;
-    if (x != horizontalScrollBar()->value() || y != verticalScrollBar()->value()) {
+    if (mapHScrollX(x) != horizontalScrollBar()->value() || y != verticalScrollBar()->value()) {
         newValue = 1; // Pretend this call is the result of a scrollbar event
     }
 
     d->blockPixmapsRequest = true;
 
     if (smoothMove) {
-        d->scroller->scrollTo(QPoint(x, y), d->currentLongScrollDuration);
+        d->scroller->scrollTo(QPoint(mapHScrollX(x), y), d->currentLongScrollDuration);
     } else {
-        d->scroller->scrollTo(QPoint(x, y), 0);
+        d->scroller->scrollTo(QPoint(mapHScrollX(x), y), 0);
     }
 
     d->blockPixmapsRequest = prevState;
@@ -4732,6 +4734,11 @@ void PageView::zoomWithFixedCenter(PageView::ZoomMode newZoomMode, QPointF zoomC
     }
 }
 
+int PageView::mapHScrollX(int x) const
+{
+    return isRightToLeft() ? horizontalScrollBar()->maximum() - x : x;
+}
+
 // BEGIN private SLOTS
 void PageView::slotRelayoutPages()
 // called by: notifySetup, viewportResizeEvent, slotViewMode, slotContinuousToggled, updateZoom
@@ -4888,14 +4895,14 @@ void PageView::slotRelayoutPages()
         // restore previous viewport if defined and updates enabled
         if (wasUpdatesEnabled && !d->pinchZoomActive) {
             if (vp.pageNumber >= 0) {
-                int prevX = horizontalScrollBar()->value(), prevY = verticalScrollBar()->value();
+                int prevX = mapHScrollX(horizontalScrollBar()->value()), prevY = verticalScrollBar()->value();
 
                 const QPoint centerPos = viewportToContentArea(vp);
                 center(centerPos.x(), centerPos.y());
 
                 // center() usually moves the viewport, that requests pixmaps too.
                 // if that doesn't happen we have to request them by hand
-                if (prevX == horizontalScrollBar()->value() && prevY == verticalScrollBar()->value()) {
+                if (prevX == mapHScrollX(horizontalScrollBar()->value()) && prevY == verticalScrollBar()->value()) {
                     slotRequestVisiblePixmaps();
                 }
             }
@@ -4959,7 +4966,7 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
 
     // precalc view limits for intersecting with page coords inside the loop
     const bool isEvent = newValue != -1 && !d->blockViewport;
-    const QRectF viewportRect(horizontalScrollBar()->value(), verticalScrollBar()->value(), viewport()->width(), viewport()->height());
+    const QRectF viewportRect(mapHScrollX(horizontalScrollBar()->value()), verticalScrollBar()->value(), viewport()->width(), viewport()->height());
     const QRectF viewportRectAtZeroZero(0, 0, viewport()->width(), viewport()->height());
 
     // some variables used to determine the viewport
@@ -5143,7 +5150,7 @@ void PageView::slotAutoScroll()
 
 void PageView::slotDragScroll()
 {
-    scrollTo(horizontalScrollBar()->value() + d->dragScrollVector.x(), verticalScrollBar()->value() + d->dragScrollVector.y());
+    scrollTo(mapHScrollX(horizontalScrollBar()->value()) + d->dragScrollVector.x(), verticalScrollBar()->value() + d->dragScrollVector.y());
     QPoint p = contentAreaPosition() + viewport()->mapFromGlobal(QCursor::pos());
     updateSelection(p);
 }
