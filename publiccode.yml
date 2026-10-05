@@ -1,0 +1,199 @@
+publiccodeYmlVersion: 0.5.0
+name: Okular
+url: https://invent.kde.org/graphics/okular.git
+landingURL: https://okular.kde.org/
+logo: icons/512-apps-okular.png
+platforms:
+  - android
+  - windows
+  - linux
+  - mac
+categories:
+  - office
+organisation:
+  uri: https://kde.org
+  name: KDE
+developmentStatus: stable
+softwareType: standalone/desktop
+intendedAudience:
+  scope:
+    - government
+    - research
+    - education
+description:
+  en:
+    localisedName: Okular
+    shortDescription: Okular allows you to read PDF documents, comics and EPub
+      books, browse images, and much more.
+    longDescription: >-
+      Okular is a universal document viewer developed by KDE. Okular works on
+      multiple platforms, including but not limited to Linux, Windows, Mac OS X,
+      *BSD, etc.
+
+
+      Features:
+
+
+      - Supported Formats: PDF, PS, Tiff, DjVu, Images, DVI, XPS, Fiction Book,
+      Comic Book, Plucker, EPub, Fax
+
+      - Sidebar with contents, thumbnails, reviews and bookmarks
+
+      - Annotations support
+    documentation: https://docs.kde.org/stable_kf6/en/okular/okular/index.html
+    apiDocumentation: https://api.kde.org/legacy/okular/html/index.html
+    features:
+      - read PDFs
+      - annotate PDFs
+      - view image files
+      - digitally sign documents
+      - view digital signatures
+      - verify digital signatures
+    awards:
+      - Blue Angel Eco Certification
+  it:
+    shortDescription: Okular ti permette di leggere documenti PDF, fumetti e libri
+      elettronici EPub, sfogliare immagini e molto altro.
+    longDescription: >-
+      Okular è un lettore universale di documenti sviluppato da KDE. Okular
+      funziona su varie piattaforme, incluse (ma non solo) Linux, Windows, Mac
+      OS X, *BSD, ecc.
+
+
+      Funzionalità:
+
+
+      - Formati supportati: PDF, PS, Tiff, DjVu, immagini, DVI, XPS, Fiction
+      Book, fumetti, Plucker, EPub, Fax
+
+      - Barra laterale con contenuti, miniature, revisioni e segnalibri
+
+      - Supporto per le annotazioni
+    features:
+      - leggere file PDF
+      - aggiungere annotazioni ai file PDF
+      - visualizzare file immagine
+      - apporre firme digitali ai documenti
+      - visualizzare le firme digitali
+      - verificare le firme digitali
+    awards:
+      - Certificazione ecologica Blue Angel
+  de:
+    shortDescription: Okular ermöglicht das Lesen von PDF-Dokumenten, Comic- und
+      EPub-Büchern, das Durchsuchen von Bildern, und vieles mehr.
+    longDescription: >-
+      Okular ist ein universeller Dokumentenbetrachter, der von KDE entwickelt
+      wird. Okular ist auf verschiedenen Plattformen verfügbar, darunter auch
+      Linux, Windows, Mac OS X, *BSD usw.
+
+
+      Funktionen:
+
+
+      - Unterstützte Formate: PDF, PS, Tiff, DjVu, Images, DVI, XPS, Fiction
+      Book, Comic Book, Plucker, EPub, Fax
+
+      - Seitenleiste mit Inhalten, Vorschau, Anmerkungen und Lesezeichen
+
+      - Unterstützung für Anmerkungen
+    features:
+      - PDFs lesen
+      - PDFs mit Anmerkungen versehen
+      - Bilddateien anzeigen
+      - Dokumente digital signieren
+      - digitale Signaturen anzeigen
+      - digitale Signaturen überprüfen
+    awards:
+      - Umweltzeichen „Blauer Engel“
+legal:
+  license: GPL-2.0-or-later
+maintenance:
+  type: community
+  contacts:
+    - name: Okular Developers
+      email: okular-devel@kde.org
+localisation:
+  localisationReady: true
+  availableLanguages:
+    - ar
+    - az
+    - be
+    - bg
+    - br
+    - bs
+    - ca
+    - ca-valencia
+    - cs
+    - cy
+    - da
+    - de
+    - el
+    - en
+    - en-GB
+    - eo
+    - es
+    - et
+    - eu
+    - fa
+    - fi
+    - fr
+    - fy
+    - ga
+    - gl
+    - he
+    - hi
+    - hne
+    - hr
+    - hsb
+    - hu
+    - ia
+    - id
+    - ie
+    - is
+    - it
+    - ja
+    - ka
+    - kk
+    - km
+    - ko
+    - ku
+    - lt
+    - lv
+    - mk
+    - ml
+    - mr
+    - ms
+    - nb
+    - nds
+    - ne
+    - nl
+    - nn
+    - oc
+    - pa
+    - pl
+    - pt
+    - pt-BR
+    - ro
+    - ru
+    - se
+    - si
+    - sk
+    - sl
+    - sq
+    - sr
+    - sr-ijekavsk
+    - sr-Latn-ijekavsk
+    - sr-Latn
+    - sv
+    - ta
+    - tg
+    - th
+    - tr
+    - ug
+    - uk
+    - vi
+    - wa
+    - xh
+    - zh-CN
+    - zh-HK
+    - zh-TW
