@@ -1899,13 +1899,19 @@ Okular::TextPage *PDFGenerator::abstractTextPage(const std::vector<std::unique_p
         }
 
         if (word->hasSpaceAfter() && next) {
-            // TODO Check with a document with vertical text
-            // probably won't work and we will need to do comparisons
-            // between wordBBox and nextWordBBox to see if they are
-            // vertically or horizontally aligned
             QRectF wordBBox = word->boundingBox();
             QRectF nextWordBBox = next->boundingBox();
-            append(ktp, QStringLiteral(" "), wordBBox.right() / width, wordBBox.bottom() / height, nextWordBBox.left() / width, wordBBox.top() / height);
+
+            // Decide whether the two words are stacked vertically or laid out horizontally
+            // by comparing overlap on each axis, and build the space rect accordingly.
+            const double xOverlap = std::min(wordBBox.right(), nextWordBBox.right()) - std::max(wordBBox.left(), nextWordBBox.left());
+            const double yOverlap = std::min(wordBBox.bottom(), nextWordBBox.bottom()) - std::max(wordBBox.top(), nextWordBBox.top());
+
+            if (xOverlap > yOverlap && nextWordBBox.top() >= wordBBox.top()) {
+                append(ktp, QStringLiteral(" "), wordBBox.left() / width, nextWordBBox.top() / height, wordBBox.right() / width, wordBBox.bottom() / height);
+            } else {
+                append(ktp, QStringLiteral(" "), wordBBox.right() / width, wordBBox.bottom() / height, nextWordBBox.left() / width, wordBBox.top() / height);
+            }
         }
     }
     return ktp;
