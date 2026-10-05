@@ -224,6 +224,8 @@ public:
     bool verticalScrollBarVisible = false;
     bool horizontalScrollBarVisible = false;
 
+    // how far the mouse needs to be from viewport edges to start drag scrolling
+    const int dragScrollMargin = 24;
     // drag scroll
     QPoint dragScrollVector;
     QTimer dragScrollTimer;
@@ -3843,18 +3845,23 @@ void PageView::scrollPosIntoView(const QPoint pos)
     // this number slows the speed of the page by its value, chosen not to be too fast or too slow, the actual speed is determined from the mouse position, not critical
     const int damping = 6;
 
-    if (pos.x() < horizontalScrollBar()->value()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value()) / damping);
-    } else if (horizontalScrollBar()->value() + viewport()->width() < pos.x()) {
-        d->dragScrollVector.setX((pos.x() - horizontalScrollBar()->value() - viewport()->width()) / damping);
+    int left = horizontalScrollBar()->value() + d->dragScrollMargin;
+    int right = horizontalScrollBar()->value() + viewport()->width() - d->dragScrollMargin;
+    int top = verticalScrollBar()->value() + d->dragScrollMargin;
+    int bottom = verticalScrollBar()->value() + viewport()->height() - d->dragScrollMargin;
+
+    if (pos.x() < left) {
+        d->dragScrollVector.setX((pos.x() - left) / damping);
+    } else if (pos.x() > right) {
+        d->dragScrollVector.setX((pos.x() - right) / damping);
     } else {
         d->dragScrollVector.setX(0);
     }
 
-    if (pos.y() < verticalScrollBar()->value()) {
-        d->dragScrollVector.setY((pos.y() - verticalScrollBar()->value()) / damping);
-    } else if (verticalScrollBar()->value() + viewport()->height() < pos.y()) {
-        d->dragScrollVector.setY((pos.y() - verticalScrollBar()->value() - viewport()->height()) / damping);
+    if (pos.y() < top) {
+        d->dragScrollVector.setY((pos.y() - top) / damping);
+    } else if (pos.y() > bottom) {
+        d->dragScrollVector.setY((pos.y() - bottom) / damping);
     } else {
         d->dragScrollVector.setY(0);
     }
@@ -4366,37 +4373,32 @@ void PageView::moveMagnifier(const QPoint p) // non scaled point
 
     QPoint scroll(0, 0);
 
-    if (x < 0) {
+    if (x < d->dragScrollMargin) {
         if (horizontalScrollBar()->value() > 0) {
             scroll.setX(x - w);
         }
-        x = 0;
-    }
-
-    if (y < 0) {
-        if (verticalScrollBar()->value() > 0) {
-            scroll.setY(y - h);
-        }
-        y = 0;
-    }
-
-    if (p.x() + w > max_x) {
+    } else if (p.x() + w > max_x - d->dragScrollMargin) {
         if (horizontalScrollBar()->value() < horizontalScrollBar()->maximum()) {
             scroll.setX(p.x() + 2 * w - max_x);
         }
-        x = max_x - d->magnifierView->width() - 1;
     }
-
-    if (p.y() + h > max_y) {
+    
+    if (y < d->dragScrollMargin) {
+        if (verticalScrollBar()->value() > 0) {
+            scroll.setY(y - h);
+        }
+    } else if (p.y() + h > max_y - d->dragScrollMargin) {
         if (verticalScrollBar()->value() < verticalScrollBar()->maximum()) {
             scroll.setY(p.y() + 2 * h - max_y);
         }
-        y = max_y - d->magnifierView->height() - 1;
     }
 
     if (!scroll.isNull()) {
         scrollPosIntoView(contentAreaPoint(p + scroll));
     }
+
+    x = std::max(0, std::min(max_x - d->magnifierView->width(), x));
+    y = std::max(0, std::min(max_y - d->magnifierView->height(), y));
 
     d->magnifierView->doMove(x, y);
 }
@@ -5146,6 +5148,8 @@ void PageView::slotDragScroll()
     scrollTo(horizontalScrollBar()->value() + d->dragScrollVector.x(), verticalScrollBar()->value() + d->dragScrollVector.y());
     QPoint p = contentAreaPosition() + viewport()->mapFromGlobal(QCursor::pos());
     updateSelection(p);
+    if(d->mouseMode == Okular::Settings::EnumMouseMode::Magnifier)
+        updateMagnifier(p);
 }
 
 void PageView::slotShowWelcome()
