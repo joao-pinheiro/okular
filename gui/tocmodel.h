@@ -9,6 +9,8 @@
 
 #include <QAbstractItemModel>
 #include <QList>
+#include <QTreeView>
+#include <QVector>
 
 namespace Okular
 {
@@ -30,7 +32,7 @@ class TOCModel : public QAbstractItemModel
 public:
     enum Roles { PageRole = 0x000f0001, PageLabelRole, HighlightRole, HighlightedParentRole };
 
-    explicit TOCModel(Okular::Document *document, QObject *parent = nullptr);
+    explicit TOCModel(Okular::Document *document, QTreeView *parent = nullptr);
     ~TOCModel() override;
 
     // reimplementations from QAbstractItemModel

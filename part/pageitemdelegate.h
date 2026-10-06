@@ -8,19 +8,21 @@
 #define PAGEITEMDELEGATE_H
 
 #include <QItemDelegate>
+#include <QTreeView>
 
 class PageItemDelegate : public QItemDelegate
 {
     Q_OBJECT
 
 public:
-    explicit PageItemDelegate(QObject *parent = nullptr);
+    explicit PageItemDelegate(QTreeView *parent = nullptr, QAbstractItemModel *model = nullptr);
     ~PageItemDelegate() override;
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 
 protected:
     void drawDisplay(QPainter *painter, const QStyleOptionViewItem &option, const QRect &rect, const QString &text) const override;
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 
 private:
     class Private;

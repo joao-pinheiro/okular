@@ -7,7 +7,12 @@
 #include "tocmodel.h"
 
 #include <QApplication>
+#include <QFontMetrics>
+#include <QHeaderView>
 #include <QList>
+#include <QPoint>
+#include <QRect>
+#include <QSize>
 #include <QTreeView>
 #include <qdom.h>
 
@@ -15,6 +20,7 @@
 
 #include "core/document.h"
 #include "core/page.h"
+#include "settings.h"
 
 Q_DECLARE_METATYPE(QModelIndex)
 
@@ -31,6 +37,7 @@ struct TOCItem {
     QString extFileName;
     QString url;
     bool highlight : 1;
+    int item_show_width;
     TOCItem *parent;
     QList<TOCItem *> children;
     TOCModelPrivate *model;
@@ -50,6 +57,7 @@ public:
     TOCItem *root;
     bool dirty : 1;
     Okular::Document *document;
+    QTreeView *parent;
     QList<TOCItem *> itemsToOpen;
     QList<TOCItem *> currentPage;
     TOCModel *m_oldModel;
@@ -170,11 +178,12 @@ void TOCModelPrivate::findViewport(const Okular::DocumentViewport &viewport, TOC
     }
 }
 
-TOCModel::TOCModel(Okular::Document *document, QObject *parent)
+TOCModel::TOCModel(Okular::Document *document, QTreeView *parent)
     : QAbstractItemModel(parent)
     , d(new TOCModelPrivate(this))
 {
     d->document = document;
+    d->parent = parent;
 
     qRegisterMetaType<QModelIndex>();
 }

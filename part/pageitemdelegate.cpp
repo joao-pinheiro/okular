@@ -7,10 +7,15 @@
 #include "pageitemdelegate.h"
 
 // qt/kde includes
+#include <QAbstractItemDelegate>
 #include <QApplication>
+#include <QDebug>
+#include <QHeaderView>
 #include <QModelIndex>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QVariant>
+#include <qdebug.h>
 
 // local includes
 #include "gui/tocmodel.h"
@@ -26,12 +31,16 @@ public:
     }
 
     QModelIndex index;
+    QTreeView *parent;
+    QAbstractItemModel *model;
 };
 
-PageItemDelegate::PageItemDelegate(QObject *parent)
+PageItemDelegate::PageItemDelegate(QTreeView *parent, QAbstractItemModel *model)
     : QItemDelegate(parent)
     , d(new Private)
 {
+    d->parent = parent;
+    d->model = model;
 }
 
 PageItemDelegate::~PageItemDelegate()
@@ -73,6 +82,50 @@ void PageItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem
     QStyleOptionViewItem newoption(option);
     newoption.displayAlignment = (option.displayAlignment & ~Qt::AlignHorizontal_Mask) | Qt::AlignRight;
     QItemDelegate::drawDisplay(painter, newoption, pageRect, page);
+}
+
+QSize PageItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+    if (!Okular::Settings::self()->tOCWordWrap()) {
+        return QItemDelegate::sizeHint(option, index);
+    }
+
+    // small hack to get the current index level
+    int indexLvl = 0;
+    for (QModelIndex p = index.parent(); p.isValid(); p = p.parent()) {
+        indexLvl++;
+    }
+    if (d->parent->rootIsDecorated()) {
+        indexLvl++;
+    }
+
+    QFontMetrics metrics(index.data(Qt::FontRole).value<QFont>());
+
+    int sectionSize = d->parent->header()->sectionSize(option.viewItemPosition);
+    int indentSize = d->parent->indentation();
+
+    int margindelta = QApplication::style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
+
+    // a copy of what's inside `drawDisplay` to get the correct width
+    QVariant pageVariant = d->index.data(TOCModel::PageRole);
+    QVariant labelVariant = d->index.data(TOCModel::PageLabelRole);
+    /**
+     * while debugging, sometimes the page number label (both pageVariant and labelVariant) return incorrect page numbers in this function.
+     * in the future this should be looked into to improve this function
+     */
+    QString label = labelVariant.toString();
+    QString page = label.isEmpty() ? pageVariant.toString() : label;
+    QTextDocument document;
+    document.setPlainText(page);
+    document.setDefaultFont(option.font);
+    int pageRectWidth = (int)document.size().width();
+
+    // due to the page number not beign correct as noted aboce, we also add one digit character to compensate
+    QSize sz = QSize(sectionSize - (indentSize * indexLvl) - pageRectWidth - PAGEITEMDELEGATE_INTERNALMARGIN - (2 * margindelta) - metrics.horizontalAdvance(u'0'), 10000);
+
+    QRect outRect = metrics.boundingRect(QRect(QPoint(0, 0), sz), Qt::AlignLeft | Qt::TextWordWrap, index.data().toString());
+    sz.setHeight(outRect.height());
+    return sz;
 }
 
 #include "moc_pageitemdelegate.cpp"
