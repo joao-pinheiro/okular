@@ -85,6 +85,17 @@ static inline QString GeneralGroupKey()
     return QStringLiteral("General");
 }
 
+#if HAVE_DBUS
+// TODO When porting to KF7: remove this function and all its call sites.
+// The PID-based service name is not unique in containers and the "-" violates
+// D-Bus naming conventions; it was kept only for compatibility with
+// third-party scripts.
+static inline QString legacyPidDbusServiceName()
+{
+    return QStringLiteral("org.kde.okular-") + QString::number(qApp->applicationPid());
+}
+#endif
+
 class ResizableStackedWidget : public QStackedWidget
 {
     Q_OBJECT
@@ -287,12 +298,7 @@ Shell::Shell(const QString &serializedOptions)
                 KMessageBox::information(this, i18n("There is already a unique Okular instance running. This instance won't be the unique one."));
             }
         } else {
-            // TODO When porting to KF7 Remove
-            // PID is not unique in containers and "-" in the name violates D-Bus naming conventions.
-            // Was left for compatibility with 3rd-party scripts.
-            QString serviceName = QStringLiteral("org.kde.okular-") + QString::number(qApp->applicationPid());
-            QDBusConnection::sessionBus().registerService(serviceName);
-
+            QDBusConnection::sessionBus().registerService(legacyPidDbusServiceName());
             QDBusConnection::sessionBus().registerService(ShellUtils::currentProcessDbusName());
         }
         if (ShellUtils::noRaise(serializedOptions)) {
@@ -388,6 +394,9 @@ Shell::~Shell()
 #if HAVE_DBUS
     if (m_unique) {
         QDBusConnection::sessionBus().unregisterService(QStringLiteral("org.kde.okular"));
+    } else {
+        QDBusConnection::sessionBus().unregisterService(legacyPidDbusServiceName());
+        QDBusConnection::sessionBus().unregisterService(ShellUtils::currentProcessDbusName());
     }
 #endif // HAVE_DBUS
 

@@ -121,6 +121,7 @@ void AnnotationToolBarTest::init()
     config->sync();
 
     Okular::Settings::self()->setDefaults();
+    Okular::Settings::self()->setShellRestoreOpenDocuments(false);
 }
 
 void AnnotationToolBarTest::cleanup()

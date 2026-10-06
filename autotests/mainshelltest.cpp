@@ -110,6 +110,8 @@ private Q_SLOTS:
     void testOpenInvalidFiles_data();
     void testOpenInvalidFiles();
     void testOpenTheSameFileSeveralTimes();
+    void testRestoreOpenDocuments_data();
+    void testRestoreOpenDocuments();
 
 private:
     KSharedConfigPtr m_dontShowAgainConfig;
@@ -169,6 +171,13 @@ void MainShellTest::init()
 {
     // Default settings for every test
     Okular::Settings::self()->setDefaults();
+    Okular::Settings::self()->setShellRestoreOpenDocuments(false);
+
+    // Clean session config group so previous tests don't leave session state
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+    KConfigGroup sessionGroup = config->group(QStringLiteral("Session"));
+    sessionGroup.deleteGroup();
+    config->sync();
 
     // Clean docdatas
     const QList<QUrl> urls = {QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/file1.pdf")),
@@ -581,6 +590,15 @@ void MainShellTest::testSessionRestore()
     shells = getShells();
     QCOMPARE(shells.size(), 0);
 
+    // Clear the session config written by the closing shells' destructors so
+    // that the restored shells below don't unexpectedly trigger the session
+    // restore path in readSettings().
+    {
+        KSharedConfigPtr cfg = KSharedConfig::openConfig();
+        cfg->group(QStringLiteral("Session")).deleteGroup();
+        cfg->sync();
+    }
+
     Okular::Settings::self()->setShellOpenFileInTabs(useTabsRestore);
 
     // Simulate session restore. We can't call KMainWindow::restore() directly
@@ -723,6 +741,119 @@ void MainShellTest::testMiddleButtonCloseUndo()
     // Undo tab close
     s->undoCloseTab();
     QCOMPARE(s->m_tabWidget->count(), paths.size());
+}
+
+void MainShellTest::testRestoreOpenDocuments_data()
+{
+    QTest::addColumn<bool>("restoreEnabled");
+    QTest::addColumn<QStringList>("initialPaths");
+    QTest::addColumn<int>("activeTab");
+    QTest::addColumn<QStringList>("launchPaths");
+    QTest::addColumn<bool>("filterNonExistentFile");
+    QTest::addColumn<int>("expectedRestoredDocs");
+    QTest::addColumn<int>("expectedActiveTab");
+
+    const QString file1 = QStringLiteral(KDESRCDIR "data/file1.pdf");
+    const QString file2 = QStringLiteral(KDESRCDIR "data/file2.pdf");
+    const QString nonExistent = QStringLiteral(KDESRCDIR "data/non_existent_file.pdf");
+
+    // Case 1: Restore enabled, open 2 docs, active tab 1, close -> launch with no args -> restores 2 docs with active tab 1
+    QTest::newRow("restore enabled, 2 docs, launch no args") << true << QStringList({file1, file2}) << 1 << QStringList() << false << 2 << 1;
+
+    // Case 2: Restore disabled, open 2 docs, close -> launch with no args -> does not restore, shows welcome screen (0 docs / empty url)
+    QTest::newRow("restore disabled, 2 docs, launch no args") << false << QStringList({file1, file2}) << 0 << QStringList() << false << 0 << 0;
+
+    // Case 3: Restore enabled, non-existent file in saved session -> filters out non-existent file
+    QTest::newRow("restore enabled, filters non-existent file") << true << QStringList({file1, nonExistent, file2}) << 0 << QStringList() << true << 2 << 0;
+
+    // Case 4: Restore enabled, previous window was empty/welcome screen -> session has no URLs -> no documents restored
+    QTest::newRow("restore enabled, empty session, launch no args") << true << QStringList() << 0 << QStringList() << false << 0 << 0;
+}
+
+void MainShellTest::testRestoreOpenDocuments()
+{
+    QFETCH(bool, restoreEnabled);
+    QFETCH(QStringList, initialPaths);
+    QFETCH(int, activeTab);
+    QFETCH(QStringList, launchPaths);
+    QFETCH(bool, filterNonExistentFile);
+    QFETCH(int, expectedRestoredDocs);
+    QFETCH(int, expectedActiveTab);
+
+    Okular::Settings::self()->setShellOpenFileInTabs(true);
+    Okular::Settings::self()->setShellRestoreOpenDocuments(restoreEnabled);
+
+    // Clean up any existing Session config group
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+    KConfigGroup sessionGroup = config->group(QStringLiteral("Session"));
+    sessionGroup.deleteGroup();
+    config->sync();
+
+    // 1. First run: Start okular and open initial files (if not testing direct config manipulation)
+    const QString emptyOptions = ShellUtils::serializeOptions(false, false, false, false, false, QString(), QString(), QString());
+
+    if (filterNonExistentFile) {
+        // Directly write the session config including the non-existent file to avoid open errors during initial setup
+        QStringList urls;
+        for (const QString &path : initialPaths) {
+            urls.append(QUrl::fromLocalFile(path).toString());
+        }
+        sessionGroup.writeEntry("Urls", urls);
+        sessionGroup.writeEntry("ActiveTab", activeTab);
+        config->sync();
+    } else {
+        Okular::Status status = Okular::main(initialPaths, emptyOptions);
+        QCOMPARE(status, Okular::Success);
+        Shell *firstShell = findShell();
+        QVERIFY(firstShell);
+        if (initialPaths.isEmpty()) {
+            QCOMPARE(firstShell->m_tabs.count(), 1);
+            QVERIFY(firstShell->m_tabs[0].part->url().isEmpty());
+        } else {
+            QCOMPARE(firstShell->m_tabs.count(), initialPaths.size());
+        }
+
+        if (activeTab > 0 && activeTab < firstShell->m_tabWidget->count()) {
+            firstShell->m_tabWidget->setCurrentIndex(activeTab);
+        }
+
+        // writeSettings will save the session if restoreOpenDocuments is enabled
+        firstShell->writeSettings();
+        delete firstShell;
+
+        // Drain deferred deletes
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+
+    // Verify session config state after writeSettings
+    if (restoreEnabled && !initialPaths.isEmpty()) {
+        KConfigGroup readSession = config->group(QStringLiteral("Session"));
+        QVERIFY(readSession.hasKey("Urls"));
+    }
+
+    // 2. Second run: Launch okular with launchPaths
+    Okular::Status status = Okular::main(launchPaths, emptyOptions);
+    QCOMPARE(status, Okular::Success);
+    Shell *secondShell = findShell();
+    QVERIFY(secondShell);
+
+    if (expectedRestoredDocs == 0) {
+        // Welcome screen should be visible when no document is open
+        QCOMPARE(secondShell->m_tabs.count(), 1);
+        QVERIFY(secondShell->m_tabs[0].part->url().isEmpty());
+        QCOMPARE(secondShell->m_centralStackedWidget->currentWidget(), secondShell->m_welcomeScreen);
+    } else {
+        QCOMPARE(secondShell->m_tabs.count(), expectedRestoredDocs);
+        for (int i = 0; i < expectedRestoredDocs; ++i) {
+            QVERIFY(!secondShell->m_tabs[i].part->url().isEmpty());
+        }
+        QCOMPARE(secondShell->m_tabWidget->currentIndex(), expectedActiveTab);
+    }
+
+    // Cleanup session config for next test
+    sessionGroup = config->group(QStringLiteral("Session"));
+    sessionGroup.deleteGroup();
+    config->sync();
 }
 
 QTEST_MAIN(MainShellTest)
