@@ -1368,6 +1368,12 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     // 3. UNLOCK [re-enables shared access]
     userMutex()->unlock();
 
+    // when the paper is transparent in colour, poppler renders with ARGB32
+    // we set the format correctly so QPixmap::fromImage() preserves the transparency poppler rendered
+    if (!img.isNull() && pdfdoc->paperColor().alpha() == 0 && !img.hasAlphaChannel()) {
+        img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    }
+
     return img;
 }
 
@@ -1807,6 +1813,7 @@ bool PDFGenerator::setDocumentRenderHints()
     const bool overprintPreviewWasEnabled = (oldhints & Poppler::Document::OverprintPreview) == Poppler::Document::OverprintPreview;
     const bool thinLineSolidWasEnabled = (oldhints & Poppler::Document::ThinLineSolid) == Poppler::Document::ThinLineSolid;
     const bool thinLineShapeWasEnabled = (oldhints & Poppler::Document::ThinLineShape) == Poppler::Document::ThinLineShape;
+    const bool ignorePaperColorWasEnabled = (oldhints & Poppler::Document::IgnorePaperColor) == Poppler::Document::IgnorePaperColor;
 
     if (enableOverprintPreview != overprintPreviewWasEnabled) {
         pdfdoc->setRenderHint(Poppler::Document::OverprintPreview, enableOverprintPreview);
@@ -1818,6 +1825,11 @@ bool PDFGenerator::setDocumentRenderHints()
     }
     if (enableShapeLineSolid != thinLineShapeWasEnabled) {
         pdfdoc->setRenderHint(Poppler::Document::ThinLineShape, enableShapeLineSolid);
+        changed = true;
+    }
+    const bool ignorePaperColor = pdfdoc->paperColor().alpha() == 0;
+    if (ignorePaperColor != ignorePaperColorWasEnabled) {
+        pdfdoc->setRenderHint(Poppler::Document::IgnorePaperColor, ignorePaperColor);
         changed = true;
     }
     return changed;

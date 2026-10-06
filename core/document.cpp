@@ -1975,6 +1975,9 @@ QVariant DocumentPrivate::documentMetaData(const Generator::DocumentMetaDataKey 
 {
     switch (key) {
     case Generator::PaperColorMetaData: {
+        if (SettingsCore::showTransparencyGrid()) {
+            return QColor(Qt::transparent);
+        }
         bool giveDefault = option.toBool();
         QColor color;
         if ((SettingsCore::renderMode() == SettingsCore::EnumRenderMode::Paper) && SettingsCore::changeColors()) {

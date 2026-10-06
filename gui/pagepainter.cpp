@@ -78,7 +78,8 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
 
     QColor paperColor = Qt::white;
     QColor backgroundColor = paperColor;
-    if (Okular::SettingsCore::changeColors()) {
+    const bool transparencyGrid = Okular::SettingsCore::showTransparencyGrid();
+    if (!transparencyGrid && Okular::SettingsCore::changeColors()) {
         switch (Okular::SettingsCore::renderMode()) {
         case Okular::SettingsCore::EnumRenderMode::Inverted:
         case Okular::SettingsCore::EnumRenderMode::InvertLightness:
@@ -96,7 +97,23 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         default:;
         }
     }
-    destPainter->fillRect(limits, backgroundColor);
+
+    if (transparencyGrid) {
+        const int tileSize = 8;
+        const QColor c1(0xCC, 0xCC, 0xCC);
+        const QColor c2(0xFF, 0xFF, 0xFF);
+        for (int y = limits.top(); y <= limits.bottom(); y += tileSize) {
+            for (int x = limits.left(); x <= limits.right(); x += tileSize) {
+                const int tx = x / tileSize;
+                const int ty = y / tileSize;
+                const QColor &col = ((tx + ty) % 2 == 0) ? c1 : c2;
+                const QRect tile(x, y, qMin(tileSize, limits.right() - x + 1), qMin(tileSize, limits.bottom() - y + 1));
+                destPainter->fillRect(tile, col);
+            }
+        }
+    } else {
+        destPainter->fillRect(limits, backgroundColor);
+    }
 
     const bool hasTilesManager = page->hasTilesManager(observer);
     QPixmap pixmap;
@@ -255,7 +272,29 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         // the image over which we are going to draw
         QImage backImage = QImage(dLimits.width(), dLimits.height(), QImage::Format_ARGB32_Premultiplied);
         backImage.setDevicePixelRatio(dpr);
-        backImage.fill(paperColor);
+        if (transparencyGrid) {
+            backImage.fill(Qt::transparent);
+            QPainter bgPainter(&backImage);
+            const int tileSize = 8;
+            const QColor c1(0xCC, 0xCC, 0xCC);
+            const QColor c2(0xFF, 0xFF, 0xFF);
+            const int w = backImage.width() / dpr;
+            const int h = backImage.height() / dpr;
+            // offset the pattern to match global page coordinates
+            const int offX = static_cast<int>(limits.left());
+            const int offY = static_cast<int>(limits.top());
+            for (int y = 0; y < h; y += tileSize) {
+                for (int x = 0; x < w; x += tileSize) {
+                    const int tx = (x + offX) / tileSize;
+                    const int ty = (y + offY) / tileSize;
+                    const QColor &col = ((tx + ty) % 2 == 0) ? c1 : c2;
+                    bgPainter.fillRect(x, y, qMin(tileSize, w - x), qMin(tileSize, h - y), col);
+                }
+            }
+            bgPainter.end();
+        } else {
+            backImage.fill(paperColor);
+        }
         QPainter p(&backImage);
 
         if (hasTilesManager) {
