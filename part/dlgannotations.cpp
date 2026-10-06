@@ -10,8 +10,8 @@
 
 #include <KLocalizedString>
 
-#include <QComboBox>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -45,8 +45,8 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     QCheckBox *prefillAnnotations = new QCheckBox(this);
     prefillAnnotations->setText(i18nc("@option:check Config dialog, annotations page", "Prefill new annotations with the selected text."));
     prefillAnnotations->setObjectName(QStringLiteral("kcfg_PrefillAnnotations"));
-    layout->addRow(QString(), prefillAnnotations);    
-    // END Annotation prefill  
+    layout->addRow(QString(), prefillAnnotations);
+    // END Annotation prefill
 
     // Silly 1Em spacer:
     layout->addRow(new QLabel(this));

@@ -829,7 +829,7 @@ public:
             ha->setHighlightType(type);
             ha->setBoundingRectangle(Okular::NormalizedRect(rect, item()->uncroppedWidth(), item()->uncroppedHeight()));
 
-            if(Okular::Settings::prefillAnnotations()){
+            if (Okular::Settings::prefillAnnotations()) {
                 const Okular::Page *pg = item()->page();
                 QString selectedText = pg->text(selection.get(), Okular::TextPage::CentralPixelTextAreaInclusionBehaviour);
                 selectedText = selectedText.replace(QStringLiteral("-\n"), QString());
