@@ -150,6 +150,7 @@ public:
     void setShowSourceLocationsGraphically(bool show) override;
     bool openNewFilesInTabs() const override;
     QWidget *getSideContainer() const override;
+    bool restoreOpenDocuments() const override;
     Q_INVOKABLE bool activateTabIfAlreadyOpenFile() const;
 
     void setModified(bool modified) override;

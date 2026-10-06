@@ -102,7 +102,7 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
         return false;
     }
 
-    const QStringList services = sessionInterface->registeredServiceNames().value();
+    const QStringList services = Shell::otherOkularServices();
 
     QScopedPointer<QDBusInterface> bestService;
 #if HAVE_X11
@@ -111,7 +111,7 @@ static bool attachExistingInstance(const QStringList &paths, const QString &seri
     const int desktop = 0;
 #endif
 
-    // Select the first instance that isn't us (metric may change in future)
+    // Select the first instance that can open documents and isn't us (metric may change in future)
     const QString ownDbus = ShellUtils::currentProcessDbusName();
     for (const QString &service : services) {
         if (service.startsWith(ShellUtils::kPerProcessDbusPrefix) && service != ownDbus) {

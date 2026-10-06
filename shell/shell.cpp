@@ -21,7 +21,10 @@
 // qt/kde includes
 #include <KActionCollection>
 #include <KConfigGroup>
+#include <KConfigGui>
 #include <KIO/Global>
+#include <KIO/StatJob>
+#include <KJobWidgets>
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KPluginFactory>
@@ -40,6 +43,7 @@
 #include <QApplication>
 #if HAVE_DBUS
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #endif // HAVE_DBUS
 #include <QDockWidget>
 #include <QDragMoveEvent>
@@ -305,8 +309,10 @@ Shell::Shell(const QString &serializedOptions)
         QDBusConnection::sessionBus().registerObject(QStringLiteral("/okularshell"), this, QDBusConnection::ExportScriptableSlots);
 #endif // HAVE_DBUS
 
-        // Make sure that the welcome scren is visible on startup.
-        showWelcomeScreen();
+        if (m_tabs[0].part->url().isEmpty()) {
+            // Make sure that the welcome screen is visible on startup.
+            showWelcomeScreen();
+        }
     } else {
         m_isValid = false;
         KMessageBox::error(this, i18n("Unable to find the Okular component."));
@@ -432,6 +438,26 @@ void Shell::openNewlySignedFile(const QString &path, int pageNumber)
     activePart->openUrl(url);
 }
 
+QStringList Shell::otherOkularServices()
+{
+    QStringList okularServices;
+#if HAVE_DBUS
+    auto *sessionInterface = QDBusConnection::sessionBus().interface();
+    if (!sessionInterface) {
+        return okularServices;
+    }
+
+    const QStringList services = sessionInterface->registeredServiceNames().value();
+    const QString ownDbus = ShellUtils::currentProcessDbusName();
+    for (const QString &service : services) {
+        if (service.startsWith(ShellUtils::kPerProcessDbusPrefix) && service != ownDbus) {
+            okularServices.append(service);
+        }
+    }
+#endif
+    return okularServices;
+}
+
 bool Shell::canOpenDocs(int numDocs, int desktop)
 {
     if (m_tabs.size() <= 0 || numDocs <= 0 || m_unique) {
@@ -530,25 +556,76 @@ void Shell::readSettings()
 
     m_showSidebarAction->setChecked(m_sidebar->isVisibleTo(this));
     m_lockSidebarAction->setChecked(m_sidebar->isLocked());
+
+    // restore only on a fresh process startup: skip if our own DBus name is already registered
+    // (which means we are a secondary window spawned from within an existing instance)
+    // and skip if any other okular instance is already running
+    KParts::ReadWritePart *const part = m_tabs[0].part;
+    const bool restoreDocuments = qobject_cast<Okular::ViewerInterface *>(part)->restoreOpenDocuments();
+#if HAVE_DBUS
+    const bool isFirstWindowInProcess = !QDBusConnection::sessionBus().interface()->isServiceRegistered(ShellUtils::currentProcessDbusName());
+#else
+    const bool isFirstWindowInProcess = true;
+#endif
+    if (restoreDocuments && isFirstWindowInProcess && otherOkularServices().empty()) {
+        KConfigGroup session = KSharedConfig::openConfig()->group(QStringLiteral("Session"));
+        QStringList urls = session.readEntry("Urls", QStringList {});
+        for (auto const &urlString : std::as_const(urls)) {
+            // only try to open existing files to avoid error messages on startup
+            QUrl url {urlString};
+            if (url.isLocalFile()) {
+                if (!QFile::exists(url.toLocalFile())) {
+                    continue;
+                }
+            } else {
+                KIO::StatJob *statJob = KIO::stat(url, KIO::StatJob::SourceSide, KIO::StatDetails(KIO::StatBasic));
+                KJobWidgets::setWindow(statJob, widget());
+                if (!statJob->exec() || statJob->error()) {
+                    continue;
+                }
+            }
+            openDocument(url, QString());
+        }
+        m_tabWidget->setCurrentIndex(session.readEntry<int>("ActiveTab", 0));
+    }
 }
 
 void Shell::writeSettings()
 {
     saveRecents();
 
-    KConfigGroup sidebarGroup = KSharedConfig::openConfig()->group(GeneralGroupKey());
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+
+    KConfigGroup sidebarGroup = config->group(GeneralGroupKey());
     sidebarGroup.writeEntry(SIDEBAR_LOCKED_KEY, m_sidebar->isLocked());
     // NOTE : Consider whether the m_showSidebarAction is checked, because
     // the sidebar can be forcibly hidden if the welcome screen is displayed
     sidebarGroup.writeEntry(SIDEBAR_VISIBLE_KEY, m_sidebar->isVisibleTo(this) || m_showSidebarAction->isChecked());
 
-    KConfigGroup group = KSharedConfig::openConfig()->group(DesktopEntryGroupKey());
+    KConfigGroup group = config->group(DesktopEntryGroupKey());
     group.writeEntry("FullScreen", m_fullScreenAction->isChecked());
     if (m_fullScreenAction->isChecked()) {
         group.writeEntry(shouldShowMenuBarComingFromFullScreen, m_menuBarWasShown);
         group.writeEntry(shouldShowToolBarComingFromFullScreen, m_toolBarWasShown);
     }
-    KSharedConfig::openConfig()->sync();
+
+    KConfigGroup session = config->group(QStringLiteral("Session"));
+    KParts::ReadWritePart *const part = m_tabs[0].part;
+    const bool restoreDocuments = qobject_cast<Okular::ViewerInterface *>(part)->restoreOpenDocuments();
+    // Only manage the session from an isolated instance: if other okular instances are running,
+    // they own their own documents and we must not overwrite or delete the shared session entry.
+    if (restoreDocuments && otherOkularServices().empty()) {
+        session.deleteGroup();
+        if (!m_tabs[0].part->url().isEmpty()) {
+            QStringList urls;
+            for (auto const &tab : std::as_const(m_tabs)) {
+                urls.append(tab.part->url().toString());
+            }
+            session.writeEntry("Urls", urls);
+            session.writeEntry("ActiveTab", m_tabWidget->currentIndex());
+        }
+    }
+    config->sync();
 }
 
 void Shell::saveRecents()
@@ -833,7 +910,9 @@ QSize Shell::sizeHint() const
 
 bool Shell::queryClose()
 {
-    if (m_tabs.count() > 1) {
+    KParts::ReadWritePart *const part = m_tabs[0].part;
+    const bool restoreDocuments = qobject_cast<Okular::ViewerInterface *>(part)->restoreOpenDocuments();
+    if (m_tabs.count() > 1 && (!restoreDocuments || !otherOkularServices().empty())) {
         const QString dontAskAgainName = QStringLiteral("ShowTabWarning");
         KMessageBox::ButtonCode dummy = KMessageBox::PrimaryAction;
         if (KMessageBox::shouldBeShownTwoActions(dontAskAgainName, dummy)) {

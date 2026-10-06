@@ -71,6 +71,14 @@ public:
 
     bool openDocument(const QUrl &url, const QString &serializedOptions);
 
+    /**
+     * Returns the currently running okular services via dbus. Excludes
+     * the current process.
+     *
+     * @return QStringList List of Okular DBus service names
+     */
+    static QStringList otherOkularServices();
+
 public Q_SLOTS:
     Q_SCRIPTABLE Q_NOREPLY void tryRaise(const QString &startupId);
     Q_SCRIPTABLE bool openDocument(const QString &urlString, const QString &serializedOptions = QString());
@@ -174,7 +182,7 @@ private:
     KToggleAction *m_fullScreenAction;
     KToggleAction *m_showMenuBarAction;
     bool m_menuBarWasShown, m_toolBarWasShown;
-    bool m_unique;
+    bool m_unique = false;
     QTabWidget *m_tabWidget;
     KToggleAction *m_openInTab;
     WelcomeScreen *m_welcomeScreen;

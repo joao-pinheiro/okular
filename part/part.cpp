@@ -1098,6 +1098,11 @@ QWidget *Part::getSideContainer() const
     return m_sidebar->getSideContainer();
 }
 
+bool Part::restoreOpenDocuments() const
+{
+    return Okular::Settings::self()->shellRestoreOpenDocuments();
+}
+
 bool Part::activateTabIfAlreadyOpenFile() const
 {
     return Okular::Settings::self()->switchToTabIfOpen();
