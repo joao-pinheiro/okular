@@ -5111,8 +5111,8 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
         newViewport.rePos.normalizedX = focusedX;
         newViewport.rePos.normalizedY = focusedY;
         // set the viewport to other observers
-        // do not update history if the viewport is autoscrolling
-        d->document->setViewport(newViewport, this, false, d->scroller->state() != QScroller::Scrolling);
+        // do not update history
+        d->document->setViewport(newViewport, this, false, false);
     }
     d->document->setVisiblePageRects(visibleRects, this);
 }
