@@ -1355,76 +1355,6 @@ private:
     Q_DISABLE_COPY(StampAnnotation)
 };
 
-#if HAVE_NEW_SIGNATURE_API
-/**
- * \since 24.12
- */
-class OKULARCORE_EXPORT SignatureAnnotation : public Annotation
-{
-public:
-    /**
-     * Creates a new signature annotation.
-     */
-    SignatureAnnotation();
-
-    /**
-     * Destroys the signature annotation.
-     */
-    ~SignatureAnnotation() override;
-
-    QString text() const;
-    void setText(const QString &text);
-
-    QString leftText() const;
-    void setLeftText(const QString &text);
-
-    QString imagePath() const;
-    void setImagePath(const QString &imagePath);
-
-    QString fieldPartialName() const;
-    void setFieldPartialName(const QString &fieldPartialName);
-
-    double fontSize() const;
-    void setFontSize(double fontSize);
-
-    double leftFontSize() const;
-    void setLeftFontSize(double fontSize);
-
-    int page() const;
-    void setPage(int page);
-
-    /**
-     * Sets the function to actually implement the signing
-     *
-     * \since 25.08
-     */
-    void setSignFunction(std::function<std::pair<SigningResult, QString>(const Okular::NewSignatureData &, const QString &)> func);
-
-    /**
-     * \brief signs this signature annotation
-     * \return result and a detailed/advanced error message/code in case of failure
-     *
-     * \since 25.08
-     */
-    std::pair<SigningResult, QString> sign(const Okular::NewSignatureData &data, const QString &fileName);
-
-    /**
-     * Returns the sub type of the stamp annotation.
-     */
-    SubType subType() const override;
-
-    /**
-     * Stores the stamp annotation as xml in @p document
-     * under the given parent @p node.
-     */
-    void store(QDomNode &node, QDomDocument &document) const override;
-
-private:
-    Q_DECLARE_PRIVATE(SignatureAnnotation)
-    Q_DISABLE_COPY(SignatureAnnotation)
-};
-#endif
-
 class OKULARCORE_EXPORT InkAnnotation : public Annotation
 {
 public:
@@ -1798,6 +1728,15 @@ public:
     void store(QDomNode &parentNode, QDomDocument &document) const override;
 
     /**
+     * If this widget has Additional Actions.
+     * It is mostly provided as a hook for subclasses to
+     * deny additional actions.
+     *
+     * @since 26.12
+     */
+    virtual bool hasAdditionalActions() const;
+
+    /**
      * Sets the additional @p action of the given @p type.
      *
      * @since 0.16 (KDE 4.10)
@@ -1811,10 +1750,85 @@ public:
      */
     Action *additionalAction(AdditionalActionType type) const;
 
+protected:
+    explicit WidgetAnnotation(WidgetAnnotationPrivate &dd);
+
 private:
     Q_DECLARE_PRIVATE(WidgetAnnotation)
     Q_DISABLE_COPY(WidgetAnnotation)
 };
+
+#if HAVE_NEW_SIGNATURE_API
+/**
+ * \since 24.12
+ */
+class OKULARCORE_EXPORT SignatureAnnotation : public WidgetAnnotation
+{
+public:
+    /**
+     * Creates a new signature annotation.
+     */
+    SignatureAnnotation();
+
+    /**
+     * Destroys the signature annotation.
+     */
+    ~SignatureAnnotation() override;
+
+    QString text() const;
+    void setText(const QString &text);
+
+    QString leftText() const;
+    void setLeftText(const QString &text);
+
+    QString imagePath() const;
+    void setImagePath(const QString &imagePath);
+
+    QString fieldPartialName() const;
+    void setFieldPartialName(const QString &fieldPartialName);
+
+    double fontSize() const;
+    void setFontSize(double fontSize);
+
+    double leftFontSize() const;
+    void setLeftFontSize(double fontSize);
+
+    int page() const;
+    void setPage(int page);
+
+    /**
+     * Sets the function to actually implement the signing
+     *
+     * \since 25.08
+     */
+    void setSignFunction(std::function<std::pair<SigningResult, QString>(const Okular::NewSignatureData &, const QString &)> func);
+
+    /**
+     * \brief signs this signature annotation
+     * \return result and a detailed/advanced error message/code in case of failure
+     *
+     * \since 25.08
+     */
+    std::pair<SigningResult, QString> sign(const Okular::NewSignatureData &data, const QString &fileName);
+
+    /**
+     * Returns the sub type of the stamp annotation.
+     */
+    SubType subType() const override;
+
+    /**
+     * Stores the stamp annotation as xml in @p document
+     * under the given parent @p node.
+     */
+    void store(QDomNode &node, QDomDocument &document) const override;
+
+    bool hasAdditionalActions() const override;
+
+private:
+    Q_DECLARE_PRIVATE(SignatureAnnotation)
+    Q_DISABLE_COPY(SignatureAnnotation)
+};
+#endif
 
 /**
  * \short RichMedia annotation.
