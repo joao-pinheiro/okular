@@ -57,6 +57,11 @@ if(Poppler_Qt6_FOUND)
         TEST_NAME "signunsignedfieldtest"
         LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
     )
+
+    ecm_add_test(richmediatest.cpp
+        TEST_NAME "richmediatest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
+    )
 endif()
 
 ecm_add_test(suggestedfilenametest.cpp
