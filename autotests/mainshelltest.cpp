@@ -11,6 +11,7 @@
 
 #include <KConfigGroup>
 #include <KLineEdit>
+#include <KMessageBox>
 #include <KRecentFilesAction>
 
 #if HAVE_DBUS
@@ -111,6 +112,7 @@ private Q_SLOTS:
     void testOpenTheSameFileSeveralTimes();
 
 private:
+    KSharedConfigPtr m_dontShowAgainConfig;
 };
 
 QList<Shell *> getShells()
@@ -144,16 +146,19 @@ void MainShellTest::initTestCase()
     // Don't pollute people's okular settings
     Okular::Settings::instance(QStringLiteral("mainshelltest"));
 
-    // Register in bus as okular
 #if HAVE_DBUS
-    QDBusConnectionInterface *bus = QDBusConnection::sessionBus().interface();
-    QVERIFY(bus->registerService(ShellUtils::currentProcessDbusName()) == QDBusConnectionInterface::ServiceRegistered);
+    QVERIFY(QDBusConnection::sessionBus().isConnected());
 #endif
-    // Tell the presentationWidget and queryClose to not be annoying
-    KSharedConfigPtr c = KSharedConfig::openConfig(QStringLiteral("mainshelltest.kmessagebox"));
-    KConfigGroup cg = c->group(QStringLiteral("General"));
-    cg.writeEntry("presentationInfo", 4);
-    cg.writeEntry("ShowTabWarning", 4);
+
+    // Suppress the "how to exit presentation" and "close multiple tabs?" dialogs.
+    // saveDontShowAgainContinue/TwoActions write directly into the active backend's
+    // in-memory map, covering both the KConfig and QSettings backends regardless
+    // of which one is compiled in. Keep m_dontShowAgainConfig alive so the KConfig
+    // backend's setDontShowAgainConfig pointer stays valid.
+    m_dontShowAgainConfig = KSharedConfig::openConfig(QStringLiteral("okularrc"));
+    KMessageBox::setDontShowAgainConfig(m_dontShowAgainConfig.data());
+    KMessageBox::saveDontShowAgainContinue(QStringLiteral("presentationInfo"));
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ShowTabWarning"), KMessageBox::PrimaryAction);
 }
 
 void MainShellTest::cleanupTestCase()

@@ -15,7 +15,9 @@
 #include <QWidget>
 
 #include <KActionCollection>
+#include <KMessageBox>
 #include <KSelectAction>
+#include <KSharedConfig>
 
 #include "../core/page.h"
 #include "../part/pageview.h"
@@ -68,6 +70,7 @@ private Q_SLOTS:
 
 private:
     bool simulateAddPopupAnnotation(Okular::Part *part, int mouseX, int mouseY);
+    KSharedConfigPtr m_dontShowAgainConfig;
 };
 
 Shell *findShell(Shell *ignore = nullptr)
@@ -99,6 +102,14 @@ void AnnotationToolBarTest::initTestCase()
     QStandardPaths::setTestModeEnabled(true);
     // Don't pollute people's okular settings
     Okular::Settings::instance(QStringLiteral("annotationtoolbartest"));
+
+    // Suppress the "close multiple tabs?" dialog. saveDontShowAgainTwoActions
+    // writes directly into the active backend's in-memory map, covering both
+    // the KConfig and QSettings backends regardless of which one is compiled in.
+    // Keep m_dontShowAgainConfig alive so the KConfig backend's pointer stays valid.
+    m_dontShowAgainConfig = KSharedConfig::openConfig(QStringLiteral("okularrc"));
+    KMessageBox::setDontShowAgainConfig(m_dontShowAgainConfig.data());
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ShowTabWarning"), KMessageBox::PrimaryAction);
 }
 
 void AnnotationToolBarTest::init()
