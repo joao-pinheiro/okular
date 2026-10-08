@@ -86,6 +86,11 @@ public:
      */
     virtual QWidget *getSideContainer() const = 0;
 
+    /**
+     * Should the shell restore lastly closed documents when starting
+     */
+    virtual bool restoreOpenDocuments() const = 0;
+
     // SIGNALS
     /* These can only be connected to using string-based syntax
      * given it is a bit of a hack; it is at least used in Kile.

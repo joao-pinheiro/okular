@@ -15,7 +15,10 @@
 #include <QWidget>
 
 #include <KActionCollection>
+#include <KConfigGroup>
+#include <KMessageBox>
 #include <KSelectAction>
+#include <KSharedConfig>
 
 #include "../core/page.h"
 #include "../part/pageview.h"
@@ -68,6 +71,7 @@ private Q_SLOTS:
 
 private:
     bool simulateAddPopupAnnotation(Okular::Part *part, int mouseX, int mouseY);
+    KSharedConfigPtr m_dontShowAgainConfig;
 };
 
 Shell *findShell(Shell *ignore = nullptr)
@@ -99,12 +103,25 @@ void AnnotationToolBarTest::initTestCase()
     QStandardPaths::setTestModeEnabled(true);
     // Don't pollute people's okular settings
     Okular::Settings::instance(QStringLiteral("annotationtoolbartest"));
+
+    // Suppress the "close multiple tabs?" dialog. saveDontShowAgainTwoActions
+    // writes directly into the active backend's in-memory map, covering both
+    // the KConfig and QSettings backends regardless of which one is compiled in.
+    // Keep m_dontShowAgainConfig alive so the KConfig backend's pointer stays valid.
+    m_dontShowAgainConfig = KSharedConfig::openConfig(QStringLiteral("okularrc"));
+    KMessageBox::setDontShowAgainConfig(m_dontShowAgainConfig.data());
+    KMessageBox::saveDontShowAgainTwoActions(QStringLiteral("ShowTabWarning"), KMessageBox::PrimaryAction);
 }
 
 void AnnotationToolBarTest::init()
 {
     // Default settings for every test
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+    config->group(QStringLiteral("Reviews")).deleteGroup();
+    config->sync();
+
     Okular::Settings::self()->setDefaults();
+    Okular::Settings::self()->setShellRestoreOpenDocuments(false);
 }
 
 void AnnotationToolBarTest::cleanup()
@@ -142,9 +159,11 @@ void AnnotationToolBarTest::testAnnotationToolBar()
 
     QVERIFY(QTest::qWaitForWindowExposed(s));
     QFETCH(int, tabIndex);
-    s->m_tabWidget->tabBar()->setCurrentIndex(tabIndex);
+    s->m_tabWidget->setCurrentIndex(tabIndex);
     Okular::Part *part = dynamic_cast<Okular::Part *>(s->m_tabs[tabIndex].part);
     QVERIFY(part);
+    part->widget()->setFocus();
+    QTRY_VERIFY(part->widget()->hasFocus() || part->widget()->isAncestorOf(qApp->focusWidget()));
 
     QToolBar *annToolBar = s->findChild<QToolBar *>(QStringLiteral("annotationToolBar"));
     QVERIFY(annToolBar);
@@ -237,14 +256,14 @@ void AnnotationToolBarTest::testAnnotationToolBar()
 
     // Test adding a tool to the quick tool list using the bookmark action
     QScopedPointer<TestingUtils::CloseDialogHelper> closeDialogHelper;
-    closeDialogHelper.reset(new TestingUtils::CloseDialogHelper(QDialogButtonBox::Ok));
+    closeDialogHelper.reset(new TestingUtils::CloseDialogHelper(s, QDialogButtonBox::Ok));
     aPopupNote->trigger();
     QVERIFY(aPopupNote->isChecked());
     int quickActionCount = aQuickTools->menu()->actions().size();
     aAddToQuickTools->trigger();
     QTRY_COMPARE(aQuickTools->menu()->actions().size(), quickActionCount + 1);
     // Trigger the quick tool that was just added
-    aQuickTools->menu()->actions().at(6)->trigger();
+    aQuickTools->menu()->actions().constLast()->trigger();
     QCOMPARE(simulateAddPopupAnnotation(part, mouseX, mouseY), true);
 }
 
