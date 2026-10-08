@@ -9,7 +9,10 @@
 
 #include <QApplication>
 
+#include <QCoreApplication>
+#include <QFile>
 #include <QLocale>
+#include <QProcess>
 #include <QTimer>
 
 #include <KLocalizedString>
@@ -18,6 +21,7 @@
 #include <QMenu>
 #include <QMessageBox>
 
+#include "../action.h"
 #include "../document_p.h"
 #include "../scripter.h"
 #include "config-okular.h"
@@ -374,8 +378,86 @@ QJSValue JSApp::okular_popUpMenuEx(const QJSValue &arguments)
         return {};
     }
 
+    // halt timeout until the user has responded
+    QMetaObject::invokeMethod(m_watchdogTimer, qOverload<>(&QTimer::stop));
+
     const QAction *result = m.exec(QCursor::pos());
+
+    // restart max allowed time
+    QMetaObject::invokeMethod(m_watchdogTimer, qOverload<>(&QTimer::start));
+
     return result ? result->property(kResultProperty).toString() : QString();
+}
+
+// app.launchURL()
+void JSApp::launchURL(const QString &cURL, bool bNewFrame)
+{
+    if (cURL.isEmpty()) {
+        return;
+    }
+
+    if (bNewFrame) {
+        qWarning() << "Launching an URL in a new browser windows not supported, fallback to default";
+    }
+
+    const QUrl url = QUrl::fromUserInput(cURL);
+
+    const QString scheme = url.scheme();
+    if (scheme == QLatin1String("javascript") || scheme == QLatin1String("file")) {
+        qWarning() << "app.launchURL: refusing unsupported scheme" << scheme << "for" << cURL;
+        return;
+    }
+
+    BrowseAction action(url);
+    m_doc->m_parent->processAction(&action);
+}
+
+// app.openDoc()
+void JSApp::okular_openDoc(const QString &cPath, const QJSValue &oDoc, const QString &cFS, bool bHidden, bool bUseConv, const QString &cDest)
+{
+    if (cPath.isEmpty()) {
+        return;
+    }
+
+    if (!oDoc.isUndefined() && !oDoc.isNull()) {
+        qWarning() << "app.openDoc: resolving cPath against oDoc is not supported";
+    }
+    if (!cFS.isEmpty()) {
+        qWarning() << "app.openDoc: file system" << cFS << "is not supported, using the default file system";
+    }
+    if (bHidden) {
+        qWarning() << "app.openDoc: opening with a hidden window is not supported";
+    }
+    if (bUseConv) {
+        qWarning() << "app.openDoc: converting a non-PDF file to PDF is not supported";
+    }
+
+    // launch a fresh instance rather than replacing the current one
+    QUrl url = m_doc->giveAbsoluteUrl(cPath);
+    if (url.isEmpty()) {
+        qWarning() << "app.openDoc: could not resolve" << cPath;
+        return;
+    }
+
+    if (!url.path().endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)) {
+        Q_EMIT m_doc->m_parent->error(i18n("Could not open '%1'. Only PDF documents are supported", url.toDisplayString()), -1);
+        // throw as per specification "An exception is thrown and an invalid Doc
+        // object is returned when an HTML document is opened using this method."
+        qjsEngine(this)->throwError(QStringLiteral("app.openDoc: only PDF documents are supported"));
+        return;
+    }
+
+    if (url.isLocalFile() && !QFile::exists(url.toLocalFile())) {
+        Q_EMIT m_doc->m_parent->error(i18n("Could not open '%1'. File does not exist", url.toDisplayString()), -1);
+        return;
+    }
+
+    if (!cDest.isEmpty()) {
+        url.setFragment(cDest);
+    }
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {url.toString()});
+
+    // TODO from JS API: "returns its Doc object"
 }
 
 JSApp::JSApp(DocumentPrivate *doc, QTimer *watchdogTimer, QObject *parent)
