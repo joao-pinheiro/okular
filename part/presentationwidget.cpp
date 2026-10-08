@@ -427,8 +427,8 @@ void PresentationWidget::notifyCurrentPageChanged(int previousPage, int currentP
 
             if (annotation->subType() == Okular::Annotation::AScreen) {
                 action = static_cast<const Okular::ScreenAnnotation *>(annotation)->additionalAction(Okular::Annotation::PageClosing);
-            } else if (annotation->subType() == Okular::Annotation::AWidget) {
-                action = static_cast<const Okular::WidgetAnnotation *>(annotation)->additionalAction(Okular::Annotation::PageClosing);
+            } else if (auto *widgetAnnotation = dynamic_cast<const Okular::WidgetAnnotation *>(annotation)) {
+                action = widgetAnnotation->additionalAction(Okular::Annotation::PageClosing);
             }
 
             if (action) {
@@ -471,8 +471,8 @@ void PresentationWidget::notifyCurrentPageChanged(int previousPage, int currentP
 
             if (annotation->subType() == Okular::Annotation::AScreen) {
                 action = static_cast<const Okular::ScreenAnnotation *>(annotation)->additionalAction(Okular::Annotation::PageOpening);
-            } else if (annotation->subType() == Okular::Annotation::AWidget) {
-                action = static_cast<const Okular::WidgetAnnotation *>(annotation)->additionalAction(Okular::Annotation::PageOpening);
+            } else if (auto *widgetAnnotation = dynamic_cast<const Okular::WidgetAnnotation *>(annotation)) {
+                action = widgetAnnotation->additionalAction(Okular::Annotation::PageOpening);
             }
 
             if (action) {

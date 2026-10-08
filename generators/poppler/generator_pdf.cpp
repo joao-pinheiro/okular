@@ -1421,8 +1421,7 @@ void PDFGenerator::resolveMediaLinkReferences(Okular::Page *page)
             resolveMediaLinkReference(screenAnnotation->additionalAction(Okular::Annotation::PageClosing));
         }
 
-        if (annotation->subType() == Okular::Annotation::AWidget) {
-            Okular::WidgetAnnotation *widgetAnnotation = static_cast<Okular::WidgetAnnotation *>(annotation);
+        if (auto *widgetAnnotation = dynamic_cast<Okular::WidgetAnnotation *>(annotation)) {
             resolveMediaLinkReference(widgetAnnotation->additionalAction(Okular::Annotation::PageOpening));
             resolveMediaLinkReference(widgetAnnotation->additionalAction(Okular::Annotation::PageClosing));
         }

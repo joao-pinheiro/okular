@@ -29,6 +29,7 @@ private Q_SLOTS:
     //     void testHighlight();
     //     void testGeom();
     void testTypewriter();
+    void testSignatureAnnotationCasting();
     void cleanupTestCase();
 
 private:
@@ -154,6 +155,21 @@ void AnnotationTest::testTypewriter()
     QCOMPARE(annotEl.attribute(QStringLiteral("color")), QStringLiteral("#00ffffff"));
     QCOMPARE(annotEl.attribute(QStringLiteral("flags")), QStringLiteral("4"));
     QCOMPARE(annotEl.attribute(QStringLiteral("contents")), QStringLiteral("annot contents"));
+}
+
+void AnnotationTest::testSignatureAnnotationCasting()
+{
+#if HAVE_NEW_SIGNATURE_API
+    auto signatureAnnotation = new Okular::SignatureAnnotation();
+
+    // SignatureAnnotation reports AWidget (same as WidgetAnnotation) but is a different class,
+    // so subType() must not be used on its own to decide that a downcast to WidgetAnnotation is valid.
+    QCOMPARE(signatureAnnotation->subType(), Okular::Annotation::AWidget);
+    QVERIFY(dynamic_cast<Okular::WidgetAnnotation *>(signatureAnnotation) == nullptr);
+    QVERIFY(dynamic_cast<Okular::SignatureAnnotation *>(signatureAnnotation) != nullptr);
+
+    delete signatureAnnotation;
+#endif
 }
 
 QTEST_MAIN(AnnotationTest)
