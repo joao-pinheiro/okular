@@ -279,7 +279,13 @@ bool Page::hasTextPage() const
 std::unique_ptr<RegularAreaRect> Page::wordAt(const NormalizedPoint &p) const
 {
     if (d->m_text) {
-        return d->m_text->wordAt(p);
+        NormalizedPoint unrotatedPoint = p;
+        unrotatedPoint.transform(d->rotationMatrix().inverted());
+        auto area = d->m_text->wordAt(unrotatedPoint);
+        if (area) {
+            area->transform(d->rotationMatrix());
+        }
+        return area;
     }
 
     return nullptr;
@@ -288,7 +294,13 @@ std::unique_ptr<RegularAreaRect> Page::wordAt(const NormalizedPoint &p) const
 std::unique_ptr<RegularAreaRect> Page::lineAt(const NormalizedPoint &p) const
 {
     if (d->m_text) {
-        return d->m_text->lineAt(p);
+        NormalizedPoint unrotatedPoint = p;
+        unrotatedPoint.transform(d->rotationMatrix().inverted());
+        auto area = d->m_text->lineAt(unrotatedPoint);
+        if (area) {
+            area->transform(d->rotationMatrix());
+        }
+        return area;
     }
 
     return nullptr;
