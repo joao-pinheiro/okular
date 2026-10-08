@@ -25,6 +25,7 @@
 #include <QImage>
 #include <QImageReader>
 #include <QLayout>
+#include <QMimeDatabase>
 #include <QMutex>
 #include <QPainter>
 #include <QPrinter>
@@ -267,6 +268,38 @@ Okular::Movie *createMovieFromPopplerScreen(const Poppler::LinkRendition *popple
     return movie;
 }
 
+static bool hasVideoExtension(const QMimeDatabase &db, const QString &name)
+{
+    return db.mimeTypeForFile(name, QMimeDatabase::MatchExtension).name().startsWith(QLatin1String("video/"));
+}
+
+// Poppler does not expose the /Asset entry of a RichMedia instance: the video is the
+// asset typed video/*, else the one whose file name or key carries a video extension
+static Poppler::RichMediaAnnotation::Asset *plainVideoAsset(const QList<Poppler::RichMediaAnnotation::Asset *> &assets)
+{
+    for (Poppler::RichMediaAnnotation::Asset *asset : assets) {
+        const Poppler::EmbeddedFile *file = asset->embeddedFile();
+        if (file && file->mimeType().startsWith(QLatin1String("video/"), Qt::CaseInsensitive)) {
+            return asset;
+        }
+    }
+    const QMimeDatabase db;
+    for (Poppler::RichMediaAnnotation::Asset *asset : assets) {
+        const Poppler::EmbeddedFile *file = asset->embeddedFile();
+        if (file && (hasVideoExtension(db, file->name()) || hasVideoExtension(db, asset->name()))) {
+            return asset;
+        }
+    }
+    // A lone asset is the one the instance points at, unless its type says it is something else
+    if (assets.size() == 1) {
+        const Poppler::EmbeddedFile *file = assets.first()->embeddedFile();
+        if (file && (file->mimeType().isEmpty() || file->mimeType().compare(QLatin1String("application/octet-stream"), Qt::CaseInsensitive) == 0)) {
+            return assets.first();
+        }
+    }
+    return nullptr;
+}
+
 QPair<Okular::Movie *, Okular::EmbeddedFile *> createMovieFromPopplerRichMedia(const Poppler::RichMediaAnnotation *popplerRichMedia)
 {
     const QPair<Okular::Movie *, Okular::EmbeddedFile *> emptyResult(nullptr, nullptr);
@@ -275,7 +308,8 @@ QPair<Okular::Movie *, Okular::EmbeddedFile *> createMovieFromPopplerRichMedia(c
      * To convert a Flash/Video based RichMedia annotation to a movie, we search for the first
      * Flash/Video richmedia instance and parse the flashVars parameter for the 'source' identifier.
      * That identifier is then used to find the associated embedded file through the assets
-     * mapping.
+     * mapping. A plain video instance names its asset through /Asset instead, which Poppler
+     * does not expose: when no 'source' matches, plainVideoAsset() picks it among the assets.
      */
     const Poppler::RichMediaAnnotation::Content *content = popplerRichMedia->content();
     if (!content) {
@@ -296,37 +330,34 @@ QPair<Okular::Movie *, Okular::EmbeddedFile *> createMovieFromPopplerRichMedia(c
 
     const Poppler::RichMediaAnnotation::Instance *instance = instances[0];
 
-    if ((instance->type() != Poppler::RichMediaAnnotation::Instance::TypeFlash) && (instance->type() != Poppler::RichMediaAnnotation::Instance::TypeVideo)) {
-        return emptyResult;
-    }
-
-    const Poppler::RichMediaAnnotation::Params *params = instance->params();
-    if (!params) {
+    const bool isFlash = (instance->type() == Poppler::RichMediaAnnotation::Instance::TypeFlash);
+    const bool isVideo = (instance->type() == Poppler::RichMediaAnnotation::Instance::TypeVideo);
+    if (!isFlash && !isVideo) {
         return emptyResult;
     }
 
     QString sourceId;
     bool playbackLoops = false;
 
-    const QStringList flashVars = params->flashVars().split(QLatin1Char('&'));
-    for (const QString &flashVar : flashVars) {
-        const int pos = flashVar.indexOf(QLatin1Char('='));
-        if (pos == -1) {
-            continue;
+    // A plain video instance usually comes without any flashVars
+    const Poppler::RichMediaAnnotation::Params *params = instance->params();
+    if (params) {
+        const QStringList flashVars = params->flashVars().split(QLatin1Char('&'));
+        for (const QString &flashVar : flashVars) {
+            const int pos = flashVar.indexOf(QLatin1Char('='));
+            if (pos == -1) {
+                continue;
+            }
+
+            const QString key = flashVar.left(pos);
+            const QString value = flashVar.mid(pos + 1);
+
+            if (key == QLatin1String("source")) {
+                sourceId = value;
+            } else if (key == QLatin1String("loop")) {
+                playbackLoops = (value == QLatin1String("true") ? true : false);
+            }
         }
-
-        const QString key = flashVar.left(pos);
-        const QString value = flashVar.mid(pos + 1);
-
-        if (key == QLatin1String("source")) {
-            sourceId = value;
-        } else if (key == QLatin1String("loop")) {
-            playbackLoops = (value == QLatin1String("true") ? true : false);
-        }
-    }
-
-    if (sourceId.isEmpty()) {
-        return emptyResult;
     }
 
     const QList<Poppler::RichMediaAnnotation::Asset *> assets = content->assets();
@@ -335,11 +366,17 @@ QPair<Okular::Movie *, Okular::EmbeddedFile *> createMovieFromPopplerRichMedia(c
     }
 
     Poppler::RichMediaAnnotation::Asset *matchingAsset = nullptr;
-    for (Poppler::RichMediaAnnotation::Asset *asset : assets) {
-        if (asset->name() == sourceId) {
-            matchingAsset = asset;
-            break;
+    if (!sourceId.isEmpty()) {
+        for (Poppler::RichMediaAnnotation::Asset *asset : assets) {
+            if (asset->name() == sourceId) {
+                matchingAsset = asset;
+                break;
+            }
         }
+    }
+    // A video instance names its media through /Asset, flashVars there are only a hint
+    if (!matchingAsset && isVideo) {
+        matchingAsset = plainVideoAsset(assets);
     }
 
     if (!matchingAsset) {
