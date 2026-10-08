@@ -296,8 +296,6 @@ private Q_SLOTS:
     void slotDragScroll();
     // show the welcome message
     void slotShowWelcome();
-    // activated by left click timer
-    void slotShowSizeAllCursor();
 
     void slotHandleWebShortcutAction();
     void slotConfigureWebShortcuts();
