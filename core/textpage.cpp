@@ -91,6 +91,62 @@ static bool CaseSensitiveCmpFn(QStringView from, QStringView to)
     return from.compare(to, Qt::CaseSensitive) == 0;
 }
 
+// Whether a search may drop @p c: a non-spacing mark is written on a letter and is
+// not a letter of its own, so it is not typed when searching for a word ("مشردا"
+// finds "مُشَرَّدًا", "cafe" finds "café"). Such marks have Script=Inherited, so
+// c.script() cannot tell them from the spacing marks of Indic scripts, which are
+// kept.
+static bool isDiacritic(QChar c)
+{
+    return c.category() == QChar::Mark_NonSpacing;
+}
+
+// Whether @p c only stretches a word: a tatweel has no sound and no meaning.
+static bool isTatweel(QChar c)
+{
+    return c.unicode() == 0x0640; // ARABIC TATWEEL
+}
+
+// The letter a search may take @p c for: a final taa marbuta is often typed as a
+// heh, an alef maksura as a yeh and an alef wasla as a plain alef. A letter that is
+// a plain letter with a hamza is reduced to that letter by the decomposition in
+// searchForm().
+static QChar searchLetter(QChar c)
+{
+    switch (c.unicode()) {
+    case 0x0629: // ARABIC LETTER TEH MARBUTA
+        return QChar(0x0647);
+    case 0x0649: // ARABIC LETTER ALEF MAKSURA
+        return QChar(0x064A);
+    case 0x0671: // ARABIC LETTER ALEF WASLA
+        return QChar(0x0627);
+    default:
+        return c;
+    }
+}
+
+// The form a search compares @p text in: NFKC as before, then NFD (é becomes e and
+// U+0301, a letter carrying a hamza becomes that letter). Unless @p matchDiacritics
+// is set, the diacritics and the tatweel are dropped and searchLetter() is applied.
+static QString searchForm(const QString &text, bool matchDiacritics)
+{
+    const QString normalized = text.normalized(QString::NormalizationForm_KC);
+    if (matchDiacritics) {
+        return normalized;
+    }
+
+    const QString decomposed = normalized.normalized(QString::NormalizationForm_D);
+    QString result;
+    result.reserve(decomposed.size());
+    for (const QChar c : decomposed) {
+        if (isDiacritic(c) || isTatweel(c)) {
+            continue;
+        }
+        result += searchLetter(c);
+    }
+    return result;
+}
+
 /**
  * Returns true iff segments [@p left1, @p right1] and [@p left2, @p right2] on the real line
  * overlap within @p threshold percent, i. e. iff the ratio of the length of the
@@ -273,6 +329,29 @@ private:
     WordsWithCharacters m_region_wordWithCharacters;
     QRect m_area;
 };
+
+// The entities keep the areas the generator handed over, which are finer than the
+// pixels of the layout grid: two of them that touch there can be a thousandth
+// apart, and are then taken for two separate areas. A gap of one grid unit is not
+// a gap.
+static bool touchesOnLayoutGrid(const NormalizedRect &before, const NormalizedRect &after)
+{
+    constexpr double gridUnit = 1.0 / 1000;
+    return after.left - before.right <= gridUnit && before.left - after.right <= gridUnit;
+}
+
+/**
+ * Appends @p area to @p areaList, merging it with the last area when the two touch
+ * on the layout grid.
+ */
+static void appendOnLayoutGrid(RegularAreaRect *areaList, const NormalizedRect &area)
+{
+    if (!areaList->isEmpty() && touchesOnLayoutGrid(areaList->last(), area)) {
+        areaList->last() |= area;
+    } else {
+        areaList->append(area);
+    }
+}
 
 std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) const
 {
@@ -539,8 +618,25 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
         end--;
     }
 
+    // Build one rectangle per line. A rectangle grows to cover the entity that
+    // follows it, instead of nesting their vertical extents as appendShape() does:
+    // the characters of a word share the extent of that word (see
+    // makeWordFromCharacters), so a word carrying a mark is taller than the words
+    // next to it and the extents do not nest.
+    bool lineEnded = true;
     for (; start <= end; start++) {
-        ret->appendShape(start->transformedArea(matrix), side);
+        const NormalizedRect area = start->transformedArea(matrix);
+        if (side != MergeRight) {
+            // A rotated page: keep the merging appendShape() does along its axis.
+            ret->appendShape(area, side);
+            continue;
+        }
+        if (lineEnded || ret->isEmpty() || !touchesOnLayoutGrid(ret->last(), area) || !doesConsumeY(ret->last(), area, 70)) {
+            ret->append(area);
+        } else {
+            ret->last() |= area;
+        }
+        lineEnded = start->text().contains(QLatin1Char('\n'));
     }
 
     return ret;
@@ -549,8 +645,11 @@ std::unique_ptr<RegularAreaRect> TextPage::textArea(const TextSelection &sel) co
 RegularAreaRect *TextPage::findText(int searchID, const QString &query, SearchDirection direct, Qt::CaseSensitivity caseSensitivity, const RegularAreaRect *area)
 {
     SearchDirection dir = direct;
+    // Search in reading order: the match offsets and the returned area then line
+    // up with the glyphs of an RTL line.
+    const TextEntity::List &words = d->wordsInReadingOrder();
     // invalid search request
-    if (d->m_words.isEmpty() || query.isEmpty() || (area && area->isNull())) {
+    if (words.isEmpty() || query.isEmpty() || (area && area->isNull())) {
         return nullptr;
     }
     TextEntity::List::ConstIterator start;
@@ -569,34 +668,36 @@ RegularAreaRect *TextPage::findText(int searchID, const QString &query, SearchDi
     bool forward = true;
     switch (dir) {
     case FromTop:
-        start = d->m_words.constBegin();
+        start = words.constBegin();
         start_offset = 0;
-        end = d->m_words.constEnd();
+        end = words.constEnd();
         break;
     case FromBottom:
-        start = d->m_words.constEnd();
+        start = words.constEnd();
         start_offset = 0;
-        end = d->m_words.constBegin();
+        end = words.constBegin();
         forward = false;
         break;
     case NextResult:
         start = (*sIt)->it_end;
         start_offset = (*sIt)->offset_end;
-        end = d->m_words.constEnd();
+        end = words.constEnd();
         break;
     case PreviousResult:
         start = (*sIt)->it_begin;
         start_offset = (*sIt)->offset_begin;
-        end = d->m_words.constBegin();
+        end = words.constBegin();
         forward = false;
         break;
     };
     RegularAreaRect *ret = nullptr;
     const TextComparisonFunction cmpFn = caseSensitivity == Qt::CaseSensitive ? CaseSensitiveCmpFn : CaseInsensitiveCmpFn;
+    // A search that is not case sensitive does not consider the diacritics either.
+    const bool matchDiacritics = caseSensitivity == Qt::CaseSensitive;
     if (forward) {
-        ret = d->findTextInternalForward(searchID, query, cmpFn, start, start_offset, end);
+        ret = d->findTextInternalForward(searchID, query, cmpFn, matchDiacritics, start, start_offset, end);
     } else {
-        ret = d->findTextInternalBackward(searchID, query, cmpFn, start, start_offset, end);
+        ret = d->findTextInternalBackward(searchID, query, cmpFn, matchDiacritics, start, start_offset, end);
     }
     return ret;
 }
@@ -659,11 +760,12 @@ RegularAreaRect *TextPagePrivate::searchPointToArea(const SearchPoint *sp)
     return ret;
 }
 
-RegularAreaRect *TextPagePrivate::findTextInternalForward(int searchID, const QString &_query, TextComparisonFunction comparer, TextEntity::List::ConstIterator start, int start_offset, TextEntity::List::ConstIterator end)
+RegularAreaRect *
+TextPagePrivate::findTextInternalForward(int searchID, const QString &_query, TextComparisonFunction comparer, bool matchDiacritics, TextEntity::List::ConstIterator start, int start_offset, TextEntity::List::ConstIterator end)
 {
     // normalize query search all unicode (including glyphs)
     // Use NFKC for search operations. Use NFC for copy, makeWord, and export operations.
-    const QString query = _query.normalized(QString::NormalizationForm_KC);
+    const QString query = searchForm(_query, matchDiacritics);
 
     // j is the current position in our query
     // queryLeft is the length of the query we have left to match
@@ -677,9 +779,9 @@ RegularAreaRect *TextPagePrivate::findTextInternalForward(int searchID, const QS
 
     while (it != end) {
         const TextEntity &curEntity = *it;
-        const QString &str = curEntity.text().normalized(QString::NormalizationForm_KC);
+        const QString str = searchForm(curEntity.text(), matchDiacritics);
         const int strLen = str.length();
-        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, m_words.constEnd());
+        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, wordsInReadingOrder().constEnd());
         // adjustedLen <= strLen
 
         if (offset >= strLen) {
@@ -760,11 +862,12 @@ RegularAreaRect *TextPagePrivate::findTextInternalForward(int searchID, const QS
     return nullptr;
 }
 
-RegularAreaRect *TextPagePrivate::findTextInternalBackward(int searchID, const QString &_query, TextComparisonFunction comparer, TextEntity::List::ConstIterator start, int start_offset, TextEntity::List::ConstIterator end)
+RegularAreaRect *
+TextPagePrivate::findTextInternalBackward(int searchID, const QString &_query, TextComparisonFunction comparer, bool matchDiacritics, TextEntity::List::ConstIterator start, int start_offset, TextEntity::List::ConstIterator end)
 {
     // normalize query to search all unicode (including glyphs)
     // Use NFKC for search operations. Use NFC for copy, makeWord, and export operations.
-    const QString query = _query.normalized(QString::NormalizationForm_KC);
+    const QString query = searchForm(_query, matchDiacritics);
 
     // j is the current position in our query
     // len is the length of the string in TextEntity
@@ -786,9 +889,9 @@ RegularAreaRect *TextPagePrivate::findTextInternalBackward(int searchID, const Q
         }
 
         const TextEntity &curEntity = *it;
-        const QString &str = curEntity.text().normalized(QString::NormalizationForm_KC);
+        const QString str = searchForm(curEntity.text(), matchDiacritics);
         const int strLen = str.length();
-        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, m_words.constEnd());
+        const int adjustedLen = stringLengthAdaptedWithHyphen(str, it, wordsInReadingOrder().constEnd());
         // adjustedLen <= strLen
 
         if (offset <= 0) {
@@ -879,7 +982,10 @@ QString TextPage::text(const RegularAreaRect *area, TextAreaInclusionBehaviour b
         return QString();
     }
 
-    TextEntity::List::ConstIterator it = d->m_words.constBegin(), itEnd = d->m_words.constEnd();
+    // Reading order, so that an RTL line comes out the way it is read;
+    // wordsInReadingOrder() falls back to the visual order.
+    const TextEntity::List &words = d->wordsInReadingOrder();
+    TextEntity::List::ConstIterator it = words.constBegin(), itEnd = words.constEnd();
     QString ret;
     if (area) {
         for (; it != itEnd; ++it) {
@@ -908,6 +1014,162 @@ static bool compareTinyTextEntityX(const WordWithCharacters &first, const WordWi
     QRect secondArea = second.area().roundedGeometry(1000, 1000);
 
     return firstArea.left() < secondArea.left();
+}
+
+// A strong right-to-left character (UAX#9 class R or AL).
+static bool isStrongRtl(QChar c)
+{
+    const QChar::Direction d = c.direction();
+    return d == QChar::DirR || d == QChar::DirAL;
+}
+
+// A word belongs to a right-to-left run if it contains any RTL character.
+static bool wordIsRightToLeft(const WordWithCharacters &word)
+{
+    const QString text = word.text();
+    for (const QChar c : text) {
+        if (isStrongRtl(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A non-spacing mark (UAX#9 class NSM): it is written on the character it follows
+// and stays with it when the text is reordered.
+static bool isCombiningMark(const TextEntity &entity)
+{
+    const QString text = entity.text();
+    return !text.isEmpty() && text.at(0).direction() == QChar::DirNSM;
+}
+
+/**
+ * Appends one entity to @p out. A line break the generator appended to the last
+ * character of a line is reported through @p lineBreak: reordering can move that
+ * character into the middle of the line.
+ */
+static void appendEntity(const TextEntity &entity, TextEntity::List *out, bool *lineBreak)
+{
+    if (!entity.text().contains(QLatin1Char('\n'))) {
+        *out += entity;
+        return;
+    }
+
+    *lineBreak = true;
+    QString text = entity.text();
+    text.remove(QLatin1Char('\n'));
+    if (!text.isEmpty()) {
+        *out += TextEntity(text, entity.area());
+    }
+}
+
+/**
+ * Appends the entities of @p word in reading order. They come in the order of the
+ * glyphs on the page, so the runs of the word are appended from its right end; a
+ * word may also hold an LTR run, e.g. "تجربةTesting".
+ */
+static void appendWordInReadingOrder(const WordWithCharacters &word, TextEntity::List *out, bool *lineBreak)
+{
+    const TextEntity::List &characters = word.characters;
+
+    if (!wordIsRightToLeft(word)) {
+        // The entities as they were found, unless one of them carries the line
+        // break, which appendEntity() takes off.
+        if (!word.text().contains(QLatin1Char('\n'))) {
+            *out += characters;
+            return;
+        }
+        for (const TextEntity &entity : characters) {
+            appendEntity(entity, out, lineBreak);
+        }
+        return;
+    }
+
+    // A character without a strong direction belongs to the preceding run
+    // (UAX#9 N1, N2).
+    const int count = characters.size();
+    QVarLengthArray<bool, 64> rtl(count);
+    bool lastStrongRtl = true;
+    for (int i = 0; i < count; ++i) {
+        const QString text = characters.at(i).text();
+        for (const QChar c : text) {
+            const QChar::Direction d = c.direction();
+            if (d == QChar::DirR || d == QChar::DirAL) {
+                lastStrongRtl = true;
+                break;
+            }
+            if (d == QChar::DirL) {
+                lastStrongRtl = false;
+                break;
+            }
+        }
+        rtl[i] = lastStrongRtl;
+    }
+
+    // Walk the runs from the right end of the word: an RTL run is read
+    // backwards, an LTR run forwards.
+    for (int runEnd = count; runEnd > 0;) {
+        const bool runRtl = rtl[runEnd - 1];
+        int runBegin = runEnd - 1;
+        while (runBegin > 0 && rtl[runBegin - 1] == runRtl) {
+            --runBegin;
+        }
+        if (runRtl) {
+            // Take a base and the marks written after it as one unit, so that a
+            // mark stays with its base.
+            for (int clusterEnd = runEnd; clusterEnd > runBegin;) {
+                int clusterBegin = clusterEnd - 1;
+                while (clusterBegin > runBegin && isCombiningMark(characters.at(clusterBegin))) {
+                    --clusterBegin;
+                }
+                for (int i = clusterBegin; i < clusterEnd; ++i) {
+                    appendEntity(characters.at(i), out, lineBreak);
+                }
+                clusterEnd = clusterBegin;
+            }
+        } else {
+            for (int i = runBegin; i < runEnd; ++i) {
+                appendEntity(characters.at(i), out, lineBreak);
+            }
+        }
+        runEnd = runBegin;
+    }
+}
+
+/**
+ * Appends the words of one line to @p out in reading order. makeAndSortLines()
+ * collects them left-to-right, that is in visual order, so the words of an RTL
+ * line are appended in reverse; the characters of each word are ordered by
+ * appendWordInReadingOrder().
+ */
+static void appendLineInReadingOrder(const WordsWithCharacters &lineWords, TextEntity::List *out)
+{
+    bool anyRtl = false;
+    for (const WordWithCharacters &word : lineWords) {
+        if (wordIsRightToLeft(word)) {
+            anyRtl = true;
+            break;
+        }
+    }
+
+    // Nothing to reorder: keep the entities, spaces included, as they are.
+    if (!anyRtl) {
+        for (const WordWithCharacters &word : lineWords) {
+            *out += word.characters;
+        }
+        return;
+    }
+
+    bool lineBreak = false;
+    for (int k = lineWords.size() - 1; k >= 0; --k) {
+        appendWordInReadingOrder(lineWords.at(k), out, &lineBreak);
+    }
+
+    if (lineBreak) {
+        // The '\n' the generator appends to the last character of a line belongs
+        // at the end of that line.
+        out->append(TextEntity(QStringLiteral("\n"), lineWords.constFirst().area()));
+    }
 }
 
 static bool compareTinyTextEntityY(const WordWithCharacters &first, const WordWithCharacters &second)
@@ -957,30 +1219,24 @@ static WordsWithCharacters makeWordFromCharacters(const TextEntity::List &charac
      */
     WordsWithCharacters wordsWithCharacters;
 
-    TextEntity::List::ConstIterator it = characters.begin(), itEnd = characters.end(), tmpIt;
+    TextEntity::List::ConstIterator it = characters.begin(), itEnd = characters.end();
     int newLeft, newRight, newTop, newBottom;
 
     for (; it != itEnd; it++) {
         QString textString = it->text();
         QString newString;
         QRect lineArea = it->area().roundedGeometry(pageWidth, pageHeight);
+        // The word is the union of the areas the generator handed over, which are
+        // finer than the whole pixels of lineArea used below.
+        NormalizedRect wordArea = it->area();
         QRect elementArea;
         TextEntity::List wordCharacters;
-        tmpIt = it;
         int space = 0;
 
         while (!space) {
             if (!textString.isEmpty()) {
                 newString.append(textString);
-
-                // when textString is the start of the word
-                if (tmpIt == it) {
-                    NormalizedRect newRect(lineArea, pageWidth, pageHeight);
-                    wordCharacters.append(TextEntity(textString.normalized(QString::NormalizationForm_C), newRect));
-                } else {
-                    NormalizedRect newRect(elementArea, pageWidth, pageHeight);
-                    wordCharacters.append(TextEntity(textString.normalized(QString::NormalizationForm_C), newRect));
-                }
+                wordCharacters.append(TextEntity(textString.normalized(QString::NormalizationForm_C), it->area()));
             }
 
             ++it;
@@ -1008,6 +1264,9 @@ static WordsWithCharacters makeWordFromCharacters(const TextEntity::List &charac
                 break;
             }
 
+            // The character joins the word, so it is part of the word's area.
+            wordArea |= it->area();
+
             newLeft = text_x1 < line_x1 ? text_x1 : line_x1;
             newRight = line_x2 > text_x2 ? line_x2 : text_x2;
             newTop = text_y1 > line_y1 ? line_y1 : text_y1;
@@ -1023,8 +1282,16 @@ static WordsWithCharacters makeWordFromCharacters(const TextEntity::List &charac
 
         // if newString is not empty, save it
         if (!newString.isEmpty()) {
-            const NormalizedRect newRect(lineArea, pageWidth, pageHeight);
-            TextEntity word = TextEntity(newString.normalized(QString::NormalizationForm_C), newRect);
+            // Every character gets the vertical extent of the whole word, so that
+            // a selection may begin and end in different runs of it.
+            for (TextEntity &entity : wordCharacters) {
+                NormalizedRect area = entity.area();
+                area.top = wordArea.top;
+                area.bottom = wordArea.bottom;
+                entity = TextEntity(entity.text(), area);
+            }
+
+            TextEntity word = TextEntity(newString.normalized(QString::NormalizationForm_C), wordArea);
             wordsWithCharacters.append(WordWithCharacters(word, wordCharacters));
         }
 
@@ -1553,9 +1820,23 @@ static RegionTextList XYCutForBoundingBoxes(const QList<WordWithCharacters> &wor
 }
 
 /**
+ * Whether the gap between two entities of a line separates two words. The runs of
+ * one word leave a narrower gap than a space, so the gap is measured against the
+ * height of the characters, a space being about a seventh of it. The smaller of the
+ * two words is used: a word that carries a mark, or that ends a line, has a box
+ * taller than its letters, and measuring the gap against that would make a real
+ * space look narrow. The areas are not rounded to whole pixels first: that would
+ * move a 2.5 pixel gap and its 3.3 pixel threshold to 3 and 3.
+ */
+static bool separatesWords(const QRectF &before, const QRectF &after)
+{
+    return after.left() - before.right() >= qMin(before.height(), after.height()) / 7;
+}
+
+/**
  * Add spaces in between words in a line. It reuses the pointers passed in tree and might add new ones. You will need to take care of deleting them if needed
  */
-TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageHeight)
+TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageHeight, TextEntity::List *readingOrderWords)
 {
     /**
      * 1. Call makeAndSortLines before adding spaces in between words in a line
@@ -1573,42 +1854,49 @@ TextEntity::List addNecessarySpace(RegionTextList tree, int pageWidth, int pageH
         // Step 02
         for (QPair<WordsWithCharacters, QRect> &sortedLine : sortedLines) {
             WordsWithCharacters &list = sortedLine.first;
+
             for (int k = 0; k < list.length(); k++) {
-                const QRect area1 = list.at(k).area().roundedGeometry(pageWidth, pageHeight);
                 if (k + 1 >= list.length()) {
                     break;
                 }
 
-                const QRect area2 = list.at(k + 1).area().roundedGeometry(pageWidth, pageHeight);
-                const int space = area2.left() - area1.right();
+                const NormalizedRect before = list.at(k).area();
+                const NormalizedRect after = list.at(k + 1).area();
 
-                if (space != 0) {
-                    // Make a TinyTextEntity of string space and push it between it and it+1
-                    const int left = area1.right();
-                    const int right = area2.left();
-                    const int top = area2.top() < area1.top() ? area2.top() : area1.top();
-                    const int bottom = area2.bottom() > area1.bottom() ? area2.bottom() : area1.bottom();
-
-                    const QString spaceStr(QStringLiteral(" "));
-                    const QRect rect(QPoint(left, top), QPoint(right, bottom));
-                    const NormalizedRect entRect(rect, pageWidth, pageHeight);
-                    TextEntity ent1 = TextEntity(spaceStr, entRect);
-                    WordWithCharacters word(ent1, {ent1});
-
-                    list.insert(k + 1, word);
-
-                    // Skip the space
-                    k++;
+                if (before.right >= after.left) {
+                    // The words touch: nothing to put in between.
+                    continue;
                 }
+
+                // Fill the gap between the runs of a word so that they are selected
+                // as one area. The filler has no text and reaches from the edge of
+                // one word to the edge of the other.
+                const bool isSpace = separatesWords(before.geometryF(pageWidth, pageHeight), after.geometryF(pageWidth, pageHeight));
+                const QString fillerText = isSpace ? QStringLiteral(" ") : QString();
+
+                const NormalizedRect entRect(before.right, qMin(before.top, after.top), after.left, qMax(before.bottom, after.bottom));
+                TextEntity ent1 = TextEntity(fillerText, entRect);
+                WordWithCharacters word(ent1, QList<TextEntity>() << ent1);
+
+                list.insert(k + 1, word);
+
+                // Skip the inserted entity
+                k++;
             }
+
             counter += list.length();
         }
         res.reserve(res.length() + counter);
+        readingOrderWords->reserve(readingOrderWords->length() + counter);
 
         for (const QPair<WordsWithCharacters, QRect> &sortedLine : std::as_const(sortedLines)) {
-            for (const WordWithCharacters &word : sortedLine.first) {
+            const WordsWithCharacters &lineWords = sortedLine.first;
+            // res keeps the visual (left-to-right) order the selection code relies
+            // on; the reading order is collected separately.
+            for (const WordWithCharacters &word : lineWords) {
                 res += word.characters;
             }
+            appendLineInReadingOrder(lineWords, readingOrderWords);
         }
     }
 
@@ -1650,9 +1938,11 @@ void TextPagePrivate::correctTextOrder()
     /**
      * Add spaces to the word
      */
-    const auto listOfCharacters = addNecessarySpace(std::move(tree), pageWidth, pageHeight);
+    TextEntity::List readingOrderWords;
+    const auto listOfCharacters = addNecessarySpace(std::move(tree), pageWidth, pageHeight, &readingOrderWords);
 
     setWordList(listOfCharacters);
+    m_wordsReading = std::move(readingOrderWords);
 }
 
 TextEntity::List TextPage::words(const RegularAreaRect *area, TextAreaInclusionBehaviour b) const
@@ -1695,15 +1985,21 @@ std::unique_ptr<RegularAreaRect> TextPage::wordAt(const NormalizedPoint &p) cons
         }
     }
     if (posIt != itEnd) {
-        if (posIt->text().simplified().isEmpty()) {
+        // A blank entity is selected on its own, but the filler that only bridges
+        // the gap between the runs of a word belongs to that word.
+        if (!posIt->text().isEmpty() && posIt->text().simplified().isEmpty()) {
             auto ret = std::make_unique<RegularAreaRect>();
-            ret->appendShape(posIt->area());
+            appendOnLayoutGrid(ret.get(), posIt->area());
             return ret;
         }
         // Find the first TinyTextEntity of the word
         while (posIt != itBegin) {
             --posIt;
             const QString itText = posIt->text();
+            if (itText.isEmpty()) {
+                // A filler, not the blank in front of the word.
+                continue;
+            }
             if (itText.right(1).at(0).isSpace()) {
                 if (itText.endsWith(QLatin1String("-\n"))) {
                     // Is an hyphenated word
@@ -1729,11 +2025,17 @@ std::unique_ptr<RegularAreaRect> TextPage::wordAt(const NormalizedPoint &p) cons
         QString foundWord;
         for (; posIt != itEnd; ++posIt) {
             const QString itText = posIt->text();
+            if (itText.isEmpty()) {
+                // Include the filler, so that the runs on both sides of it are
+                // selected as one area.
+                appendOnLayoutGrid(ret.get(), posIt->area());
+                continue;
+            }
             if (itText.simplified().isEmpty()) {
                 break;
             }
 
-            ret->appendShape(posIt->area());
+            appendOnLayoutGrid(ret.get(), posIt->area());
             foundWord += posIt->text();
             if (itText.right(1).at(0).isSpace()) {
                 if (!foundWord.endsWith(QLatin1String("-\n"))) {
@@ -1936,7 +2238,7 @@ std::unique_ptr<RegularAreaRect> TextPage::lineAt(const NormalizedPoint &p) cons
         if (lineIt == buildStart && text.simplified().isEmpty()) {
             continue;
         }
-        ret->appendShape(lineIt->area());
+        appendOnLayoutGrid(ret.get(), lineIt->area());
 
         if (text.contains(QLatin1Char('\n')) && lineIt != buildStart) {
             TextEntity::List::ConstIterator afterNl = lineIt;
