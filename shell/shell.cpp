@@ -41,6 +41,7 @@
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
+#include <QDataStream>
 #include <QDockWidget>
 #include <QDragMoveEvent>
 #include <QFileDialog>
@@ -455,6 +456,29 @@ bool Shell::canOpenDocs(int numDocs, int desktop)
 #endif
 
     return true;
+}
+
+void Shell::instanceController(const QByteArray &message)
+{
+    qWarning() << "Incoming chief ...";
+
+    QDataStream ss(message);
+    QString methodCall;
+    ss >> methodCall;
+
+    if (methodCall == QStringLiteral("openDocument")) {
+        QString urlString, serializedOptions;
+        ss >> urlString >> serializedOptions;
+        openDocument(urlString, serializedOptions);
+    } else if (methodCall == QStringLiteral("canOpenDocs")) {
+        int numDocs, desktop;
+        ss >> numDocs >> desktop;
+        canOpenDocs(numDocs, desktop);
+    } else if (methodCall == QStringLiteral("tryRaise")) {
+        QString startupId;
+        ss >> startupId;
+        tryRaise(startupId);
+    }
 }
 
 void Shell::openUrl(const QUrl &url, const QString &serializedOptions)

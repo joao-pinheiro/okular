@@ -27,6 +27,7 @@
 #include <QStringList>
 #include <QTextStream>
 #include <QtGlobal>
+#include <kdsingleapplication-qt6/kdsingleapplication.h>
 
 #define HAVE_STYLE_MANAGER __has_include(<KStyleManager>)
 #if HAVE_STYLE_MANAGER
@@ -84,6 +85,8 @@ int main(int argc, char **argv)
     app.installEventFilter(&eventHandler);
     KLocalizedString::setApplicationDomain("okular");
 
+    KDSingleApplication kdsa;
+
 #if HAVE_STYLE_MANAGER
     /**
      * trigger initialisation of proper application style
@@ -133,7 +136,7 @@ int main(int argc, char **argv)
         for (int i = 0; i < parser.positionalArguments().count(); ++i) {
             paths << parser.positionalArguments().at(i);
         }
-        Okular::Status status = Okular::main(paths, ShellUtils::serializeOptions(parser));
+        Okular::Status status = Okular::main(paths, ShellUtils::serializeOptions(parser), kdsa);
         switch (status) {
         case Okular::Error:
             return -1;
