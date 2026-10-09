@@ -237,6 +237,15 @@ private:
     void updateMagnifier(const QPoint p);
 
     int viewColumns() const;
+    /** @returns whether two pages are shown side by side, moving by one page */
+    bool isSlidingMode() const;
+    /** @returns the left page of the pair shown in sliding mode when @p page is current */
+    int slidingFirstPage(int page) const;
+    /** @returns the page reached from @p page when moving by @p steps rows (or single pages in sliding mode) */
+    int steppedPage(int page, int steps) const;
+    void relayoutSlidingPages();
+    /** Resizes the content area to the laid out pages and restores the viewport */
+    void finishRelayout(int fullWidth, int fullHeight);
 
     void center(int cx, int cy, bool smoothMove = false);
     void scrollTo(int x, int y, bool smoothMove = false);

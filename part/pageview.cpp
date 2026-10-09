@@ -624,6 +624,7 @@ void PageView::setupViewerActions(KActionCollection *ac)
                 QStringLiteral("view_render_mode_facing_center_first"),
                 Okular::Settings::EnumViewMode::FacingFirstCentered);
     addViewMode(new QAction(QIcon::fromTheme(QStringLiteral("view-pages-overview")), i18nc("@item:inmenu", "&Overview"), this), QStringLiteral("view_render_mode_overview"), Okular::Settings::EnumViewMode::Summary);
+    addViewMode(new QAction(QIcon::fromTheme(QStringLiteral("view-pages-facing")), i18nc("@item:inmenu", "Facing Pages (&Advance by One Page)"), this), QStringLiteral("view_render_mode_sliding"), Okular::Settings::EnumViewMode::Sliding);
     const QList<QAction *> viewModeActions = d->viewModeActionGroup->actions();
     for (QAction *viewModeAction : viewModeActions) {
         if (viewModeAction->data().toInt() == Okular::Settings::viewMode()) {
@@ -2142,7 +2143,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
     case Qt::Key_H:
         if (horizontalScrollBar()->maximum() == 0) {
             // if we cannot scroll we go to the previous page vertically
-            int next_page = d->document->currentPage() - viewColumns();
+            int next_page = steppedPage(d->document->currentPage(), -1);
             d->document->setViewportPage(next_page);
         } else {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(-stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
@@ -2152,7 +2153,7 @@ void PageView::keyPressEvent(QKeyEvent *e)
     case Qt::Key_L:
         if (horizontalScrollBar()->maximum() == 0) {
             // if we cannot scroll we advance the page vertically
-            int next_page = d->document->currentPage() + viewColumns();
+            int next_page = steppedPage(d->document->currentPage(), 1);
             d->document->setViewportPage(next_page);
         } else {
             d->scroller->scrollTo(d->scroller->finalPosition() + QPoint(stepsize * horizontalScrollBar()->singleStep(), 0), d->currentShortScrollDuration);
@@ -3408,6 +3409,19 @@ void PageView::wheelEvent(QWheelEvent *e)
         return;
     }
 
+    // in sliding mode scrolling sideways moves by one page, if the pages fit horizontally
+    const QPoint angleDelta = e->angleDelta();
+    if (isSlidingMode() && horizontalScrollBar()->maximum() == 0 && qAbs(angleDelta.x()) > qAbs(angleDelta.y())) {
+        d->singlePageWheelAccumulatedDelta += angleDelta.x();
+        if (qAbs(d->singlePageWheelAccumulatedDelta) >= QWheelEvent::DefaultDeltasPerStep) {
+            // a positive delta means scrolling to the left
+            const int steps = d->singlePageWheelAccumulatedDelta > 0 ? -1 : 1;
+            d->singlePageWheelAccumulatedDelta = 0;
+            d->document->setViewportPage(steppedPage(d->document->currentPage(), steps));
+        }
+        return;
+    }
+
     // Perform scroll
     if (!getContinuousMode() && vScroll == verticalScrollBar()->maximum() && delta < 0) {
         d->singlePageWheelAccumulatedDelta += delta;
@@ -3417,7 +3431,7 @@ void PageView::wheelEvent(QWheelEvent *e)
             if ((int)d->document->currentPage() < d->items.count() - 1) {
                 // more optimized than document->setNextPage and then move view to top
                 Okular::DocumentViewport newViewport = d->document->viewport();
-                newViewport.pageNumber += viewColumns();
+                newViewport.pageNumber = steppedPage(newViewport.pageNumber, 1);
                 if (newViewport.pageNumber >= (int)d->items.count()) {
                     newViewport.pageNumber = d->items.count() - 1;
                 }
@@ -3435,7 +3449,7 @@ void PageView::wheelEvent(QWheelEvent *e)
             if (d->document->currentPage() > 0) {
                 // more optimized than document->setPrevPage and then move view to bottom
                 Okular::DocumentViewport newViewport = d->document->viewport();
-                newViewport.pageNumber -= viewColumns();
+                newViewport.pageNumber = steppedPage(newViewport.pageNumber, -1);
                 if (newViewport.pageNumber < 0) {
                     newViewport.pageNumber = 0;
                 }
@@ -4416,13 +4430,32 @@ int PageView::viewColumns() const
     int vm = Okular::Settings::viewMode();
     if (vm == Okular::Settings::EnumViewMode::Single) {
         return 1;
-    } else if (vm == Okular::Settings::EnumViewMode::Facing || vm == Okular::Settings::EnumViewMode::FacingFirstCentered) {
+    } else if (vm == Okular::Settings::EnumViewMode::Facing || vm == Okular::Settings::EnumViewMode::FacingFirstCentered || vm == Okular::Settings::EnumViewMode::Sliding) {
         return 2;
     } else if (vm == Okular::Settings::EnumViewMode::Summary && d->document->pages() < Okular::Settings::viewColumns()) {
         return d->document->pages();
     } else {
         return Okular::Settings::viewColumns();
     }
+}
+
+bool PageView::isSlidingMode() const
+{
+    return Okular::Settings::viewMode() == Okular::Settings::EnumViewMode::Sliding;
+}
+
+int PageView::slidingFirstPage(int page) const
+{
+    // the last page is shown on the right side, so that both halves are always used
+    return qBound(0, page, qMax(0, (int)d->items.count() - 2));
+}
+
+int PageView::steppedPage(int page, int steps) const
+{
+    if (isSlidingMode()) {
+        return slidingFirstPage(slidingFirstPage(page) + steps);
+    }
+    return page + steps * viewColumns();
 }
 
 void PageView::center(int cx, int cy, bool smoothMove)
@@ -4645,6 +4678,10 @@ void PageView::updateSmoothScrollAnimationSpeed()
 
 bool PageView::getContinuousMode() const
 {
+    // sliding mode always shows just one pair of pages
+    if (isSlidingMode()) {
+        return false;
+    }
     return d->aViewContinuous ? d->aViewContinuous->isChecked() : Okular::Settings::viewContinuous();
 }
 
@@ -4757,6 +4794,14 @@ void PageView::slotRelayoutPages()
 
     if (d->aFitWindowToPage) {
         d->aFitWindowToPage->setEnabled(!continuousView && singlePageViewMode);
+    }
+    if (d->aViewContinuous) {
+        d->aViewContinuous->setEnabled(!isSlidingMode());
+    }
+
+    if (isSlidingMode()) {
+        relayoutSlidingPages();
+        return;
     }
 
     // set all items geometry and resize contents. handle 'continuous' and 'single' modes separately
@@ -4873,6 +4918,54 @@ void PageView::slotRelayoutPages()
     delete[] colWidth;
     delete[] rowHeight;
 
+    finishRelayout(fullWidth, fullHeight);
+}
+
+void PageView::relayoutSlidingPages()
+{
+    const int pageCount = d->items.count();
+    const int viewportWidth = viewport()->width(), viewportHeight = viewport()->height();
+
+    // the current page is on the left, the following one on the right; moving
+    // by one page drops the left page and brings in a new one on the right
+    const int firstPage = slidingFirstPage(d->document->currentPage());
+    const int lastPage = qMin(firstPage + 1, pageCount - 1);
+
+    // all pages get the same size as in facing mode, so the pixmaps stay valid while moving
+    const int colWidth = viewportWidth / 2;
+    int pairWidth = 0, pairHeight = 0;
+    for (PageViewItem *item : std::as_const(d->items)) {
+        updateItemSize(item, colWidth - kcolWidthMargin, viewportHeight - krowHeightMargin);
+        if (item->pageNumber() >= firstPage && item->pageNumber() <= lastPage) {
+            pairWidth = qMax(pairWidth, item->croppedWidth() + kcolWidthMargin);
+            pairHeight = qMax(pairHeight, item->croppedHeight() + krowHeightMargin);
+        }
+    }
+
+    const int fullWidth = qMax(colWidth, pairWidth) * 2;
+    const int fullHeight = pairHeight;
+    const int insertY = fullHeight < viewportHeight ? (viewportHeight - fullHeight) / 2 : 0;
+
+    for (PageViewItem *item : std::as_const(d->items)) {
+        const int pageNumber = item->pageNumber();
+        if (pageNumber >= firstPage && pageNumber <= lastPage) {
+            // page edges 'touch' the center of the viewport
+            const bool onLeftSide = (pageNumber == firstPage) != Okular::Settings::rtlReadingDirection();
+            const int actualX = onLeftSide ? (fullWidth / 2) - item->croppedWidth() - 1 : (fullWidth / 2) + 1;
+            item->moveTo(actualX, insertY + (fullHeight - item->croppedHeight()) / 2);
+            item->setVisible(true);
+        } else {
+            item->moveTo(0, 0);
+            item->setVisible(false);
+        }
+        item->setFormWidgetsVisible(d->m_formsVisible);
+    }
+
+    finishRelayout(fullWidth, fullHeight);
+}
+
+void PageView::finishRelayout(int fullWidth, int fullHeight)
+{
     // 3) reset dirty state
     d->dirtyLayout = false;
 
@@ -5044,7 +5137,8 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
 
         // look for the item closest to viewport center and the relative
         // position between the item and the viewport center
-        if (isEvent) {
+        // in sliding mode the left page stays the current one, else the pair would move
+        if (isEvent && (!isSlidingMode() || i->pageNumber() == slidingFirstPage(d->document->currentPage()))) {
             const QRect &geometry = i->croppedGeometry();
             // compute distance between item center and viewport center (slightly moved left)
             const double distance = hypot((geometry.left() + geometry.right()) / 2.0 - (viewportCenterX - 4), (geometry.top() + geometry.bottom()) / 2.0 - viewportCenterY);
@@ -5475,7 +5569,7 @@ void PageView::slotScrollUp(int nSteps)
         // Since we are in single page mode and at the top of the page, go to previous page.
         // setViewport() is more optimized than document->setPrevPage and then move view to bottom.
         Okular::DocumentViewport newViewport = d->document->viewport();
-        newViewport.pageNumber -= viewColumns();
+        newViewport.pageNumber = steppedPage(newViewport.pageNumber, -1);
         if (newViewport.pageNumber < 0) {
             newViewport.pageNumber = 0;
         }
@@ -5499,7 +5593,7 @@ void PageView::slotScrollDown(int nSteps)
         // Since we are in single page mode and at the bottom of the page, go to next page.
         // setViewport() is more optimized than document->setNextPage and then move view to top
         Okular::DocumentViewport newViewport = d->document->viewport();
-        newViewport.pageNumber += viewColumns();
+        newViewport.pageNumber = steppedPage(newViewport.pageNumber, 1);
         if (newViewport.pageNumber >= (int)d->items.count()) {
             newViewport.pageNumber = d->items.count() - 1;
         }

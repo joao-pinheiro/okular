@@ -353,6 +353,7 @@
     <choice name="Facing" />
     <choice name="FacingFirstCentered" />
     <choice name="Summary" />
+    <choice name="Sliding" />
    </choices>
   </entry>
   <entry key="TrimMode" type="Enum" >
