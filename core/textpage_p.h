@@ -35,6 +35,12 @@ typedef bool (*TextComparisonFunction)(QStringView from, const QStringView to);
  */
 typedef QList<RegionText> RegionTextList;
 
+// A match with the area findText() returned; the area is owned by whoever holds the TextMatch.
+struct TextMatch {
+    RegularAreaRect *area = nullptr;
+    SearchMatch match;
+};
+
 class TextPagePrivate
 {
 public:
@@ -54,6 +60,9 @@ public:
      * that textselection works fine
      */
     void correctTextOrder();
+
+    /** The matrix search results are transformed with: the page's rotation, or the identity when no page is attached. */
+    QTransform searchMatrix() const;
 
     // variables those can be accessed directly from TextPage
     TextEntity::List m_words;

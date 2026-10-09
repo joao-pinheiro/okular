@@ -70,7 +70,7 @@ PresentationSearchBar::PresentationSearchBar(Okular::Document *document, QWidget
     m_search->setSearchMinimumLength(0);
     m_search->setSearchType(Okular::Document::NextMatch);
     m_search->setSearchId(PRESENTATION_SEARCH_ID);
-    m_search->setSearchColor(qRgb(255, 255, 64));
+    m_search->setSearchColor(SearchMatchColor);
     m_search->setSearchMoveViewport(true);
     lay->addWidget(m_search);
 

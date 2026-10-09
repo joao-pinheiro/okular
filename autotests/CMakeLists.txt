@@ -74,6 +74,20 @@ ecm_add_test(searchtest.cpp
     LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore
 )
 
+if(BUILD_DESKTOP)
+    ecm_add_test(searchresultstest.cpp
+        TEST_NAME "searchresultstest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart KF6::I18n
+    )
+endif()
+
+if(Poppler_Qt6_FOUND AND BUILD_DESKTOP)
+    ecm_add_test(searchresultspaneltest.cpp
+        TEST_NAME "searchresultspaneltest"
+        LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore okularpart KF6::I18n
+    )
+endif()
+
 ecm_add_test(annotationstest.cpp
     TEST_NAME "annotationstest"
     LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore

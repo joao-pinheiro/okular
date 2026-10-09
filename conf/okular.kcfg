@@ -395,6 +395,17 @@
    <default>true</default>
   </entry>
  </group>
+ <group name="Search Panel" >
+  <entry key="SearchPanelCaseSensitive" type="Bool">
+   <default>false</default>
+  </entry>
+  <entry key="SearchPanelFromCurrentPage" type="Bool">
+   <default>true</default>
+  </entry>
+  <entry key="SearchPanelFindAsYouType" type="Bool">
+   <default>true</default>
+  </entry>
+ </group>
  <group name="Dlg Accessibility" >
   <entry key="HighlightImages" type="Bool" >
    <default>false</default>

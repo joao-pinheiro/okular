@@ -15,6 +15,7 @@
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <QApplication>
+#include <QKeyEvent>
 #include <QLayout>
 #include <QTimer>
 
@@ -40,6 +41,7 @@ SearchLineEdit::SearchLineEdit(QWidget *parent, Okular::Document *document)
     connect(m_inputDelayTimer, &QTimer::timeout, this, &SearchLineEdit::startSearch);
 
     connect(this, &SearchLineEdit::textChanged, this, &SearchLineEdit::slotTextChanged);
+    connect(this, &SearchLineEdit::returnKeyPressed, this, &SearchLineEdit::slotReturnPressed);
     connect(document, &Okular::Document::searchFinished, this, &SearchLineEdit::searchFinished);
 }
 
@@ -66,15 +68,7 @@ void SearchLineEdit::setSearchType(Okular::Document::SearchType type)
         return;
     }
 
-    disconnect(this, &SearchLineEdit::returnKeyPressed, this, &SearchLineEdit::slotReturnPressed);
-
     m_searchType = type;
-
-    // Only connect Enter for next/prev searches, the rest of searches are document global so
-    // next/prev search does not make sense for them
-    if (m_searchType == Okular::Document::NextMatch || m_searchType == Okular::Document::PreviousMatch) {
-        connect(this, &SearchLineEdit::returnKeyPressed, this, &SearchLineEdit::slotReturnPressed);
-    }
 
     if (!m_changed) {
         m_changed = (m_searchType != Okular::Document::NextMatch && m_searchType != Okular::Document::PreviousMatch);
@@ -182,9 +176,14 @@ void SearchLineEdit::findPrev()
 
 void SearchLineEdit::slotTextChanged(const QString &text)
 {
-    Q_UNUSED(text);
-
     prepareLineEditForSearch();
+
+    // an emptied field stops the search at once, not after the typing delay or on Return
+    if (text.isEmpty()) {
+        m_inputDelayTimer->stop();
+        resetSearch();
+        return;
+    }
 
     if (m_findAsYouType) {
         restartSearch();
@@ -209,11 +208,24 @@ void SearchLineEdit::prepareLineEditForSearch()
     setPalette(pal);
 }
 
+void SearchLineEdit::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        m_returnModifiers = event->modifiers();
+    }
+    KLineEdit::keyPressEvent(event);
+}
+
 void SearchLineEdit::slotReturnPressed(const QString &text)
 {
     Q_UNUSED(text);
 
-    auto activeModifiers = QApplication::keyboardModifiers();
+    // the Google-type filters have no match to step through
+    if (m_searchType == Okular::Document::GoogleAll || m_searchType == Okular::Document::GoogleAny) {
+        return;
+    }
+
+    const Qt::KeyboardModifiers activeModifiers = m_returnModifiers;
 
     // So far unsupported modifiers.
     // We might want to do something with them in the future, but let's now don't
@@ -223,7 +235,21 @@ void SearchLineEdit::slotReturnPressed(const QString &text)
 
     m_inputDelayTimer->stop();
     prepareLineEditForSearch();
-    if ((activeModifiers & ~Qt::KeypadModifier) == Qt::ShiftModifier) {
+    const bool backwards = (activeModifiers & ~Qt::KeypadModifier) == Qt::ShiftModifier;
+
+    if (m_searchType == Okular::Document::AllDocument) {
+        // the results are already collected: step through them, unless something changed
+        if (m_changed) {
+            startSearch();
+        } else if (backwards) {
+            Q_EMIT previousResultRequested();
+        } else {
+            Q_EMIT nextResultRequested();
+        }
+        return;
+    }
+
+    if (backwards) {
         m_searchType = Okular::Document::PreviousMatch;
         findPrev();
     } else {

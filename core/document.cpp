@@ -1760,13 +1760,11 @@ void DocumentPrivate::doProcessSearchMatch(RegularAreaRect *match, RunningSearch
     delete pagesToNotify;
 }
 
-void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<RegularAreaRect *>> *pageMatches, int currentPage, int searchID)
+void DocumentPrivate::doContinueAllDocumentSearch(int startPage, int scannedPages, int generation, int searchID, bool foundAMatch)
 {
     RunningSearch *search = m_searches.value(searchID);
 
     if (m_searchCancelled || !search) {
-        typedef QList<RegularAreaRect *> Matches;
-
         QApplication::restoreOverrideCursor();
 
         if (search) {
@@ -1774,79 +1772,96 @@ void DocumentPrivate::doContinueAllDocumentSearch(QSet<int> *pagesToNotify, QHas
         }
 
         Q_EMIT m_parent->searchFinished(searchID, Document::SearchCancelled);
-        for (const Matches &mv : std::as_const(*pageMatches)) {
-            qDeleteAll(mv);
-        }
-        delete pageMatches;
-        delete pagesToNotify;
         return;
     }
 
-    if (currentPage < m_pagesVector.count()) {
-        // get page (from the first to the last)
+    // A newer search under this id has taken over: drop out without a word.
+    // The newer scan owns the reporting now, and saying anything here would
+    // double count it. The generation lives outside the RunningSearch, so this
+    // holds even when a restart went through resetSearch() and this tick found
+    // a freshly recreated struct above.
+    if (m_searchGenerations.value(searchID, -1) != generation) {
+        QApplication::restoreOverrideCursor();
+        return;
+    }
+
+    if (scannedPages < m_pagesVector.count()) {
+        // walk outward from startPage, alternating a page after with a page
+        // before, so the pages nearest the reader are reported first
+        const int currentPage = pageAtScanIndex(startPage, scannedPages);
         Page *page = m_pagesVector.at(currentPage);
 
         // request search page if needed
         if (!page->hasTextPage()) {
-            int pageNumber = page->number(); // redundant? is it == currentPage ?
-            m_parent->requestTextPage(pageNumber);
+            m_parent->requestTextPage(page->number());
         }
 
-        // loop on a page adding highlights for all found items
-        RegularAreaRect *lastMatch = nullptr;
-        while (true) {
-            if (lastMatch) {
-                lastMatch = page->findText(searchID, search->cachedString, NextResult, search->cachedCaseSensitivity, lastMatch);
-            } else {
-                lastMatch = page->findText(searchID, search->cachedString, FromTop, search->cachedCaseSensitivity);
-            }
-
-            if (!lastMatch) {
-                break;
-            }
-
-            // add highlight rect to the matches map
-            (*pageMatches)[page].append(lastMatch);
+        // every match on the page, each with the line it sits on
+        QList<TextMatch> matches;
+        if (TextPage *textPage = page->d->m_text) {
+            matches = textPage->findAllWithAreas(searchID, search->cachedString, search->cachedCaseSensitivity);
         }
-        delete lastMatch;
 
-        QTimer::singleShot(0, m_parent, [this, pagesToNotify, pageMatches, currentPage, searchID] { doContinueAllDocumentSearch(pagesToNotify, pageMatches, currentPage + 1, searchID); });
+        // Highlight the page's matches and report them now rather than once the
+        // whole document has been scanned: a caller showing results as they
+        // arrive would otherwise send the reader to a match that is not yet
+        // marked on the page.
+        QList<SearchMatch> reported;
+        if (!matches.isEmpty()) {
+            reported.reserve(matches.count());
+            for (const TextMatch &match : std::as_const(matches)) {
+                reported.append(match.match);
+                page->d->setHighlight(*match.area, search->cachedColor, searchID);
+                delete match.area;
+            }
+            search->highlightedPages.insert(currentPage);
+            foundAMatch = true;
+            for (DocumentObserver *observer : std::as_const(m_observers)) {
+                observer->notifyPageChanged(currentPage, DocumentObserver::Highlights);
+            }
+        }
+        // A directly connected slot can cancel or reset this search from inside
+        // the emit; the next tick re-reads that state before touching the search.
+        Q_EMIT m_parent->searchPageScanned(searchID, currentPage, reported);
+
+        QTimer::singleShot(0, m_parent, [this, startPage, scannedPages, generation, searchID, foundAMatch] { doContinueAllDocumentSearch(startPage, scannedPages + 1, generation, searchID, foundAMatch); });
     } else {
         // reset cursor to previous shape
         QApplication::restoreOverrideCursor();
 
         search->isCurrentlySearching = false;
-        bool foundAMatch = pageMatches->count() != 0;
-        for (auto [key, value] : pageMatches->asKeyValueRange()) {
-            for (RegularAreaRect *&match : value) {
-                key->d->setHighlight(*match, search->cachedColor, searchID);
-                delete match;
-                match = nullptr;
-            }
-            search->highlightedPages.insert(key->number());
-            pagesToNotify->insert(key->number());
-        }
 
         for (DocumentObserver *observer : std::as_const(m_observers)) {
             observer->notifySetup(m_pagesVector, 0);
         }
 
-        // notify observers about highlights changes
-        for (int pageNumber : std::as_const(*pagesToNotify)) {
-            for (DocumentObserver *observer : std::as_const(m_observers)) {
-                observer->notifyPageChanged(pageNumber, DocumentObserver::Highlights);
-            }
-        }
-
+        // the matches were highlighted, notified and freed page by page while scanning
         if (foundAMatch) {
             Q_EMIT m_parent->searchFinished(searchID, Document::MatchFound);
         } else {
             Q_EMIT m_parent->searchFinished(searchID, Document::NoMatchFound);
         }
-
-        delete pageMatches;
-        delete pagesToNotify;
     }
+}
+
+int DocumentPrivate::pageAtScanIndex(int startPage, int index) const
+{
+    if (index == 0) {
+        return startPage;
+    }
+    // Alternate a page after with a page before, so the pages nearest the
+    // reader come first on both sides; once the shorter side runs out, the
+    // rest of the longer side follows in order.
+    const int pageCount = m_pagesVector.count();
+    const int forwardCount = pageCount - 1 - startPage; // pages after startPage
+    const int backwardCount = startPage;                // pages before startPage
+    const int alternating = 2 * qMin(forwardCount, backwardCount);
+    if (index <= alternating) {
+        const int distance = (index + 1) / 2;
+        return index % 2 == 1 ? startPage + distance : startPage - distance;
+    }
+    const int rest = index - alternating;
+    return forwardCount > backwardCount ? startPage + backwardCount + rest : startPage - forwardCount - rest;
 }
 
 void DocumentPrivate::doContinueGooglesDocumentSearch(QSet<int> *pagesToNotify, QHash<Page *, QList<MatchColor>> *pageMatches, int currentPage, int searchID, const QStringList &words)
@@ -2209,6 +2224,7 @@ Document::Document(QWidget *widget)
     connect(d->m_undoStack, &QUndoStack::cleanChanged, this, &Document::undoHistoryCleanChanged);
 
     qRegisterMetaType<Okular::FontInfo>();
+    qRegisterMetaType<QList<Okular::SearchMatch>>();
 }
 
 Document::~Document()
@@ -2684,6 +2700,7 @@ void Document::closeDocument()
     // clear 'running searches' descriptors
     qDeleteAll(d->m_searches);
     d->m_searches.clear();
+    d->m_pagesWithHighlightedAreas.clear();
 
     // clear the visible areas and notify the observers
     qDeleteAll(d->m_pageRects);
@@ -3775,10 +3792,20 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
 
     // 1. ALLDOC - process all document marking pages
     if (type == AllDocument) {
-        QHash<Page *, QList<RegularAreaRect *>> *pageMatches = new QHash<Page *, QList<RegularAreaRect *>>;
+        // The scan notifies each page as it reports it; all that is left for the
+        // set collected above is the pages a previous search under this id had
+        // highlighted, so repaint those right away rather than carry the set along.
+        for (const int pageNumber : std::as_const(*pagesToNotify)) {
+            foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
+        }
+        delete pagesToNotify;
 
         // search and highlight 'text' (as a solid phrase) on all pages
-        QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID] { d->doContinueAllDocumentSearch(pagesToNotify, pageMatches, 0, searchID); });
+        // begin at the page being read unless the caller asked to start from the top
+        const int startPage = fromStart ? 0 : qBound(0, int(currentPage()), qMax(0, d->m_pagesVector.count() - 1));
+        const int generation = ++d->m_nextSearchGeneration;
+        d->m_searchGenerations[searchID] = generation;
+        QTimer::singleShot(0, this, [this, startPage, generation, searchID] { d->doContinueAllDocumentSearch(startPage, 0, generation, searchID, false); });
     }
     // 2. NEXTMATCH - find next matching item (or start from top)
     // 3. PREVMATCH - find previous matching item (or start from bottom)
@@ -3826,6 +3853,43 @@ void Document::searchText(int searchID, const QString &text, bool fromStart, Qt:
 
         // search and highlight every word in 'text' on all pages
         QTimer::singleShot(0, this, [this, pagesToNotify, pageMatches, searchID, words] { d->doContinueGooglesDocumentSearch(pagesToNotify, pageMatches, 0, searchID, words); });
+    }
+}
+
+void Document::setHighlightedArea(int searchID, int pageNumber, const NormalizedRect &rect, const QColor &color)
+{
+    clearHighlightedAreas(searchID);
+
+    if (pageNumber < 0 || pageNumber >= d->m_pagesVector.count()) {
+        return;
+    }
+
+    Page *page = d->m_pagesVector.at(pageNumber);
+    RegularAreaRect area;
+    area.append(rect);
+    page->d->setHighlight(area, color, searchID);
+    d->m_pagesWithHighlightedAreas[searchID].insert(pageNumber);
+    foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
+}
+
+void Document::clearHighlightedAreas(int searchID)
+{
+    // only the pages recorded under this id can hold its highlights
+    QSet<int> pageNumbers = d->m_pagesWithHighlightedAreas.take(searchID);
+    if (const RunningSearch *search = d->m_searches.value(searchID)) {
+        pageNumbers |= search->highlightedPages;
+    }
+    for (const int pageNumber : std::as_const(pageNumbers)) {
+        // a recorded page can be gone: swapBackingFile() may have shrunk the document
+        if (pageNumber < 0 || pageNumber >= d->m_pagesVector.count()) {
+            continue;
+        }
+        Page *page = d->m_pagesVector.at(pageNumber);
+        if (!page->hasHighlights(searchID)) {
+            continue;
+        }
+        page->d->deleteHighlights(searchID);
+        foreachObserver(notifyPageChanged(pageNumber, DocumentObserver::Highlights));
     }
 }
 
