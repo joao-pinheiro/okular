@@ -3196,9 +3196,14 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
                             d->tts()->say(text);
 #endif
                         } else if (choice == httpLink) {
-                            auto *job = new KIO::OpenUrlJob(QUrl(url));
-                            job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, this));
-                            job->start();
+                            const QUrl parsedUrl(url);
+                            if (qEnvironmentVariableIsEmpty("KDE_FULL_SESSION")) {
+                                QDesktopServices::openUrl(parsedUrl);
+                            } else {
+                                auto *job = new KIO::OpenUrlJob(parsedUrl);
+                                job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, this));
+                                job->start();
+                            }
                         }
                     }
 
