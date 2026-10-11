@@ -5723,6 +5723,17 @@ QString DocumentViewport::toString() const
     return s;
 }
 
+QString DocumentViewport::toUrlFragment() const
+{
+    const QString serialized = toString();
+    // Without a ';' the string is a bare page number, which would be read
+    // back as one-based, so say what is meant instead.
+    if (isValid() && !serialized.contains(QLatin1Char(';'))) {
+        return QStringLiteral("page=%1").arg(pageNumber + 1);
+    }
+    return serialized;
+}
+
 bool DocumentViewport::isValid() const
 {
     return pageNumber >= 0;

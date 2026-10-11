@@ -1409,6 +1409,17 @@ public:
     QString toString() const;
 
     /**
+     * Returns the viewport as a URL fragment.
+     *
+     * Like toString(), except that a bare page number is never produced:
+     * toString() counts pages from zero, while a bare URL fragment denotes
+     * a one-based page, so the two cannot be used interchangeably.
+     *
+     * @since 26.12
+     */
+    QString toUrlFragment() const;
+
+    /**
      * Returns whether the viewport is valid.
      */
     bool isValid() const;
