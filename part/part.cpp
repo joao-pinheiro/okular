@@ -3946,7 +3946,9 @@ void Part::setEditorCmd(const QString &editorCmd)
 
 void Part::slotOpenContainingFolder()
 {
-    KIO::highlightInFileManager({QUrl(localFilePath())});
+    if (url().isLocalFile()) {
+        KIO::highlightInFileManager({url()});
+    }
 }
 
 void Part::slotCopyAnnotation()
