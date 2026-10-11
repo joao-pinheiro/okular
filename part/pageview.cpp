@@ -1282,7 +1282,9 @@ void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
                 w->setVisibility(false);
                 w->setCanBeFilled(allowfillforms);
                 item->formWidgets().insert(w);
-                hasformwidgets = true;
+                if (w->formField()->type() != Okular::FormField::FieldType::FormSignature) {
+                    hasformwidgets = true;
+                }
             }
         }
 
