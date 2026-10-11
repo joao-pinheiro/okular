@@ -134,7 +134,9 @@ public:
 
     void saveViewsInfo(View *view, QDomElement &e) const;
     QUrl giveAbsoluteUrl(const QString &fileName) const;
-    bool openRelativeFile(const QString &fileName);
+    // destination is where in the opened file to go: a named destination, or
+    // a viewport in DocumentViewport::toUrlFragment() form. Empty for none.
+    bool openRelativeFile(const QString &fileName, const QString &destination = QString());
     Generator *loadGeneratorLibrary(const KPluginMetaData &service);
     void loadServiceList(const QList<KPluginMetaData> &offers);
     void cacheExportFormats();

@@ -815,17 +815,26 @@ QUrl DocumentPrivate::giveAbsoluteUrl(const QString &fileName) const
     return QUrl(KIO::upUrl(m_url).toString() + fileName);
 }
 
-bool DocumentPrivate::openRelativeFile(const QString &fileName)
+bool DocumentPrivate::openRelativeFile(const QString &fileName, const QString &destination)
 {
-    const QUrl newUrl = giveAbsoluteUrl(fileName);
+    QUrl newUrl = giveAbsoluteUrl(fileName);
     if (newUrl.isEmpty()) {
+        qCWarning(OkularCoreDebug) << "Could not resolve" << fileName << "relative to" << m_url;
         return false;
+    }
+
+    if (!destination.isEmpty()) {
+        newUrl.setFragment(destination);
     }
 
     qCDebug(OkularCoreDebug).nospace() << "openRelativeFile: '" << newUrl << "'";
 
     Q_EMIT m_parent->openUrl(newUrl);
-    return m_url == newUrl;
+
+    // m_url never carries a fragment: whoever loads the document strips it.
+    QUrl loadedUrl = newUrl;
+    loadedUrl.setFragment(QString());
+    return m_url == loadedUrl;
 }
 
 Generator *DocumentPrivate::loadGeneratorLibrary(const KPluginMetaData &service)
@@ -4072,8 +4081,16 @@ void Document::processAction(const Action *action)
 
         // first open filename if link is pointing outside this document
         const QString filename = go->fileName();
-        if (go->isExternal() && !d->openRelativeFile(filename)) {
-            qCWarning(OkularCoreDebug).nospace() << "Action: Error opening '" << filename << "'.";
+        // m_nextDocumentViewport only reaches a document loaded into this
+        // object, so carry the destination on the URL as well.
+        QString destination = go->destinationName();
+        if (destination.isEmpty()) {
+            destination = go->destViewport().toUrlFragment();
+        }
+        if (go->isExternal() && !d->openRelativeFile(filename, destination)) {
+            // The pending viewport describes the target, so it is not ours to keep.
+            d->m_nextDocumentViewport = DocumentViewport();
+            d->m_nextDocumentDestination = QString();
             break;
         } else {
             const DocumentViewport nextViewport = d->nextDocumentViewport();
@@ -5721,6 +5738,17 @@ QString DocumentViewport::toString() const
         s += QStringLiteral(";AF1:") + (autoFit.width ? QLatin1Char('T') : QLatin1Char('F')) + QLatin1Char(':') + (autoFit.height ? QLatin1Char('T') : QLatin1Char('F'));
     }
     return s;
+}
+
+QString DocumentViewport::toUrlFragment() const
+{
+    const QString serialized = toString();
+    // Without a ';' the string is a bare page number, which would be read
+    // back as one-based, so say what is meant instead.
+    if (isValid() && !serialized.contains(QLatin1Char(';'))) {
+        return QStringLiteral("page=%1").arg(pageNumber + 1);
+    }
+    return serialized;
 }
 
 bool DocumentViewport::isValid() const

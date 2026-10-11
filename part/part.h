@@ -151,6 +151,9 @@ public:
     bool openNewFilesInTabs() const override;
     QWidget *getSideContainer() const override;
     Q_INVOKABLE bool activateTabIfAlreadyOpenFile() const;
+    /** Move an already-open document to the place a URL fragment denotes:
+     * a page number, "page=N", a serialized viewport, or a named destination. */
+    Q_INVOKABLE void goToUrlFragment(const QString &fragment);
 
     void setModified(bool modified) override;
 
