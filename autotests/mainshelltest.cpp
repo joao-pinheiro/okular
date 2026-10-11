@@ -109,6 +109,7 @@ private Q_SLOTS:
     void testOpenInvalidFiles_data();
     void testOpenInvalidFiles();
     void testOpenTheSameFileSeveralTimes();
+    void testOpenTheSameFileAtAPage();
 
 private:
 };
@@ -168,7 +169,8 @@ void MainShellTest::init()
     // Clean docdatas
     const QList<QUrl> urls = {QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/file1.pdf")),
                               QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/tocreload.pdf")),
-                              QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/contents.epub"))};
+                              QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/contents.epub")),
+                              QUrl::fromUserInput(QStringLiteral("file://" KDESRCDIR "data/simple-multipage.pdf"))};
 
     for (const QUrl &url : urls) {
         QFileInfo fileReadTest(url.toLocalFile());
@@ -695,6 +697,40 @@ void MainShellTest::testOpenTheSameFileSeveralTimes()
     QVERIFY(shell->m_tabs.size() == 4);
 
     Okular::Settings::self()->setSwitchToTabIfOpen(true);
+}
+
+void MainShellTest::testOpenTheSameFileAtAPage()
+{
+    QString options = ShellUtils::serializeOptions(false, false, false, false, false, QString(), QString(), QString());
+
+    Okular::Settings::self()->setShellOpenFileInTabs(true);
+    Okular::Status status = Okular::main(QStringList(), options);
+    QCOMPARE(status, Okular::Success);
+
+    Shell *shell = findShell();
+    QVERIFY(shell);
+
+    const QString path = QStringLiteral(KDESRCDIR "data/simple-multipage.pdf");
+    const QUrl file = ShellUtils::urlFromArg(path, ShellUtils::qfileExistFunc(), QString());
+    const QUrl filePage4 = ShellUtils::urlFromArg(path, ShellUtils::qfileExistFunc(), QStringLiteral("4"));
+
+    shell->openUrl(file);
+    QCOMPARE(shell->m_tabs.size(), 1);
+
+    Okular::Part *part = dynamic_cast<Okular::Part *>(shell->m_tabs[0].part);
+    QVERIFY(part);
+    QCOMPARE(partDocument(part)->currentPage(), 0u);
+
+    // Asking for a page of a file that is already open reuses its tab and
+    // moves it there; it must not open a second tab on the same file.
+    shell->openUrl(filePage4);
+    QCOMPARE(shell->m_tabs.size(), 1);
+    QCOMPARE(partDocument(part)->currentPage(), 3u);
+
+    // Without a page there is nothing to go to, so the tab stays put.
+    shell->openUrl(file);
+    QCOMPARE(shell->m_tabs.size(), 1);
+    QCOMPARE(partDocument(part)->currentPage(), 3u);
 }
 
 void MainShellTest::testMiddleButtonCloseUndo()

@@ -961,12 +961,22 @@ void Shell::openNewTab(const QUrl &url, const QString &serializedOptions)
     bool activateTabIfAlreadyOpen;
     QMetaObject::invokeMethod(activePart, "activateTabIfAlreadyOpenFile", Q_RETURN_ARG(bool, activateTabIfAlreadyOpen));
 
+    // Compared against part->url(), which never carries a fragment, and
+    // recorded in the recent list, which should not.
+    QUrl urlWithoutFragment = url;
+    urlWithoutFragment.setFragment(QString());
+
     if (activateTabIfAlreadyOpen) {
-        const int tabIndex = findTabIndex(url);
+        const int tabIndex = findTabIndex(urlWithoutFragment);
 
         if (tabIndex >= 0) {
             setActiveTab(tabIndex);
-            m_recent->addUrl(url);
+            // A fragment asks for a place in the document; without one, leave
+            // the tab where it is.
+            if (url.hasFragment()) {
+                QMetaObject::invokeMethod(m_tabs[tabIndex].part, "goToUrlFragment", Q_ARG(QString, url.fragment(QUrl::FullyDecoded)));
+            }
+            m_recent->addUrl(urlWithoutFragment);
             return;
         }
     }
@@ -994,11 +1004,11 @@ void Shell::openNewTab(const QUrl &url, const QString &serializedOptions)
     setActiveTab(m_tabs.size() - 1);
 
     if (part->openUrl(url)) {
-        m_recent->addUrl(url);
+        m_recent->addUrl(urlWithoutFragment);
     } else {
         setActiveTab(previousActiveTab);
         closeTab(m_tabs.size() - 1);
-        m_recent->removeUrl(url);
+        m_recent->removeUrl(urlWithoutFragment);
     }
 }
 

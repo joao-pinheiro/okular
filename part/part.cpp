@@ -110,6 +110,7 @@
 #include "extensions.h"
 #include "fileprinterpreview.h"
 #include "findbar.h"
+#include "gui/debug_ui.h"
 #include "gui/signatureguiutils.h"
 #include "layers.h"
 #include "minibar.h"
@@ -1130,6 +1131,43 @@ void Part::slotHandleActivatedSourceReference(const QString &absFileName, int li
     }
 }
 
+// Resolve a URL fragment to a viewport; an invalid one means a named
+// destination. "N" and "page=N" are one-based; a serialized viewport is
+// zero-based and is recognised only by its ';', since without one it is
+// indistinguishable from "N".
+static Okular::DocumentViewport viewportFromFragment(const QString &dest)
+{
+    if (dest.contains(QLatin1Char(';'))) {
+        const Okular::DocumentViewport serialized(dest);
+        if (serialized.isValid()) {
+            return serialized;
+        }
+    }
+
+    bool ok = true;
+    Okular::DocumentViewport vp;
+    int page = dest.toInt(&ok);
+
+    if (!ok) {
+        const QList<QStringView> parameters = QStringView(dest).split(QLatin1Char('&'));
+        for (const QStringView parameter : parameters) {
+            if (parameter.startsWith(QLatin1String("page="), Qt::CaseInsensitive)) {
+                page = parameter.mid(5).toInt(&ok);
+            }
+        }
+    }
+
+    if (ok) {
+        vp.pageNumber = page - 1;
+        vp.rePos.enabled = true;
+        vp.rePos.normalizedX = 0;
+        vp.rePos.normalizedY = 0;
+        vp.rePos.pos = Okular::DocumentViewport::TopLeft;
+    }
+
+    return vp;
+}
+
 void Part::openUrlFromDocument(const QUrl &url)
 {
     if (m_embedMode == PrintPreviewMode) {
@@ -1138,6 +1176,7 @@ void Part::openUrlFromDocument(const QUrl &url)
 
     if (url.isLocalFile()) {
         if (!QFile::exists(url.toLocalFile())) {
+            qCWarning(OkularUiDebug).nospace() << "Could not open " << url << ": file does not exist";
             KMessageBox::error(widget(), i18n("Could not open '%1'. File does not exist", url.toDisplayString()));
             return;
         }
@@ -1145,9 +1184,17 @@ void Part::openUrlFromDocument(const QUrl &url)
         KIO::StatJob *statJob = KIO::stat(url, KIO::StatJob::SourceSide);
         KJobWidgets::setWindow(statJob, widget());
         if (!statJob->exec() || statJob->error()) {
+            qCWarning(OkularUiDebug).nospace() << "Could not open " << url << ": " << statJob->errorString();
             KMessageBox::error(widget(), i18n("Could not open '%1' (%2) ", url.toDisplayString(), statJob->errorString()));
             return;
         }
+    }
+
+    // Let the shell place it, as handleDroppedUrls() does, rather than loading
+    // it over the document the link was followed from. Otherwise, in place.
+    if (m_embedMode == NativeShellMode && openNewFilesInTabs()) {
+        Q_EMIT urlsDropped({url});
+        return;
     }
 
     Q_EMIT m_bExtension->openUrlNotify();
@@ -1155,21 +1202,53 @@ void Part::openUrlFromDocument(const QUrl &url)
     openUrl(url);
 }
 
+void Part::goToUrlFragment(const QString &fragment)
+{
+    if (fragment.isEmpty() || !m_document->isOpened()) {
+        return;
+    }
+
+    const Okular::DocumentViewport vp = viewportFromFragment(fragment);
+    if (vp.isValid()) {
+        m_document->setViewport(vp);
+        return;
+    }
+
+    // A named destination; the document is already open, so resolve it now.
+    const Okular::DocumentViewport named(m_document->metaData(QStringLiteral("NamedViewport"), fragment).toString());
+    if (named.isValid()) {
+        m_document->setViewport(named);
+    }
+}
+
 void Part::openUrlFromBookmarks(const QUrl &_url)
 {
     QUrl url = _url;
-    Okular::DocumentViewport vp(_url.fragment(QUrl::FullyDecoded));
-    if (vp.isValid()) {
-        m_document->setNextDocumentViewport(vp);
-    }
+    const Okular::DocumentViewport vp(_url.fragment(QUrl::FullyDecoded));
     url.setFragment(QString());
+
     if (m_document->currentDocument() == url) {
         if (vp.isValid()) {
             m_document->setViewport(vp);
         }
-    } else {
-        openUrl(url);
+        return;
     }
+
+    // A bookmark in another document is an open like any other. The fragment
+    // is rewritten because bookmarks store a raw viewport.
+    if (m_embedMode == NativeShellMode && openNewFilesInTabs()) {
+        QUrl tabUrl = url;
+        if (vp.isValid()) {
+            tabUrl.setFragment(vp.toUrlFragment());
+        }
+        Q_EMIT urlsDropped({tabUrl});
+        return;
+    }
+
+    if (vp.isValid()) {
+        m_document->setNextDocumentViewport(vp);
+    }
+    openUrl(url);
 }
 
 void Part::handleDroppedUrls(const QList<QUrl> &urls)
@@ -1793,24 +1872,8 @@ bool Part::openUrl(const QUrl &_url, bool swapInsteadOfOpening)
     if (url.hasFragment()) {
         m_urlWithFragment = _url;
         const QString dest = url.fragment(QUrl::FullyDecoded);
-        bool ok = true;
-        int page = dest.toInt(&ok);
-
-        if (!ok) {
-            const QList<QStringView> parameters = QStringView(dest).split(QLatin1Char('&'));
-            for (const QStringView parameter : parameters) {
-                if (parameter.startsWith(QLatin1String("page="), Qt::CaseInsensitive)) {
-                    page = parameter.mid(5).toInt(&ok);
-                }
-            }
-        }
-
-        if (ok) {
-            Okular::DocumentViewport vp(page - 1);
-            vp.rePos.enabled = true;
-            vp.rePos.normalizedX = 0;
-            vp.rePos.normalizedY = 0;
-            vp.rePos.pos = Okular::DocumentViewport::TopLeft;
+        const Okular::DocumentViewport vp = viewportFromFragment(dest);
+        if (vp.isValid()) {
             m_document->setNextDocumentViewport(vp);
         } else {
             m_document->setNextDocumentDestination(dest);
