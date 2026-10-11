@@ -2182,7 +2182,12 @@ void HighlightAnnotationPrivate::baseTransform(const QTransform &matrix)
 
     QMutableListIterator<HighlightAnnotation::Quad> it(m_highlightQuads);
     while (it.hasNext()) {
-        it.next().transform(matrix);
+        HighlightAnnotation::Quad &quad = it.next();
+        for (int i = 0; i < 4; ++i) {
+            NormalizedPoint newPoint = quad.point(i);
+            newPoint.transform(matrix);
+            quad.setPoint(newPoint, i);
+        }
     }
 }
 

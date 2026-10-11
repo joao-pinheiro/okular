@@ -836,15 +836,19 @@ public:
             selectedText = selectedText.simplified();
             ha->setContents(selectedText);
 
+            const int rotation = pg->rotation();
             for (const Okular::NormalizedRect &r : std::as_const(*selection)) {
                 Okular::HighlightAnnotation::Quad q;
                 q.setCapStart(false);
                 q.setCapEnd(false);
                 q.setFeather(1.0);
-                q.setPoint(Okular::NormalizedPoint(r.left, r.bottom), 0);
-                q.setPoint(Okular::NormalizedPoint(r.right, r.bottom), 1);
-                q.setPoint(Okular::NormalizedPoint(r.right, r.top), 2);
-                q.setPoint(Okular::NormalizedPoint(r.left, r.top), 3);
+                // Shift the corner indices by the number of quarter-turns so
+                // points 0 and 1 mark the text's bottom edge after insertion
+                // converts the quad back to unrotated page coordinates.
+                q.setPoint(Okular::NormalizedPoint(r.left, r.bottom), rotation);
+                q.setPoint(Okular::NormalizedPoint(r.right, r.bottom), (rotation + 1) % 4);
+                q.setPoint(Okular::NormalizedPoint(r.right, r.top), (rotation + 2) % 4);
+                q.setPoint(Okular::NormalizedPoint(r.left, r.top), (rotation + 3) % 4);
                 ha->highlightQuads().append(q);
             }
             ann = ha;
