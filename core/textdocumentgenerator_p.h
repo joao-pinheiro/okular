@@ -131,9 +131,10 @@ static void calculatePositions(QTextDocument *document, int page, int &start, in
     end = layout->hitTest(QPointF(margin, ((page + 1) * pageSize.height()) - margin), Qt::FuzzyHit);
 }
 
-static Okular::DocumentViewport calculateViewport(QTextDocument *document, const QTextBlock &block)
+static Okular::DocumentViewport calculateViewport(QTextDocument *document, const QTextBlock &block, int position = -1)
 {
     const QSizeF pageSize = document->pageSize();
+    Q_ASSERT(position < 0 || !block.isValid() || block.contains(position));
     const QRectF rect = document->documentLayout()->blockBoundingRect(block);
 
     // When the first line of a block does not fit in its page the layout moves the line to the
@@ -142,7 +143,10 @@ static Okular::DocumentViewport calculateViewport(QTextDocument *document, const
     double y = rect.y();
     const QTextLayout *layout = block.layout();
     if (layout && layout->lineCount() > 0) {
-        y += layout->lineAt(0).y();
+        // A position in the block is where the line that holds it is,
+        // which can be on a later page than the first line.
+        const QTextLine line = position < 0 ? layout->lineAt(0) : layout->lineForTextPosition(position - block.position());
+        y += line.y();
     }
 
     const int page = int(y / pageSize.height());

@@ -30,6 +30,7 @@ class TextDocumentViewportTest : public QObject
 
 private Q_SLOTS:
     void testViewportPointsAtFirstLine();
+    void testViewportPointsAtLineOfPosition();
 
 private:
     std::unique_ptr<QTextDocument> createDocument();
@@ -109,6 +110,50 @@ void TextDocumentViewportTest::testViewportPointsAtFirstLine()
     QVERIFY(blocksAfterFirstPage > 0);
     QVERIFY(blocksMovedToNextPage > 0);
     QVERIFY(blocksSplitOverPages > 0);
+}
+
+void TextDocumentViewportTest::testViewportPointsAtLineOfPosition()
+{
+    const std::unique_ptr<QTextDocument> document = createDocument();
+    const QAbstractTextDocumentLayout *layout = document->documentLayout();
+    const qreal pageHeight = document->pageSize().height();
+    QVERIFY(document->pageCount() >= 3);
+
+    ViewportConverter converter;
+    int linesAfterPageOfFirstLine = 0;
+    for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
+        const QRectF rect = layout->blockBoundingRect(block);
+        const QTextLayout *blockLayout = block.layout();
+        QVERIFY(blockLayout->lineCount() > 0);
+        const int pageOfFirstLine = int((rect.y() + blockLayout->lineAt(0).y()) / pageHeight);
+
+        for (int i = 0; i < blockLayout->lineCount(); ++i) {
+            const QTextLine line = blockLayout->lineAt(i);
+            // the first and the last position of the line; for the last line that is the end of the block
+            for (const int positionInBlock : {line.textStart(), line.textStart() + qMax(line.textLength() - 1, 0), i == blockLayout->lineCount() - 1 ? block.length() - 1 : line.textStart()}) {
+                const Okular::DocumentViewport viewport = converter.calculateViewport(document.get(), block.position() + positionInBlock);
+                QVERIFY(viewport.pageNumber >= 0);
+                QVERIFY(viewport.pageNumber < document->pageCount());
+                QVERIFY(viewport.rePos.enabled);
+                QVERIFY(viewport.rePos.normalizedY >= 0.0);
+                QVERIFY(viewport.rePos.normalizedY < 1.0);
+
+                // ask the layout what is at the place the viewport names (a bit inside the line),
+                // it has to be this line of this block
+                const QPointF target(rect.x() + 1, (viewport.pageNumber + viewport.rePos.normalizedY) * pageHeight + line.height() / 2);
+                const int hit = layout->hitTest(target, Qt::ExactHit);
+                const QByteArray where = QStringLiteral("block \"%1\" line %2 position %3 page %4 y %5").arg(block.text().left(20)).arg(i).arg(positionInBlock).arg(viewport.pageNumber).arg(viewport.rePos.normalizedY).toUtf8();
+                QVERIFY2(hit >= block.position() && hit < block.position() + block.length(), where.constData());
+                QVERIFY2(blockLayout->lineForTextPosition(hit - block.position()).lineNumber() == i, where.constData());
+
+                if (viewport.pageNumber > pageOfFirstLine) {
+                    ++linesAfterPageOfFirstLine;
+                }
+            }
+        }
+    }
+    // some paragraphs are split over two pages
+    QVERIFY(linesAfterPageOfFirstLine > 0);
 }
 
 QTEST_MAIN(TextDocumentViewportTest)

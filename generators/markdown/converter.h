@@ -41,8 +41,8 @@ public:
     QTextDocument *convertOpenFile();
 
 private:
-    void extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors);
-    void extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors);
+    void extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, int> &documentAnchors);
+    void extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, int> &documentAnchors);
     void convertImages(QTextFrame *parent, const QDir &dir, QTextDocument *textDocument);
     void convertImages(const QTextBlock &parent, const QDir &dir, QTextDocument *textDocument);
     void setImageSize(QTextImageFormat &format, const qreal specifiedWidth, const qreal specifiedHeight, const qreal originalWidth, const qreal originalHeight);

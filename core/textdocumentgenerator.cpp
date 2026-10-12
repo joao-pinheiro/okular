@@ -69,6 +69,11 @@ DocumentViewport TextDocumentConverter::calculateViewport(QTextDocument *documen
     return TextDocumentUtils::calculateViewport(document, block);
 }
 
+DocumentViewport TextDocumentConverter::calculateViewport(QTextDocument *document, int position)
+{
+    return TextDocumentUtils::calculateViewport(document, document->findBlock(position), position);
+}
+
 TextDocumentGenerator *TextDocumentConverter::generator() const
 {
     return d_ptr->mParent ? d_ptr->mParent->q_func() : nullptr;

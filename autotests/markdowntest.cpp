@@ -7,7 +7,10 @@
 #include <QTest>
 
 #include "../settings_core.h"
+#include "core/action.h"
+#include "core/area.h"
 #include "core/document.h"
+#include "core/global.h"
 #include "core/page.h"
 #include "generators/markdown/converter.h"
 #include <QMimeDatabase>
@@ -31,6 +34,10 @@ private Q_SLOTS:
     void testTableOfContents();
     void testSynopsis();
     void testSynopsisPages();
+    void testIssue4LinkToAnchorOnNextPageOfParagraph();
+    void testIssue4LinkToAnchorOnFirstPageOfParagraph();
+    void testIssue4LinkTargetIsLineOfAnchor();
+    void testIssue4LinkToAnchorAtStartOfBlock();
 
 private:
     void findImages(QTextFrame *parent, QList<QTextImageFormat> &images);
@@ -342,6 +349,227 @@ void MarkdownTest::testSynopsisPages()
     }
     // the headings do not all fit in the first page
     QVERIFY(previousPage > 0);
+
+    document.closeDocument();
+}
+
+// anchors-long.md: 12 paragraphs that start with the word PARAnn and hold the anchors earlyNN,
+// middleNN and lateNN, each on the word of the same name in upper case; two of the paragraphs
+// are longer than a page with a font of 8 points or more. 4 headings that start with the anchor headNN on the word HEADnn.
+// Before all that one link per line to every anchor, in the order of anchorsLongLinks().
+static QStringList anchorsLongLinks()
+{
+    QStringList links;
+    for (int paragraph = 1; paragraph <= 12; ++paragraph) {
+        for (const char *kind : {"EARLY", "MIDDLE", "LATE"}) {
+            links << QStringLiteral("%1%2").arg(QLatin1String(kind)).arg(paragraph, 2, 10, QLatin1Char('0'));
+        }
+    }
+    for (int heading = 1; heading <= 4; ++heading) {
+        links << QStringLiteral("HEAD%1").arg(heading, 2, 10, QLatin1Char('0'));
+    }
+    return links;
+}
+
+// The target of each internal link of the document, in the order the links are laid out
+static QList<Okular::DocumentViewport> linkTargets(const Okular::Document &document)
+{
+    QList<Okular::DocumentViewport> targets;
+    for (uint i = 0; i < document.pages(); ++i) {
+        QList<QPair<int, const Okular::GotoAction *>> linksOfPage; // top of the link, what it does
+        const QList<Okular::ObjectRect *> rects = document.page(i)->objectRects();
+        for (const Okular::ObjectRect *rect : rects) {
+            if (rect->objectType() != Okular::ObjectRect::Action) {
+                continue;
+            }
+            const Okular::Action *action = static_cast<const Okular::Action *>(rect->object());
+            if (action->actionType() != Okular::Action::Goto) {
+                continue;
+            }
+            linksOfPage.append({rect->boundingRect(10000, 10000).top(), static_cast<const Okular::GotoAction *>(action)});
+        }
+        std::sort(linksOfPage.begin(), linksOfPage.end(), [](const auto &left, const auto &right) { return left.first < right.first; });
+        for (const auto &link : std::as_const(linksOfPage)) {
+            targets.append(link.second->destViewport());
+        }
+    }
+    return targets;
+}
+
+static QStringList pageTexts(Okular::Document &document)
+{
+    QStringList texts;
+    for (uint i = 0; i < document.pages(); ++i) {
+        document.requestTextPage(i);
+        texts << document.page(i)->text();
+    }
+    return texts;
+}
+
+// The page whose text has the word, -1 if there is none
+static int pageShowing(const QStringList &texts, const QString &word)
+{
+    for (int i = 0; i < texts.size(); ++i) {
+        if (texts[i].contains(word)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// What is wrong when the target is not the line of the page that shows the word, nothing otherwise.
+// Which page shows the word comes from the text of the pages. Where on the page the word is gets
+// computed the way the target is, so this shows that the target is the line of the word, not
+// where that line is drawn: textdocumentviewporttest checks that.
+static QByteArray notAtLineOf(const Okular::Document &document, const Okular::DocumentViewport &target, int wordPage, const QString &word)
+{
+    const std::unique_ptr<Okular::RegularAreaRect> area(document.page(wordPage)->findText(0, word, Okular::FromTop, Qt::CaseSensitive));
+    if (!area || area->isEmpty()) {
+        return QStringLiteral("%1 was not found on page %2").arg(word).arg(wordPage).toUtf8();
+    }
+    const Okular::NormalizedRect wordRect = area->first();
+    // the target is the top of a line: the word is in that line when their tops are less than half its height apart
+    if (target.pageNumber == wordPage && qAbs(target.rePos.normalizedY - wordRect.top) < (wordRect.bottom - wordRect.top) / 2) {
+        return QByteArray();
+    }
+    return QStringLiteral("the link to %1 opens page %2 at %3, the word is on page %4 from %5 to %6").arg(word).arg(target.pageNumber).arg(target.rePos.normalizedY).arg(wordPage).arg(wordRect.top).arg(wordRect.bottom).toUtf8();
+}
+
+// Issue 4, claim 1: a link to an anchor in the part of a paragraph that is laid out on a
+// following page opens the page that shows the anchor
+void MarkdownTest::testIssue4LinkToAnchorOnNextPageOfParagraph()
+{
+    const QString testFile = QStringLiteral(KDESRCDIR "data/anchors-long.md");
+    QMimeDatabase db;
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    const QStringList links = anchorsLongLinks();
+    const QList<Okular::DocumentViewport> targets = linkTargets(document);
+    QCOMPARE(targets.size(), links.size());
+    const QStringList texts = pageTexts(document);
+
+    int anchorsOnNextPage = 0;
+    for (int i = 0; i < links.size(); ++i) {
+        if (links[i].startsWith(QLatin1String("HEAD"))) {
+            continue;
+        }
+        const int anchorPage = pageShowing(texts, links[i]);
+        const int paragraphPage = pageShowing(texts, QStringLiteral("PARA") + links[i].right(2));
+        QVERIFY(anchorPage >= 0);
+        QVERIFY(paragraphPage >= 0);
+        if (anchorPage == paragraphPage) {
+            continue;
+        }
+        ++anchorsOnNextPage;
+        const QByteArray wrong = notAtLineOf(document, targets[i], anchorPage, links[i]);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+    }
+    // two paragraphs are longer than a page, unless the font is very small
+    QVERIFY(anchorsOnNextPage > 0);
+
+    document.closeDocument();
+}
+
+// Issue 4, claim 2: a link to an anchor on the page its paragraph starts on opens the line
+// of the anchor, not the start of the paragraph
+void MarkdownTest::testIssue4LinkTargetIsLineOfAnchor()
+{
+    const QString testFile = QStringLiteral(KDESRCDIR "data/anchors-long.md");
+    QMimeDatabase db;
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    const QStringList links = anchorsLongLinks();
+    const QList<Okular::DocumentViewport> targets = linkTargets(document);
+    QCOMPARE(targets.size(), links.size());
+    const QStringList texts = pageTexts(document);
+
+    int anchorsOnPageOfParagraph = 0;
+    for (int i = 0; i < links.size(); ++i) {
+        if (links[i].startsWith(QLatin1String("HEAD"))) {
+            continue;
+        }
+        const int anchorPage = pageShowing(texts, links[i]);
+        QVERIFY(anchorPage >= 0);
+        if (anchorPage != pageShowing(texts, QStringLiteral("PARA") + links[i].right(2))) {
+            continue;
+        }
+        ++anchorsOnPageOfParagraph;
+        const QByteArray wrong = notAtLineOf(document, targets[i], anchorPage, links[i]);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+    }
+    QVERIFY(anchorsOnPageOfParagraph > 0);
+
+    document.closeDocument();
+}
+
+// Issue 4, guard: a link to an anchor in the first part of a paragraph that continues on the
+// next page opens the page the paragraph starts on
+void MarkdownTest::testIssue4LinkToAnchorOnFirstPageOfParagraph()
+{
+    const QString testFile = QStringLiteral(KDESRCDIR "data/anchors-long.md");
+    QMimeDatabase db;
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    const QStringList links = anchorsLongLinks();
+    const QList<Okular::DocumentViewport> targets = linkTargets(document);
+    QCOMPARE(targets.size(), links.size());
+    const QStringList texts = pageTexts(document);
+
+    int anchorsBeforePageEnd = 0;
+    for (int i = 0; i < links.size(); ++i) {
+        if (links[i].startsWith(QLatin1String("HEAD"))) {
+            continue;
+        }
+        const int anchorPage = pageShowing(texts, links[i]);
+        const int paragraphPage = pageShowing(texts, QStringLiteral("PARA") + links[i].right(2));
+        const int paragraphEndPage = pageShowing(texts, QStringLiteral("LATE") + links[i].right(2));
+        QVERIFY(anchorPage >= 0);
+        QVERIFY(paragraphPage >= 0);
+        QVERIFY(paragraphEndPage >= 0);
+        if (anchorPage != paragraphPage || paragraphEndPage == paragraphPage) {
+            continue;
+        }
+        ++anchorsBeforePageEnd;
+        const QByteArray where = QStringLiteral("the link to %1 opens page %2, the anchor is on page %3").arg(links[i]).arg(targets[i].pageNumber).arg(anchorPage).toUtf8();
+        QVERIFY2(targets[i].pageNumber == anchorPage, where.constData());
+    }
+    // two paragraphs are longer than a page, unless the font is very small
+    QVERIFY(anchorsBeforePageEnd > 0);
+
+    document.closeDocument();
+}
+
+// Issue 4, guard: a link to an anchor at the start of its block, here a heading, opens the
+// line of the block
+void MarkdownTest::testIssue4LinkToAnchorAtStartOfBlock()
+{
+    const QString testFile = QStringLiteral(KDESRCDIR "data/anchors-long.md");
+    QMimeDatabase db;
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), db.mimeTypeForFile(testFile)), Okular::Document::OpenSuccess);
+
+    const QStringList links = anchorsLongLinks();
+    const QList<Okular::DocumentViewport> targets = linkTargets(document);
+    QCOMPARE(targets.size(), links.size());
+    const QStringList texts = pageTexts(document);
+
+    int headingsAfterFirstPage = 0;
+    for (int i = 0; i < links.size(); ++i) {
+        if (!links[i].startsWith(QLatin1String("HEAD"))) {
+            continue;
+        }
+        const int anchorPage = pageShowing(texts, links[i]);
+        QVERIFY(anchorPage >= 0);
+        if (anchorPage > 0) {
+            ++headingsAfterFirstPage;
+        }
+        const QByteArray wrong = notAtLineOf(document, targets[i], anchorPage, links[i]);
+        QVERIFY2(wrong.isEmpty(), wrong.constData());
+    }
+    QVERIFY(headingsAfterFirstPage > 0);
 
     document.closeDocument();
 }
