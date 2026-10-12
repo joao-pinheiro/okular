@@ -81,6 +81,17 @@ QTextDocument *Converter::convert(const QString &fileName)
         }
     }
 
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        const int headingLevel = block.blockFormat().headingLevel();
+        if (headingLevel > 0) {
+            // images are represented by an object replacement character, they can't be part of the title
+            const QString title = block.text().remove(QChar::ObjectReplacementCharacter).simplified();
+            if (!title.isEmpty()) {
+                Q_EMIT addTitle(headingLevel, title, block);
+            }
+        }
+    }
+
     return doc;
 }
 
