@@ -169,6 +169,11 @@ QImage GeneratorPrivate::image(PixmapRequest *)
     return QImage();
 }
 
+bool GeneratorPrivate::configChangeNeedsReload() const
+{
+    return false;
+}
+
 Generator::Generator(QObject *parent, const QVariantList &args)
     : Generator(*new GeneratorPrivate(), parent, args)
 {

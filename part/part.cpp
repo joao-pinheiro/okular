@@ -367,6 +367,17 @@ Part::Part(QObject *parent, const QVariantList &args)
     connect(m_document, &Document::close, this, &Part::close);
     connect(m_document, &Document::requestPrint, this, &Part::slotPrint);
     connect(m_document, &Document::requestSaveAs, this, [this] { slotSaveFileAs(); });
+    connect(
+        m_document,
+        &Document::requestReload,
+        this,
+        [this] {
+            if (canReloadUnasked()) {
+                slotReload();
+            }
+        },
+        // the request is emitted while the new configuration is being applied
+        Qt::QueuedConnection);
     connect(m_document, &Document::undoHistoryCleanChanged, this, [this](bool clean) {
         setModified(!clean);
         setWindowTitleFromDocument();
@@ -2082,6 +2093,28 @@ void Part::slotFileDirty(const QString &path)
 }
 
 // Attempt to reload the document, one or more times, optionally from a different URL
+// A reload closes the document and opens it again. When nobody asked for it, that is only done
+// if it gives the same document back and drops nothing the user did.
+bool Part::canReloadUnasked() const
+{
+    // a local file to read again, which the standard input is not
+    if (!url().isLocalFile() || url().fileName() == QLatin1String("-")) {
+        return false;
+    }
+    // still the file that was opened
+    if (m_fileLastModified != QFileInfo(localFilePath()).lastModified()) {
+        return false;
+    }
+    // opened as the type KParts finds for it by itself, a reload does not keep the type
+    // that the host application asked for
+    const QMimeType mime = QMimeDatabase().mimeTypeForUrl(url());
+    if (arguments().mimeType() != (mime.isDefault() ? QString() : mime.name())) {
+        return false;
+    }
+    // no changes, saved or not, that could be undone or redone
+    return !m_document->canUndo() && !m_document->canRedo();
+}
+
 bool Part::slotAttemptReload(bool oneShot, const QUrl &newUrl)
 {
     // Skip reload when another reload is already in progress

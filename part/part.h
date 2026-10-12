@@ -277,6 +277,7 @@ public Q_SLOTS:
     void slotPrint();
     void slotFileDirty(const QString &);
     bool slotAttemptReload(bool oneShot = false, const QUrl &newUrl = QUrl());
+    bool canReloadUnasked() const;
     void psTransformEnded(int, QProcess::ExitStatus);
 
     void errorMessage(const QString &message, int duration = 0);

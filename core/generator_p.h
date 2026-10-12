@@ -57,6 +57,9 @@ public:
 
     virtual QVariant metaData(const QString &key, const QVariant &option) const;
     virtual QImage image(PixmapRequest *);
+    // whether the document has to be loaded again after reparseConfig() reported a change,
+    // because its pages depend on the configuration
+    virtual bool configChangeNeedsReload() const;
 
     DocumentPrivate *m_document;
     // NOTE: the following should be a QSet< GeneratorFeature >,

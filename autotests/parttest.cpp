@@ -27,18 +27,25 @@
 
 #include <KActionCollection>
 #include <KActionMenu>
+#include <KConfig>
 #include <KConfigDialog>
+#include <KConfigGroup>
 #include <KParts/OpenUrlArguments>
 
 #include <QAbstractItemModelTester>
 #include <QApplication>
+#include <QCheckBox>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDesktopServices>
+#include <QDialogButtonBox>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMimeDatabase>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QStandardPaths>
 #include <QTabletEvent>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -47,6 +54,10 @@
 #include <QToolBar>
 #include <QTreeView>
 #include <QUrl>
+
+#ifdef Q_OS_UNIX
+#include <unistd.h>
+#endif
 
 namespace Okular
 {
@@ -69,6 +80,18 @@ private Q_SLOTS:
     void testForwardPDF();
     void testForwardPDF_data();
     void testGeneratorPreferences();
+    void testIssue2PageCountAfterMarkdownFontChange();
+    void testIssue2ContentsAfterMarkdownFontChange();
+    void testIssue2ContentsTitlesAfterSmartyPantsChange();
+    void testIssue2PageCountAfterReparseConfig();
+    void testIssue2PdfNotReloadedOnMarkdownFontChange();
+    void testIssue2PdfNotReloadedOnPdfSettingChange();
+    void testIssue2StdinDocumentNotReloaded();
+    void testIssue2DocumentWithoutFileNotReloaded();
+    void testIssue2RemoteDocumentNotReloaded();
+    void testIssue2ModifiedDocumentNotReloaded();
+    void testIssue2DocumentWithUndoneChangeNotReloaded();
+    void testIssue2DocumentOpenedWithMimeTypeNotReloaded();
     void testSelectText();
     void testSelectTextMultiline();
     void testCopyTextSelectionModes();
@@ -174,6 +197,19 @@ void PartTest::init()
         const QString docDataPath = Okular::DocumentPrivate::docDataFileName(url, fileReadTest.size());
         QFile::remove(docDataPath);
     }
+
+    // Default settings of the text backends for every test. Every part loads its own copy of them.
+    const QDir configDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation));
+    const QStringList backendConfigs = configDir.entryList({QStringLiteral("okular_*_generator_settings")}, QDir::Files);
+    for (const QString &configName : backendConfigs) {
+        KConfig config(configName);
+        const QStringList groups = config.groupList();
+        for (const QString &group : groups) {
+            config.deleteGroup(group);
+        }
+        config.group(QString()).deleteGroup();
+        config.sync();
+    }
 }
 
 // Test that Okular doesn't crash after a successful reload
@@ -269,6 +305,456 @@ void PartTest::testGeneratorPreferences()
     dialog = part.realSlotPreferences();
     qApp->processEvents();
     delete dialog;
+}
+
+// The page of the configuration dialog that holds the Markdown backend settings
+static QWidget *markdownSettingsPage(const KConfigDialog *dialog)
+{
+    const QCheckBox *smartyPants = dialog->findChild<QCheckBox *>(QStringLiteral("kcfg_SmartyPants"));
+    return smartyPants ? smartyPants->parentWidget() : nullptr;
+}
+
+// Doubles the size of the Markdown backend font in the configuration dialog
+static bool doubleMarkdownFont(const KConfigDialog *dialog)
+{
+    const QWidget *page = markdownSettingsPage(dialog);
+    QWidget *fontRequester = page ? page->findChild<QWidget *>(QStringLiteral("kcfg_Font")) : nullptr;
+    if (!fontRequester) {
+        return false;
+    }
+    QFont font = fontRequester->property("font").value<QFont>();
+    if (font.pointSize() <= 0) {
+        return false;
+    }
+    font.setPointSize(font.pointSize() * 2);
+    fontRequester->setProperty("font", font);
+    return true;
+}
+
+static void acceptDialog(const KConfigDialog *dialog)
+{
+    dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+}
+
+// Title, page and position of every entry of the contents
+static void contentsEntries(const QList<Okular::DocumentSynopsis::Element> &elements, QStringList &entries)
+{
+    for (const Okular::DocumentSynopsis::Element &element : elements) {
+        const Okular::DocumentViewport viewport = element.viewPort().value_or(Okular::DocumentViewport());
+        entries << QStringLiteral("%1 | page %2 | %3").arg(element.title()).arg(viewport.pageNumber).arg(viewport.rePos.normalizedY, 0, 'f', 4);
+        contentsEntries(element.children(), entries);
+    }
+}
+
+static QStringList contentsEntries(const Okular::Document *document)
+{
+    QStringList entries;
+    if (const Okular::DocumentSynopsis *synopsis = document->documentSynopsis()) {
+        contentsEntries(synopsis->children(), entries);
+    }
+    return entries;
+}
+
+static QStringList contentsTitles(const Okular::Document *document)
+{
+    QStringList titles;
+    const QStringList entries = contentsEntries(document);
+    for (const QString &entry : entries) {
+        titles << entry.section(QStringLiteral(" | "), 0, 0);
+    }
+    return titles;
+}
+
+static bool hasMarkdownBackend(const Okular::Document *document)
+{
+    return document->supportedMimeTypes().contains(QStringLiteral("text/markdown"));
+}
+
+// Issue 2, claim 1: after the Markdown font is changed with a file open, the document has
+// the page count the file has when it is opened with that font
+void PartTest::testIssue2PageCountAfterMarkdownFontChange()
+{
+    const QString file = QStringLiteral(KDESRCDIR "data/toc-long.md");
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, file));
+    const uint pagesBefore = part.m_document->pages();
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    acceptDialog(dialog);
+
+    Okular::Part freshPart(nullptr, dummyArgs);
+    QVERIFY(openDocument(&freshPart, file));
+    QVERIFY(freshPart.m_document->pages() > pagesBefore);
+
+    QTRY_COMPARE(part.m_document->pages(), freshPart.m_document->pages());
+}
+
+// Issue 2, claim 2: after the Markdown font is changed with a file open, every contents entry
+// has the page and position it has when the file is opened with that font
+void PartTest::testIssue2ContentsAfterMarkdownFontChange()
+{
+    const QString file = QStringLiteral(KDESRCDIR "data/toc-long.md");
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, file));
+    const QStringList entriesBefore = contentsEntries(part.m_document);
+    QCOMPARE(entriesBefore.count(), 60);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    acceptDialog(dialog);
+
+    Okular::Part freshPart(nullptr, dummyArgs);
+    QVERIFY(openDocument(&freshPart, file));
+    const QStringList freshEntries = contentsEntries(freshPart.m_document);
+    QCOMPARE(freshEntries.count(), 60);
+    QVERIFY(freshEntries != entriesBefore);
+
+    QTRY_COMPARE(contentsEntries(part.m_document), freshEntries);
+}
+
+// Issue 2, claim 3: after SmartyPants is switched off with a Markdown file open, the contents
+// have the heading text of the document converted without it
+void PartTest::testIssue2ContentsTitlesAfterSmartyPantsChange()
+{
+    const QString file = QStringLiteral(KDESRCDIR "data/toc-smartypants.md");
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, file));
+    const QStringList smartTitles = {QString::fromUtf8("Title “quoted” – dashed…"), QString::fromUtf8("Second ‘single’ heading")};
+    QCOMPARE(contentsTitles(part.m_document), smartTitles);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QCheckBox *smartyPants = dialog->findChild<QCheckBox *>(QStringLiteral("kcfg_SmartyPants"));
+    QVERIFY(smartyPants);
+    QVERIFY(smartyPants->isChecked());
+    smartyPants->setChecked(false);
+    acceptDialog(dialog);
+
+    const QStringList plainTitles = {QStringLiteral("Title \"quoted\" -- dashed..."), QStringLiteral("Second 'single' heading")};
+    QTRY_COMPARE(contentsTitles(part.m_document), plainTitles);
+
+    Okular::Part freshPart(nullptr, dummyArgs);
+    QVERIFY(openDocument(&freshPart, file));
+    QCOMPARE(contentsTitles(freshPart.m_document), plainTitles);
+}
+
+// Issue 2, claim 1 on the other way a changed backend configuration reaches the document:
+// Document::reparseConfig(), which the part calls from slotNewConfig()
+void PartTest::testIssue2PageCountAfterReparseConfig()
+{
+    const QString file = QStringLiteral(KDESRCDIR "data/toc-long.md");
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, file));
+    const uint pagesBefore = part.m_document->pages();
+
+    // save the changed font without telling the document through the dialog
+    KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    dialog->blockSignals(true);
+    acceptDialog(dialog);
+    delete dialog;
+    part.slotNewConfig();
+
+    Okular::Part freshPart(nullptr, dummyArgs);
+    QVERIFY(openDocument(&freshPart, file));
+    QVERIFY(freshPart.m_document->pages() > pagesBefore);
+
+    QTRY_COMPARE(part.m_document->pages(), freshPart.m_document->pages());
+}
+
+// Issue 2, guard: a changed configuration of a backend other than the one of the open document
+// leaves the document alone
+void PartTest::testIssue2PdfNotReloadedOnMarkdownFontChange()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QVERIFY(part.m_document->isOpened());
+}
+
+// Issue 2, guard: a changed configuration of a backend whose pages keep their layout
+// is applied without reloading the document
+void PartTest::testIssue2PdfNotReloadedOnPdfSettingChange()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/file1.pdf")));
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QComboBox *enhanceThinLines = dialog->findChild<QComboBox *>(QStringLiteral("kcfg_EnhanceThinLines"));
+    QVERIFY(enhanceThinLines);
+    QVERIFY(enhanceThinLines->count() > 1);
+    const int originalIndex = enhanceThinLines->currentIndex();
+    enhanceThinLines->setCurrentIndex(originalIndex == 0 ? 1 : 0);
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    const int settingsChanges = settingsSpy.count();
+    delete dialog;
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    const int closes = closeSpy.count();
+
+    // the settings of the PDF backend are shared by the whole process, put them back
+    dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    enhanceThinLines = dialog->findChild<QComboBox *>(QStringLiteral("kcfg_EnhanceThinLines"));
+    QVERIFY(enhanceThinLines);
+    enhanceThinLines->setCurrentIndex(originalIndex);
+    acceptDialog(dialog);
+    delete dialog;
+    qApp->processEvents();
+
+    QVERIFY(settingsChanges > 0);
+    QCOMPARE(closes, 0);
+    QVERIFY(part.m_document->isOpened());
+}
+
+// Issue 2, guard: a document read from the standard input cannot be read again,
+// so it is left as it is
+void PartTest::testIssue2StdinDocumentNotReloaded()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("Needs dup() to put the standard input back");
+#else
+    const int standardInput = dup(STDIN_FILENO);
+    QVERIFY(standardInput >= 0);
+    const auto restoreStandardInput = qScopeGuard([standardInput] {
+        dup2(standardInput, STDIN_FILENO);
+        close(standardInput);
+    });
+
+    QVERIFY(freopen(KDESRCDIR "data/toc-long.md", "rb", stdin));
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    part.openUrl(QUrl::fromLocalFile(QDir::currentPath() + QStringLiteral("/-")));
+    QVERIFY(part.m_document->isOpened());
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    // the font of every text backend, whichever one opened the document
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    const QList<QWidget *> fontRequesters = dialog->findChildren<QWidget *>(QStringLiteral("kcfg_Font"));
+    QVERIFY(!fontRequesters.isEmpty());
+    for (QWidget *fontRequester : fontRequesters) {
+        QFont font = fontRequester->property("font").value<QFont>();
+        QVERIFY(font.pointSize() > 0);
+        font.setPointSize(font.pointSize() * 2);
+        fontRequester->setProperty("font", font);
+    }
+    acceptDialog(dialog);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QVERIFY(part.m_document->isOpened());
+#endif
+}
+
+// Issue 2, guard: a document whose file is gone cannot be read again, so it is left as it is
+void PartTest::testIssue2DocumentWithoutFileNotReloaded()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString file = directory.filePath(QStringLiteral("toc-long.md"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/toc-long.md"), file));
+
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, file));
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+    QVERIFY(QFile::remove(file));
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QVERIFY(part.m_document->isOpened());
+}
+
+// Issue 2, guard: a document from a remote location is not fetched again
+void PartTest::testIssue2RemoteDocumentNotReloaded()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/toc-long.md")));
+    // as if the document had been downloaded: the local file is there, the address is not local,
+    // and the type is the one found for that address
+    const QUrl address(QStringLiteral("https://example.org/toc-long.md"));
+    const QMimeType addressMime = QMimeDatabase().mimeTypeForUrl(address);
+    KParts::OpenUrlArguments arguments = part.arguments();
+    arguments.setMimeType(addressMime.isDefault() ? QString() : addressMime.name());
+    part.setArguments(arguments);
+    part.setUrl(address);
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QVERIFY(part.m_document->isOpened());
+}
+
+// Issue 2, guard: a document with unsaved changes is neither reloaded nor asked about
+void PartTest::testIssue2ModifiedDocumentNotReloaded()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/toc-long.md")));
+    Okular::Annotation *annotation = new Okular::TextAnnotation();
+    annotation->setBoundingRectangle(Okular::NormalizedRect(0.1, 0.1, 0.15, 0.15));
+    annotation->setContents(QStringLiteral("annot contents"));
+    part.m_document->addPageAnnotation(0, annotation);
+    QVERIFY(part.isModified());
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here; it would ask what to do with the changes
+    bool asked = false;
+    QTimer dismiss;
+    connect(&dismiss, &QTimer::timeout, this, [&asked] {
+        if (QDialog *question = qobject_cast<QDialog *>(qApp->activeModalWidget())) {
+            asked = true;
+            question->reject();
+        }
+    });
+    dismiss.start(10);
+    qApp->processEvents();
+    dismiss.stop();
+    QVERIFY(!asked);
+    QCOMPARE(closeSpy.count(), 0);
+    QCOMPARE(part.m_document->page(0)->annotations().size(), 1);
+}
+
+// Issue 2, guard: a document with a change that was undone is not reloaded, the change can still be redone
+void PartTest::testIssue2DocumentWithUndoneChangeNotReloaded()
+{
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    QVERIFY(openDocument(&part, QStringLiteral(KDESRCDIR "data/toc-long.md")));
+    Okular::Annotation *annotation = new Okular::TextAnnotation();
+    annotation->setBoundingRectangle(Okular::NormalizedRect(0.1, 0.1, 0.15, 0.15));
+    annotation->setContents(QStringLiteral("annot contents"));
+    part.m_document->addPageAnnotation(0, annotation);
+    part.m_document->undo();
+    QVERIFY(!part.isModified());
+    QVERIFY(part.m_document->canRedo());
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QVERIFY(part.m_document->canRedo());
+}
+
+// Issue 2, guard: a document opened as a type its file name does not say is not reloaded,
+// a reload would open it as something else
+void PartTest::testIssue2DocumentOpenedWithMimeTypeNotReloaded()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString file = directory.filePath(QStringLiteral("notes"));
+    QVERIFY(QFile::copy(QStringLiteral(KDESRCDIR "data/toc-long.md"), file));
+
+    QVariantList dummyArgs;
+    Okular::Part part(nullptr, dummyArgs);
+    if (!hasMarkdownBackend(part.m_document)) {
+        QSKIP("The Markdown backend is not available");
+    }
+    KParts::OpenUrlArguments arguments;
+    arguments.setMimeType(QStringLiteral("text/markdown"));
+    part.setArguments(arguments);
+    part.openUrl(QUrl::fromLocalFile(file));
+    QVERIFY(part.m_document->isOpened());
+    // opened by the Markdown backend: the headings are the contents
+    QCOMPARE(contentsEntries(part.m_document).count(), 60);
+    QSignalSpy closeSpy(part.m_document, &Okular::Document::aboutToClose);
+
+    const KConfigDialog *dialog = part.realSlotPreferences();
+    qApp->processEvents();
+    QVERIFY(doubleMarkdownFont(dialog));
+    QSignalSpy settingsSpy(dialog, &KConfigDialog::settingsChanged);
+    acceptDialog(dialog);
+    QVERIFY(settingsSpy.count() > 0);
+
+    // a reload would be a queued call, delivered here
+    qApp->processEvents();
+    QCOMPARE(closeSpy.count(), 0);
+    QCOMPARE(contentsEntries(part.m_document).count(), 60);
 }
 
 void PartTest::testSelectText()
