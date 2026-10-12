@@ -8,9 +8,11 @@
 
 #include "../settings_core.h"
 #include "core/document.h"
+#include "core/page.h"
 #include "generators/markdown/converter.h"
 #include <QMimeDatabase>
 #include <QMimeType>
+#include <QStandardPaths>
 #include <memory>
 
 class MarkdownTest : public QObject
@@ -26,6 +28,9 @@ private Q_SLOTS:
     void testSpecialCharsInImageFileName();
     void testStrikeThrough();
     void testHtmlTagFixup();
+    void testTableOfContents();
+    void testSynopsis();
+    void testSynopsisPages();
 
 private:
     void findImages(QTextFrame *parent, QList<QTextImageFormat> &images);
@@ -34,6 +39,8 @@ private:
 
 void MarkdownTest::initTestCase()
 {
+    // don't let the settings of whoever runs the test (backend font, SmartyPants) change the result
+    QStandardPaths::setTestModeEnabled(true);
     Okular::SettingsCore::instance(QStringLiteral("markdowntest"));
 }
 
@@ -208,6 +215,135 @@ void MarkdownTest::testHtmlTagFixup()
         const QString outputHtml = Markdown::detail::fixupHtmlTags(QStringLiteral("<del>test</del>"));
         QCOMPARE(outputHtml, QStringLiteral("<s>test</s>"));
     }
+}
+
+void MarkdownTest::testTableOfContents()
+{
+    struct Title {
+        int level;
+        QString title;
+        int blockHeadingLevel;
+        QString blockText;
+    };
+    QList<Title> titles;
+
+    Markdown::Converter converter;
+    connect(&converter, &Okular::TextDocumentConverter::addTitle, this, [&titles](int level, const QString &title, const QTextBlock &block) { titles.append({level, title, block.blockFormat().headingLevel(), block.text()}); });
+    std::unique_ptr<QTextDocument> document(converter.convert(QStringLiteral(KDESRCDIR "data/toc.md")));
+    QVERIFY(document);
+
+    const QList<QPair<int, QString>> expected = {
+        {1, QStringLiteral("Top emph and code")},
+        {2, QStringLiteral("Sub one")},
+        {3, QStringLiteral("Deep")},
+        {1, QStringLiteral("Setext")},
+        {5, QStringLiteral("Skipped levels")},
+        // the heading containing only an existing image is skipped
+        {2, QStringLiteral("Pictured")},
+        // a missing image is replaced by its alt text
+        {2, QStringLiteral("Gone")},
+        {2, QStringLiteral("Two lines")},
+        {2, QStringLiteral("Raw html")},
+        {3, QStringLiteral("In cell")},
+        // "# not a heading" in the code block is skipped
+        {2, QStringLiteral("Sub two")},
+    };
+
+    QList<QPair<int, QString>> actual;
+    for (const Title &title : std::as_const(titles)) {
+        actual.append({title.level, title.title});
+    }
+    QCOMPARE(actual, expected);
+    for (int i = 0; i < expected.size(); ++i) {
+        // the block handed over has to be the heading itself, it is what the title links to
+        QCOMPARE(titles[i].blockHeadingLevel, expected[i].first);
+        QVERIFY(titles[i].blockText.simplified().endsWith(expected[i].second));
+    }
+}
+
+void MarkdownTest::testSynopsis()
+{
+    const QString testFile = QStringLiteral(KDESRCDIR "data/toc.md");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), mime), Okular::Document::OpenSuccess);
+
+    const Okular::DocumentSynopsis *synopsis = document.documentSynopsis();
+    QVERIFY(synopsis);
+
+    const QList<Okular::DocumentSynopsis::Element> topLevel = synopsis->children();
+    QCOMPARE(topLevel.size(), 2);
+    QCOMPARE(topLevel[0].title(), QStringLiteral("Top emph and code"));
+    QCOMPARE(topLevel[1].title(), QStringLiteral("Setext"));
+
+    const QList<Okular::DocumentSynopsis::Element> topChildren = topLevel[0].children();
+    QCOMPARE(topChildren.size(), 1);
+    QCOMPARE(topChildren[0].title(), QStringLiteral("Sub one"));
+    const QList<Okular::DocumentSynopsis::Element> subChildren = topChildren[0].children();
+    QCOMPARE(subChildren.size(), 1);
+    QCOMPARE(subChildren[0].title(), QStringLiteral("Deep"));
+
+    const QList<Okular::DocumentSynopsis::Element> setextChildren = topLevel[1].children();
+    QCOMPARE(setextChildren.size(), 6);
+    QCOMPARE(setextChildren[0].title(), QStringLiteral("Skipped levels"));
+    QCOMPARE(setextChildren[4].title(), QStringLiteral("Raw html"));
+    QCOMPARE(setextChildren[5].title(), QStringLiteral("Sub two"));
+    const QList<Okular::DocumentSynopsis::Element> rawHtmlChildren = setextChildren[4].children();
+    QCOMPARE(rawHtmlChildren.size(), 1);
+    QCOMPARE(rawHtmlChildren[0].title(), QStringLiteral("In cell"));
+
+    // every entry points further down the first page than the one before it
+    const QList<Okular::DocumentSynopsis::Element> inOrder = {topLevel[0], topChildren[0], subChildren[0], topLevel[1]};
+    double previousY = -1;
+    for (const Okular::DocumentSynopsis::Element &element : inOrder) {
+        const Okular::DocumentViewport viewport = element.viewPort().value_or(Okular::DocumentViewport());
+        QCOMPARE(viewport.pageNumber, 0);
+        QVERIFY(viewport.rePos.normalizedY > previousY);
+        previousY = viewport.rePos.normalizedY;
+    }
+
+    document.closeDocument();
+}
+
+void MarkdownTest::testSynopsisPages()
+{
+    // 60 headings named "Heading NNN" spread over several pages
+    const QString testFile = QStringLiteral(KDESRCDIR "data/toc-long.md");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), mime), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() >= 3);
+
+    const Okular::DocumentSynopsis *synopsis = document.documentSynopsis();
+    QVERIFY(synopsis);
+    const QList<Okular::DocumentSynopsis::Element> entries = synopsis->children();
+    QCOMPARE(entries.size(), 60);
+
+    int previousPage = 0;
+    double previousY = -1;
+    for (const Okular::DocumentSynopsis::Element &entry : entries) {
+        const Okular::DocumentViewport viewport = entry.viewPort().value_or(Okular::DocumentViewport());
+        QVERIFY(viewport.isValid());
+        QVERIFY(viewport.pageNumber >= previousPage);
+        QVERIFY(viewport.pageNumber < int(document.pages()));
+        QVERIFY(viewport.pageNumber > previousPage || viewport.rePos.normalizedY > previousY);
+
+        // the entry has to point at the page that shows the heading
+        document.requestTextPage(viewport.pageNumber);
+        const QByteArray where = QStringLiteral("%1 points at page %2").arg(entry.title()).arg(viewport.pageNumber).toUtf8();
+        QVERIFY2(document.page(viewport.pageNumber)->text().contains(entry.title()), where.constData());
+
+        previousPage = viewport.pageNumber;
+        previousY = viewport.rePos.normalizedY;
+    }
+    // the headings do not all fit in the first page
+    QVERIFY(previousPage > 0);
+
+    document.closeDocument();
 }
 
 QTEST_MAIN(MarkdownTest)

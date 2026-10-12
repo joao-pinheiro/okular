@@ -159,6 +159,16 @@ ecm_add_test(signatureformtest.cpp
     LINK_LIBRARIES Qt6::Test okularcore
 )
 
+ecm_add_test(tocmodeltest.cpp ../gui/tocmodel.cpp
+    TEST_NAME "tocmodeltest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore
+)
+
+ecm_add_test(textdocumentviewporttest.cpp
+    TEST_NAME "textdocumentviewporttest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
+)
+
 find_package(Discount)
 
 if(Discount_FOUND)
@@ -166,6 +176,8 @@ if(Discount_FOUND)
         TEST_NAME "markdowntest"
         LINK_LIBRARIES Qt6::Test okularcore KF6::I18n PkgConfig::Discount
     )
+    # testSynopsis and testSynopsisPages open the file through the plugin
+    add_dependencies(markdowntest okularGenerator_md)
 endif()
 
 ecm_add_test(toggleactionmenutest.cpp ../part/toggleactionmenu.cpp

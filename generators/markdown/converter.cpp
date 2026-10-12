@@ -64,6 +64,10 @@ QTextDocument *Converter::convert(const QString &fileName)
     m_fileDir = QDir(fileName.left(fileName.lastIndexOf(QLatin1Char('/'))));
 
     QTextDocument *doc = convertOpenFile();
+    if (!doc) {
+        return nullptr;
+    }
+
     QHash<QString, QTextFragment> internalLinks;
     QHash<QString, QTextBlock> documentAnchors;
     extractLinks(doc->rootFrame(), internalLinks, documentAnchors);
@@ -78,6 +82,17 @@ QTextDocument *Converter::convert(const QString &fileName)
             Q_EMIT addAction(action, linkIt.value().position(), linkIt.value().position() + linkIt.value().length());
         } else {
             qDebug() << "Could not find destination for" << linkIt.key();
+        }
+    }
+
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        const int headingLevel = block.blockFormat().headingLevel();
+        if (headingLevel > 0) {
+            // images are represented by an object replacement character, they can't be part of the title
+            const QString title = block.text().remove(QChar::ObjectReplacementCharacter).simplified();
+            if (!title.isEmpty()) {
+                Q_EMIT addTitle(headingLevel, title, block);
+            }
         }
     }
 

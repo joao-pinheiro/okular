@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QList>
+#include <QTextDocument>
 #include <QTreeView>
 #include <qdom.h>
 
@@ -209,8 +210,11 @@ QVariant TOCModel::data(const QModelIndex &index, int role) const
     TOCItem *item = static_cast<TOCItem *>(index.internalPointer());
     switch (role) {
     case Qt::DisplayRole:
-    case Qt::ToolTipRole:
         return item->text;
+        break;
+    case Qt::ToolTipRole:
+        // a tooltip that looks like rich text is shown as rich text, but the title is plain text
+        return Qt::mightBeRichText(item->text) ? Qt::convertFromPlainText(item->text, Qt::WhiteSpaceNormal) : item->text;
         break;
     case Qt::FontRole:
         if (item->highlight) {

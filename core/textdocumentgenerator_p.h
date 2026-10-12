@@ -136,16 +136,21 @@ static Okular::DocumentViewport calculateViewport(QTextDocument *document, const
     const QSizeF pageSize = document->pageSize();
     const QRectF rect = document->documentLayout()->blockBoundingRect(block);
 
-    int page = qRound(rect.y()) / qRound(pageSize.height());
-    int offset = qRound(rect.y()) % qRound(pageSize.height());
-    if (rect.y() + rect.height() > pageSize.height()) {
-        page = page + 1;
-        offset = 0;
+    // When the first line of a block does not fit in its page the layout moves the line to the
+    // next page, but the bounding rect still starts where the block was meant to start.
+    // The block is where its first line is.
+    double y = rect.y();
+    const QTextLayout *layout = block.layout();
+    if (layout && layout->lineCount() > 0) {
+        y += layout->lineAt(0).y();
     }
+
+    const int page = int(y / pageSize.height());
+    const double offset = y - (page * pageSize.height());
 
     Okular::DocumentViewport viewport(page);
     viewport.rePos.normalizedX = (double)rect.x() / (double)pageSize.width();
-    viewport.rePos.normalizedY = (double)offset / (double)pageSize.height();
+    viewport.rePos.normalizedY = offset / pageSize.height();
     viewport.rePos.enabled = true;
     viewport.rePos.pos = Okular::DocumentViewport::Center;
 
