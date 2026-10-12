@@ -54,6 +54,9 @@ void EpubGeneratorTest::testDocumentStructure()
 
     auto heading2 = docSyn->children().at(1);
     QCOMPARE(heading2.title(), QStringLiteral("Lorem ipsum Section 2"));
+    // Section 2 is on the second page (see testDocumentContent), its entry has to point there
+    QVERIFY(heading2.viewPort().has_value());
+    QCOMPARE(heading2.viewPort()->pageNumber, 1);
 }
 
 void EpubGeneratorTest::testDocumentContent()

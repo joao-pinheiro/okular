@@ -138,7 +138,7 @@ static Okular::DocumentViewport calculateViewport(QTextDocument *document, const
 
     int page = qRound(rect.y()) / qRound(pageSize.height());
     int offset = qRound(rect.y()) % qRound(pageSize.height());
-    if (rect.y() + rect.height() > pageSize.height()) {
+    if (offset + rect.height() > pageSize.height()) {
         page = page + 1;
         offset = 0;
     }

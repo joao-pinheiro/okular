@@ -159,6 +159,11 @@ ecm_add_test(signatureformtest.cpp
     LINK_LIBRARIES Qt6::Test okularcore
 )
 
+ecm_add_test(textdocumentviewporttest.cpp
+    TEST_NAME "textdocumentviewporttest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
+)
+
 find_package(Discount)
 
 if(Discount_FOUND)
