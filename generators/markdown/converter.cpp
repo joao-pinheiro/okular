@@ -85,6 +85,9 @@ QTextDocument *Converter::convert(const QString &fileName)
         }
     }
 
+    // Every block with a heading level is a title. That includes the blocks nested in a raw
+    // html heading, like the paragraph in <h2>a<p>b</p></h2>: Qt gives them the level of the
+    // heading and nothing reliable to tell them from it, so they get an entry of their own.
     for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
         const int headingLevel = block.blockFormat().headingLevel();
         if (headingLevel > 0) {
