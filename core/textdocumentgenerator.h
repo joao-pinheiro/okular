@@ -122,6 +122,17 @@ protected:
     DocumentViewport calculateViewport(QTextDocument *document, const QTextBlock &block);
 
     /**
+     * This method can be used to calculate the viewport for a given position in the text,
+     * for example the position of an anchor inside a paragraph. The position has to be
+     * one inside @p document.
+     *
+     * @note This method should be called at the end of the conversion, because it
+     *       triggers QTextDocument to do the layout calculation.
+     * @since 26.12
+     */
+    DocumentViewport calculateViewport(QTextDocument *document, int position);
+
+    /**
      * Returns the generator that owns this converter.
      *
      * @note May be null if the converter was not created for a generator.

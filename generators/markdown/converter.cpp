@@ -69,7 +69,7 @@ QTextDocument *Converter::convert(const QString &fileName)
     }
 
     QHash<QString, QTextFragment> internalLinks;
-    QHash<QString, QTextBlock> documentAnchors;
+    QHash<QString, int> documentAnchors;
     extractLinks(doc->rootFrame(), internalLinks, documentAnchors);
 
     for (auto linkIt = internalLinks.constBegin(); linkIt != internalLinks.constEnd(); ++linkIt) {
@@ -171,7 +171,7 @@ QTextDocument *Converter::convertOpenFile()
     return textDocument;
 }
 
-void Converter::extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors)
+void Converter::extractLinks(QTextFrame *parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, int> &documentAnchors)
 {
     for (QTextFrame::iterator it = parent->begin(); !it.atEnd(); ++it) {
         QTextFrame *textFrame = it.currentFrame();
@@ -194,7 +194,7 @@ static QString uncapitalize(QString text)
     return text;
 }
 
-void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, QTextBlock> &documentAnchors)
+void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragment> &internalLinks, QHash<QString, int> &documentAnchors)
 {
     for (QTextBlock::iterator it = parent.begin(); !it.atEnd(); ++it) {
         const QTextFragment textFragment = it.fragment();
@@ -220,7 +220,7 @@ void Converter::extractLinks(const QTextBlock &parent, QHash<QString, QTextFragm
                 const QStringList anchorNames = textCharFormat.anchorNames();
                 for (const QString &anchorName : anchorNames) {
                     // un-capitalize to help match against internal links that are also un-capitalized.
-                    documentAnchors.insert(uncapitalize(anchorName), parent);
+                    documentAnchors.insert(uncapitalize(anchorName), textFragment.position());
                 }
             }
         }
