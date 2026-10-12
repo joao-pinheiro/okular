@@ -5,6 +5,7 @@
 */
 
 #include <QMimeDatabase>
+#include <QStandardPaths>
 #include <QTest>
 
 #include "core/document.h"
@@ -20,6 +21,7 @@ private Q_SLOTS:
     void initTestCase();
     void testDocumentStructure();
     void testDocumentContent();
+    void testChapterViewports();
     void cleanupTestCase();
 
 private:
@@ -28,6 +30,8 @@ private:
 
 void EpubGeneratorTest::initTestCase()
 {
+    // don't let the settings of whoever runs the test (backend font) change the result
+    QStandardPaths::setTestModeEnabled(true);
     Okular::SettingsCore::instance(QStringLiteral("EpubGeneratorTest"));
     m_document = new Okular::Document(nullptr);
     const QString testFile = QStringLiteral(KDESRCDIR "autotests/data/test.epub");
@@ -55,8 +59,8 @@ void EpubGeneratorTest::testDocumentStructure()
     auto heading2 = docSyn->children().at(1);
     QCOMPARE(heading2.title(), QStringLiteral("Lorem ipsum Section 2"));
     // Section 2 is on the second page (see testDocumentContent), its entry has to point there
-    QVERIFY(heading2.viewPort().has_value());
-    QCOMPARE(heading2.viewPort()->pageNumber, 1);
+    const Okular::DocumentViewport viewport2 = heading2.viewPort().value_or(Okular::DocumentViewport());
+    QCOMPARE(viewport2.pageNumber, 1);
 }
 
 void EpubGeneratorTest::testDocumentContent()
@@ -72,6 +76,42 @@ void EpubGeneratorTest::testDocumentContent()
     m_document->requestTextPage(page1->number());
     QVERIFY(page1->hasTextPage());
     QCOMPARE(page1->text().trimmed(), QStringLiteral("Lorem ipsum Section 2\n\u2029This is an example Text."));
+}
+
+void EpubGeneratorTest::testChapterViewports()
+{
+    // every chapter of this file starts with a short paragraph saying "Chapter NN starts here."
+    // (the full stop is left out below, a text page can lack the last character of the page)
+    const QString testFile = QStringLiteral(KDESRCDIR "autotests/data/chapters.epub");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), mime), Okular::Document::OpenSuccess);
+
+    const Okular::DocumentSynopsis *docSyn = document.documentSynopsis();
+    QVERIFY(docSyn);
+    const QList<Okular::DocumentSynopsis::Element> chapters = docSyn->children();
+    QCOMPARE(chapters.size(), 12);
+
+    int chaptersAfterSecondPage = 0;
+    for (const Okular::DocumentSynopsis::Element &chapter : chapters) {
+        const Okular::DocumentViewport viewport = chapter.viewPort().value_or(Okular::DocumentViewport());
+        QVERIFY(viewport.isValid());
+        QVERIFY(viewport.pageNumber < int(document.pages()));
+
+        // the entry has to point at the page that shows the start of the chapter
+        document.requestTextPage(viewport.pageNumber);
+        const QByteArray where = QStringLiteral("%1 points at page %2").arg(chapter.title()).arg(viewport.pageNumber).toUtf8();
+        QVERIFY2(document.page(viewport.pageNumber)->text().contains(chapter.title() + QStringLiteral(" starts here")), where.constData());
+
+        if (viewport.pageNumber > 1) {
+            ++chaptersAfterSecondPage;
+        }
+    }
+    QVERIFY(chaptersAfterSecondPage > 0);
+
+    document.closeDocument();
 }
 
 QTEST_MAIN(EpubGeneratorTest)
