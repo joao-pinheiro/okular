@@ -451,6 +451,14 @@ const Okular::DocumentSynopsis *TextDocumentGenerator::generateDocumentSynopsis(
     }
 }
 
+bool TextDocumentGeneratorPrivate::configChangeNeedsReload() const
+{
+    // What a text backend can configure, the font and for Markdown also SmartyPants, changes
+    // the text or moves it to other pages and changes how many there are. The pages, the links
+    // and the table of contents are only built when loading.
+    return true;
+}
+
 QVariant TextDocumentGeneratorPrivate::metaData(const QString &key, const QVariant &option) const
 {
     Q_UNUSED(option)

@@ -1569,6 +1569,10 @@ void DocumentPrivate::slotGeneratorConfigChanged()
 
         // send reload signals to observers
         foreachObserverD(notifyContentsCleared(DocumentObserver::Pixmap));
+
+        if (m_generator->d_func()->configChangeNeedsReload()) {
+            Q_EMIT m_parent->requestReload();
+        }
     }
 
     // free memory if in 'low' profile
@@ -2784,6 +2788,10 @@ void Document::reparseConfig()
 
         // send reload signals to observers
         foreachObserver(notifyContentsCleared(DocumentObserver::Pixmap));
+
+        if (d->m_generator->d_func()->configChangeNeedsReload()) {
+            Q_EMIT requestReload();
+        }
     }
 
     // free memory if in 'low' profile

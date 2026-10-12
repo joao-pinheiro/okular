@@ -178,6 +178,10 @@ if(Discount_FOUND)
     )
     # testSynopsis and testSynopsisPages open the file through the plugin
     add_dependencies(markdowntest okularGenerator_md)
+    if(TARGET parttest)
+        # the tests of the backend settings open Markdown files through the plugin
+        add_dependencies(parttest okularGenerator_md)
+    endif()
 endif()
 
 ecm_add_test(toggleactionmenutest.cpp ../part/toggleactionmenu.cpp

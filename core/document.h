@@ -1192,6 +1192,14 @@ Q_SIGNALS:
     void requestSaveAs();
 
     /**
+     * This signal is emitted when the configuration of the generator changed
+     * in a way that needs the document to be loaded again, for example
+     * because the number of pages depends on it.
+     * @since 26.12
+     */
+    void requestReload();
+
+    /**
      * This signal is emitted whenever an action requests an
      * application quit operation.
      */

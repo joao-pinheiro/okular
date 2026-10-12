@@ -208,6 +208,7 @@ public:
 
     /* reimp */ QVariant metaData(const QString &key, const QVariant &option) const override;
     /* reimp */ QImage image(PixmapRequest *) override;
+    /* reimp */ bool configChangeNeedsReload() const override;
 
     void calculateBoundingRect(int startPosition, int endPosition, QRectF &rect, int &page) const;
     void calculatePositions(int page, int &start, int &end) const;
