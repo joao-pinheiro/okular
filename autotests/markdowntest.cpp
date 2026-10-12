@@ -8,9 +8,11 @@
 
 #include "../settings_core.h"
 #include "core/document.h"
+#include "core/page.h"
 #include "generators/markdown/converter.h"
 #include <QMimeDatabase>
 #include <QMimeType>
+#include <QStandardPaths>
 #include <memory>
 
 class MarkdownTest : public QObject
@@ -28,6 +30,7 @@ private Q_SLOTS:
     void testHtmlTagFixup();
     void testTableOfContents();
     void testSynopsis();
+    void testSynopsisPages();
 
 private:
     void findImages(QTextFrame *parent, QList<QTextImageFormat> &images);
@@ -36,6 +39,8 @@ private:
 
 void MarkdownTest::initTestCase()
 {
+    // don't let the settings of whoever runs the test (backend font, SmartyPants) change the result
+    QStandardPaths::setTestModeEnabled(true);
     Okular::SettingsCore::instance(QStringLiteral("markdowntest"));
 }
 
@@ -244,10 +249,12 @@ void MarkdownTest::testTableOfContents()
         {2, QStringLiteral("Sub two")},
     };
 
-    QCOMPARE(titles.size(), expected.size());
+    QList<QPair<int, QString>> actual;
+    for (const Title &title : std::as_const(titles)) {
+        actual.append({title.level, title.title});
+    }
+    QCOMPARE(actual, expected);
     for (int i = 0; i < expected.size(); ++i) {
-        QCOMPARE(titles[i].level, expected[i].first);
-        QCOMPARE(titles[i].title, expected[i].second);
         // the block handed over has to be the heading itself, it is what the title links to
         QCOMPARE(titles[i].blockHeadingLevel, expected[i].first);
         QVERIFY(titles[i].blockText.simplified().endsWith(expected[i].second));
@@ -291,11 +298,50 @@ void MarkdownTest::testSynopsis()
     const QList<Okular::DocumentSynopsis::Element> inOrder = {topLevel[0], topChildren[0], subChildren[0], topLevel[1]};
     double previousY = -1;
     for (const Okular::DocumentSynopsis::Element &element : inOrder) {
-        QVERIFY(element.viewPort().has_value());
-        QCOMPARE(element.viewPort()->pageNumber, 0);
-        QVERIFY(element.viewPort()->rePos.normalizedY > previousY);
-        previousY = element.viewPort()->rePos.normalizedY;
+        const Okular::DocumentViewport viewport = element.viewPort().value_or(Okular::DocumentViewport());
+        QCOMPARE(viewport.pageNumber, 0);
+        QVERIFY(viewport.rePos.normalizedY > previousY);
+        previousY = viewport.rePos.normalizedY;
     }
+
+    document.closeDocument();
+}
+
+void MarkdownTest::testSynopsisPages()
+{
+    // 60 headings named "Heading NNN" spread over several pages
+    const QString testFile = QStringLiteral(KDESRCDIR "data/toc-long.md");
+    QMimeDatabase db;
+    const QMimeType mime = db.mimeTypeForFile(testFile);
+
+    Okular::Document document(nullptr);
+    QCOMPARE(document.openDocument(testFile, QUrl(), mime), Okular::Document::OpenSuccess);
+    QVERIFY(document.pages() >= 3);
+
+    const Okular::DocumentSynopsis *synopsis = document.documentSynopsis();
+    QVERIFY(synopsis);
+    const QList<Okular::DocumentSynopsis::Element> entries = synopsis->children();
+    QCOMPARE(entries.size(), 60);
+
+    int previousPage = 0;
+    double previousY = -1;
+    for (const Okular::DocumentSynopsis::Element &entry : entries) {
+        const Okular::DocumentViewport viewport = entry.viewPort().value_or(Okular::DocumentViewport());
+        QVERIFY(viewport.isValid());
+        QVERIFY(viewport.pageNumber >= previousPage);
+        QVERIFY(viewport.pageNumber < int(document.pages()));
+        QVERIFY(viewport.pageNumber > previousPage || viewport.rePos.normalizedY > previousY);
+
+        // the entry has to point at the page that shows the heading
+        document.requestTextPage(viewport.pageNumber);
+        const QByteArray where = QStringLiteral("%1 points at page %2").arg(entry.title()).arg(viewport.pageNumber).toUtf8();
+        QVERIFY2(document.page(viewport.pageNumber)->text().contains(entry.title()), where.constData());
+
+        previousPage = viewport.pageNumber;
+        previousY = viewport.rePos.normalizedY;
+    }
+    // the headings do not all fit in the first page
+    QVERIFY(previousPage > 0);
 
     document.closeDocument();
 }

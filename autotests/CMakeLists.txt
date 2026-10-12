@@ -171,6 +171,8 @@ if(Discount_FOUND)
         TEST_NAME "markdowntest"
         LINK_LIBRARIES Qt6::Test okularcore KF6::I18n PkgConfig::Discount
     )
+    # testSynopsis and testSynopsisPages open the file through the plugin
+    add_dependencies(markdowntest okularGenerator_md)
 endif()
 
 ecm_add_test(toggleactionmenutest.cpp ../part/toggleactionmenu.cpp

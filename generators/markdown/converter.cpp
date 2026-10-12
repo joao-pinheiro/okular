@@ -64,6 +64,10 @@ QTextDocument *Converter::convert(const QString &fileName)
     m_fileDir = QDir(fileName.left(fileName.lastIndexOf(QLatin1Char('/'))));
 
     QTextDocument *doc = convertOpenFile();
+    if (!doc) {
+        return nullptr;
+    }
+
     QHash<QString, QTextFragment> internalLinks;
     QHash<QString, QTextBlock> documentAnchors;
     extractLinks(doc->rootFrame(), internalLinks, documentAnchors);
