@@ -159,6 +159,11 @@ ecm_add_test(signatureformtest.cpp
     LINK_LIBRARIES Qt6::Test okularcore
 )
 
+ecm_add_test(tocmodeltest.cpp ../gui/tocmodel.cpp
+    TEST_NAME "tocmodeltest"
+    LINK_LIBRARIES Qt6::Widgets Qt6::Test Qt6::Xml okularcore
+)
+
 ecm_add_test(textdocumentviewporttest.cpp
     TEST_NAME "textdocumentviewporttest"
     LINK_LIBRARIES Qt6::Widgets Qt6::Test okularcore
